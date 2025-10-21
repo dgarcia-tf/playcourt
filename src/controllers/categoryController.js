@@ -1,6 +1,6 @@
 const { validationResult } = require('express-validator');
 const { Category, CATEGORY_SKILL_LEVELS, CATEGORY_STATUSES } = require('../models/Category');
-const { League } = require('../models/League');
+const { League, LEAGUE_STATUS } = require('../models/League');
 const { Match } = require('../models/Match');
 const { Enrollment } = require('../models/Enrollment');
 const {
@@ -76,7 +76,10 @@ async function listCategories(req, res) {
 
   const categories = await Category.find(query)
     .sort({ name: 1 })
-    .populate('league', 'name year status startDate endDate')
+    .populate(
+      'league',
+      'name year status startDate endDate registrationCloseDate enrollmentFee'
+    )
     .lean();
 
   if (!categories.length) {
@@ -132,6 +135,8 @@ async function listCategories(req, res) {
     (pendingCounts || []).map((entry) => [entry._id.toString(), entry.count])
   );
 
+  const now = new Date();
+
   const payload = categories.map((category) => {
     const resolvedColor = resolveCategoryColor(category.color);
     const meetsMinimumAge = userMeetsCategoryMinimumAge(category, req.user);
@@ -141,6 +146,18 @@ async function listCategories(req, res) {
         : Number(category.minimumAge) > 0
         ? getCategoryReferenceYear(category)
         : null;
+    const league = category.league || null;
+    const registrationCloseDate =
+      league?.registrationCloseDate instanceof Date
+        ? league.registrationCloseDate
+        : league?.registrationCloseDate
+        ? new Date(league.registrationCloseDate)
+        : null;
+    const registrationWindowOpen =
+      (!registrationCloseDate || now <= registrationCloseDate) &&
+      (!league || league.status !== LEAGUE_STATUS.CLOSED);
+    const leagueEnrollmentFee =
+      typeof league?.enrollmentFee === 'number' ? league.enrollmentFee : null;
 
     return {
       ...category,
@@ -150,14 +167,20 @@ async function listCategories(req, res) {
       pendingRequestId: pendingRequestMap.get(category._id.toString()) || null,
       canRequestEnrollment:
         Boolean(currentGender) &&
-        category.status === CATEGORY_STATUSES.REGISTRATION &&
-        category.gender === currentGender &&
-        meetsMinimumAge &&
-        !enrolledSet.has(category._id.toString()) &&
-        !pendingRequestMap.has(category._id.toString()),
+          category.status === CATEGORY_STATUSES.REGISTRATION &&
+          category.gender === currentGender &&
+          meetsMinimumAge &&
+          !enrolledSet.has(category._id.toString()) &&
+        !pendingRequestMap.has(category._id.toString()) &&
+        registrationWindowOpen,
       pendingRequestCount: pendingCountMap.get(category._id.toString()) || 0,
       meetsMinimumAgeRequirement: meetsMinimumAge,
       minimumAgeReferenceYear,
+      leagueRegistrationCloseDate: registrationCloseDate
+        ? registrationCloseDate.toISOString()
+        : null,
+      leagueEnrollmentFee,
+      registrationWindowOpen,
     };
   });
 

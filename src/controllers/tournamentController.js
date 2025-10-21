@@ -152,8 +152,81 @@ async function listTournaments(req, res) {
       path: 'categories',
       select: 'name gender skillLevel status color menuTitle',
     });
+  if (!tournaments.length) {
+    return res.json([]);
+  }
 
-  return res.json(tournaments);
+  const categoryIdSet = new Set();
+  tournaments.forEach((tournament) => {
+    (tournament.categories || []).forEach((category) => {
+      const id = category?._id ? category._id.toString() : category?.toString?.();
+      if (id) {
+        categoryIdSet.add(id);
+      }
+    });
+  });
+
+  const categoryIds = Array.from(categoryIdSet);
+  let statsByCategory = new Map();
+
+  if (categoryIds.length) {
+    const enrollmentStats = await TournamentEnrollment.aggregate([
+      {
+        $match: {
+          category: {
+            $in: categoryIds.map((id) => new mongoose.Types.ObjectId(id)),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: { category: '$category', status: '$status' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    statsByCategory = enrollmentStats.reduce((map, entry) => {
+      const categoryId = entry._id.category.toString();
+      const status = entry._id.status;
+      if (!map.has(categoryId)) {
+        map.set(categoryId, { total: 0, confirmed: 0, pending: 0, cancelled: 0 });
+      }
+      const stats = map.get(categoryId);
+      stats.total += entry.count;
+      if (status === TOURNAMENT_ENROLLMENT_STATUS.CONFIRMED) {
+        stats.confirmed += entry.count;
+      } else if (status === TOURNAMENT_ENROLLMENT_STATUS.PENDING) {
+        stats.pending += entry.count;
+      } else if (status === TOURNAMENT_ENROLLMENT_STATUS.CANCELLED) {
+        stats.cancelled += entry.count;
+      }
+      return map;
+    }, new Map());
+  }
+
+  const result = tournaments.map((tournament) => {
+    const plain = tournament.toObject();
+    if (Array.isArray(plain.categories)) {
+      plain.categories = plain.categories.map((category) => {
+        const categoryId = category?._id ? category._id.toString() : '';
+        const stats = categoryId ? statsByCategory.get(categoryId) : null;
+        return {
+          ...category,
+          enrollmentStats: {
+            total: stats?.total || 0,
+            confirmed: stats?.confirmed || 0,
+            pending: stats?.pending || 0,
+            cancelled: stats?.cancelled || 0,
+          },
+          pendingEnrollmentCount: stats?.pending || 0,
+        };
+      });
+    }
+    return plain;
+  });
+
+  return res.json(result);
 }
 
 async function getTournamentDetail(req, res) {
@@ -178,18 +251,16 @@ async function getTournamentDetail(req, res) {
 
   const categoryIds = (tournament.categories || []).map((category) => category._id || category);
 
-  const [enrollmentsByCategory, matchCounts] = await Promise.all([
+  const userId = req.user?.id || req.user?._id;
+  const [enrollmentStats, matchCounts, userEnrollments] = await Promise.all([
     TournamentEnrollment.aggregate([
-      { $match: { tournament: new mongoose.Types.ObjectId(tournament.id) } },
+      {
+        $match: { tournament: new mongoose.Types.ObjectId(tournament.id) },
+      },
       {
         $group: {
-          _id: '$category',
-          total: { $sum: 1 },
-          confirmadas: {
-            $sum: {
-              $cond: [{ $eq: ['$status', TOURNAMENT_ENROLLMENT_STATUS.CONFIRMED] }, 1, 0],
-            },
-          },
+          _id: { category: '$category', status: '$status' },
+          count: { $sum: 1 },
         },
       },
     ]),
@@ -202,14 +273,40 @@ async function getTournamentDetail(req, res) {
         },
       },
     ]),
+    userId
+      ? TournamentEnrollment.find({
+          tournament: tournament.id,
+          user: userId,
+        })
+          .lean()
+      : [],
   ]);
 
-  const enrollmentMap = new Map();
-  enrollmentsByCategory.forEach((entry) => {
-    enrollmentMap.set(String(entry._id), {
-      total: entry.total,
-      confirmed: entry.confirmadas,
-    });
+  const statsByCategory = enrollmentStats.reduce((map, entry) => {
+    const categoryId = entry._id.category.toString();
+    const status = entry._id.status;
+    if (!map.has(categoryId)) {
+      map.set(categoryId, { total: 0, confirmed: 0, pending: 0, cancelled: 0 });
+    }
+    const stats = map.get(categoryId);
+    stats.total += entry.count;
+    if (status === TOURNAMENT_ENROLLMENT_STATUS.CONFIRMED) {
+      stats.confirmed += entry.count;
+    } else if (status === TOURNAMENT_ENROLLMENT_STATUS.PENDING) {
+      stats.pending += entry.count;
+    } else if (status === TOURNAMENT_ENROLLMENT_STATUS.CANCELLED) {
+      stats.cancelled += entry.count;
+    }
+    return map;
+  }, new Map());
+
+  const userEnrollmentMap = new Map();
+  userEnrollments.forEach((enrollment) => {
+    const rawCategoryId = enrollment?.category;
+    const categoryId = rawCategoryId ? rawCategoryId.toString() : '';
+    if (categoryId) {
+      userEnrollmentMap.set(categoryId, enrollment);
+    }
   });
 
   const matchMap = new Map();
@@ -217,17 +314,46 @@ async function getTournamentDetail(req, res) {
     matchMap.set(String(entry._id), entry.total);
   });
 
+  const now = new Date();
+  const registrationDeadline = tournament.registrationCloseDate
+    ? new Date(tournament.registrationCloseDate)
+    : null;
+  const tournamentAllowsEnrollment =
+    tournament.status === TOURNAMENT_STATUS.REGISTRATION &&
+    (!registrationDeadline || now <= registrationDeadline);
+
   const categoriesWithStats = (tournament.categories || []).map((category) => {
     const plainCategory =
       category && typeof category.toObject === 'function' ? category.toObject() : category;
     const categoryId = plainCategory._id ? plainCategory._id.toString() : String(plainCategory);
-    const stats = enrollmentMap.get(categoryId) || { total: 0, confirmed: 0 };
+    const stats = statsByCategory.get(categoryId) || {
+      total: 0,
+      confirmed: 0,
+      pending: 0,
+      cancelled: 0,
+    };
     const totalMatches = matchMap.get(categoryId) || 0;
+    const userEnrollment = userEnrollmentMap.get(categoryId) || null;
+    const categoryAllowsEnrollment =
+      plainCategory.status === TOURNAMENT_CATEGORY_STATUSES.REGISTRATION;
+    const canRequestEnrollment = Boolean(req.user) &&
+      tournamentAllowsEnrollment &&
+      categoryAllowsEnrollment &&
+      (!userEnrollment || userEnrollment.status === TOURNAMENT_ENROLLMENT_STATUS.CANCELLED);
 
     return {
       ...plainCategory,
       enrollmentStats: stats,
       matches: totalMatches,
+      pendingEnrollmentCount: stats.pending,
+      userEnrollment: userEnrollment
+        ? {
+            id: userEnrollment._id ? userEnrollment._id.toString() : undefined,
+            status: userEnrollment.status,
+            shirtSize: userEnrollment.shirtSize || null,
+          }
+        : null,
+      canRequestEnrollment,
     };
   });
 

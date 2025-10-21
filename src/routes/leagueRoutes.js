@@ -34,6 +34,12 @@ router.post(
     body('description').optional().isString(),
     body('startDate').optional().isISO8601().toDate(),
     body('endDate').optional().isISO8601().toDate(),
+    body('registrationCloseDate').optional({ nullable: true }).isISO8601().toDate(),
+    body('enrollmentFee')
+      .optional({ nullable: true })
+      .isFloat({ min: 0 })
+      .withMessage('La tarifa debe ser un número positivo')
+      .toFloat(),
     body('status').optional().isIn(Object.values(LEAGUE_STATUS)),
     body('categories').optional().isArray(),
     body('categories.*').optional().isMongoId(),
@@ -79,6 +85,17 @@ router.patch(
       .withMessage('Fecha de cierre inválida')
       .customSanitizer((value) => (value === '' ? null : value))
       .customSanitizer((value) => (value ? new Date(value) : value)),
+    body('registrationCloseDate')
+      .optional({ nullable: true })
+      .custom((value) => value === null || value === '' || !Number.isNaN(Date.parse(value)))
+      .withMessage('Fecha límite de inscripción inválida')
+      .customSanitizer((value) => (value === '' ? null : value))
+      .customSanitizer((value) => (value ? new Date(value) : value)),
+    body('enrollmentFee')
+      .optional({ nullable: true })
+      .isFloat({ min: 0 })
+      .withMessage('La tarifa debe ser un número positivo')
+      .toFloat(),
     body('status').optional().isIn(Object.values(LEAGUE_STATUS)),
     body('categories').optional().isArray(),
     body('categories.*').optional().isMongoId(),

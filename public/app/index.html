@@ -293,15 +293,6 @@
                   <button
                     type="button"
                     class="menu-button menu-button--nested"
-                    data-target="section-admin"
-                    data-parent-target="section-admin"
-                    data-requires-admin="true"
-                  >
-                    Panel de administración
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
                     data-target="section-club"
                     data-parent-target="section-admin"
                     data-requires-admin="true"
@@ -1111,34 +1102,17 @@
                 <div class="card-header">
                   <div>
                     <h3>Ranking por categoría</h3>
+                    <p class="card-subtitle">Consulta la clasificación completa de cada división.</p>
                   </div>
                   <div class="card-actions">
-                    <label class="inline-field">
-                      Categoría
-                      <select id="ranking-select"></select>
-                    </label>
                     <button id="ranking-print-button" type="button" class="secondary">
                       Imprimir ranking
                     </button>
                   </div>
                 </div>
-                <div class="table-scroll">
-                  <table class="table" id="ranking-table">
-                    <thead>
-                      <tr>
-                        <th>Nº Ranking</th>
-                        <th>Jugador</th>
-                        <th>Puntos</th>
-                        <th>Jugados</th>
-                        <th>Victorias</th>
-                        <th>Derrotas</th>
-                        <th>Juegos ganados</th>
-                      </tr>
-                    </thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-                <div class="empty-state" id="ranking-empty" hidden>Selecciona una categoría.</div>
+                <p class="status-message" id="ranking-status"></p>
+                <div id="ranking-category-list" class="ranking-category-list"></div>
+                <div class="empty-state" id="ranking-empty" hidden>No hay categorías disponibles.</div>
               </article>
             </section>
 

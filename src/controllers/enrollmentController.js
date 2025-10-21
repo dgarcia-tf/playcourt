@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const { Enrollment } = require('../models/Enrollment');
 const { Category } = require('../models/Category');
+const { LEAGUE_STATUS } = require('../models/League');
 const {
   EnrollmentRequest,
   ENROLLMENT_REQUEST_STATUSES,
@@ -25,7 +26,7 @@ async function enrollPlayer(req, res) {
   const playerId = userId || req.user.id;
 
   const [category, user] = await Promise.all([
-    Category.findById(categoryId),
+    Category.findById(categoryId).populate('league', 'status registrationCloseDate'),
     User.findById(playerId),
   ]);
 
@@ -126,3 +127,17 @@ module.exports = {
   listEnrollments,
   removeEnrollment,
 };
+  const league = category.league;
+  if (league) {
+    if (league.status === LEAGUE_STATUS.CLOSED) {
+      return res
+        .status(400)
+        .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
+    }
+
+    if (league.registrationCloseDate && new Date() > league.registrationCloseDate) {
+      return res
+        .status(400)
+        .json({ message: 'La fecha máxima de inscripción de la liga ya ha pasado.' });
+    }
+  }
