@@ -124,8 +124,38 @@ const tournamentSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    posterFile: {
+      filename: {
+        type: String,
+        trim: true,
+      },
+      mimetype: {
+        type: String,
+        trim: true,
+      },
+      size: {
+        type: Number,
+        min: 0,
+      },
+      uploadedAt: {
+        type: Date,
+      },
+    },
     fees: {
       type: [feeSchema],
+      default: [],
+    },
+    hasShirt: {
+      type: Boolean,
+      default: false,
+    },
+    shirtSizes: {
+      type: [
+        {
+          type: String,
+          trim: true,
+        },
+      ],
       default: [],
     },
     status: {

@@ -11,6 +11,7 @@ const {
   removeMaterialRecord,
   addPaymentRecord,
   updatePaymentRecord,
+  uploadTournamentPoster,
 } = require('../controllers/tournamentController');
 const {
   createTournamentCategory,
@@ -30,14 +31,19 @@ const {
 const {
   listTournamentMatches,
   generateTournamentMatches,
+  autoGenerateTournamentBracket,
   updateTournamentMatch,
   confirmTournamentMatch,
   rejectTournamentMatch,
+  submitTournamentMatchResult,
+  approveTournamentMatchResult,
+  resetTournamentMatchResult,
 } = require('../controllers/tournamentMatchController');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const { TOURNAMENT_STATUS } = require('../models/Tournament');
 const { GENDERS } = require('../models/User');
 const { CATEGORY_SKILL_LEVELS } = require('../models/Category');
+const { posterUpload } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -83,8 +89,19 @@ router.post(
     body('fees.*.label').optional().isString(),
     body('fees.*.amount').optional().isFloat({ min: 0 }),
     body('status').optional().isIn(Object.values(TOURNAMENT_STATUS)),
+    body('hasShirt').optional().isBoolean(),
+    body('shirtSizes').optional().isArray(),
+    body('shirtSizes.*').optional().isString(),
   ],
   createTournament
+);
+
+router.post(
+  '/:tournamentId/poster',
+  authorizeRoles('admin'),
+  [param('tournamentId').isMongoId()],
+  posterUpload.single('poster'),
+  uploadTournamentPoster
 );
 
 router.patch(
@@ -109,6 +126,9 @@ router.patch(
     body('poster').optional({ nullable: true }).isString(),
     body('fees').optional().isArray(),
     body('status').optional().isIn(Object.values(TOURNAMENT_STATUS)),
+    body('hasShirt').optional().isBoolean(),
+    body('shirtSizes').optional().isArray(),
+    body('shirtSizes.*').optional().isString(),
   ],
   updateTournament
 );
@@ -179,6 +199,13 @@ router.post(
   assignTournamentSeeds
 );
 
+router.post(
+  '/:tournamentId/categories/:categoryId/brackets/auto',
+  authorizeRoles('admin'),
+  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
+  autoGenerateTournamentBracket
+);
+
 // Enrollments
 router.get(
   '/:tournamentId/categories/:categoryId/enrollments',
@@ -192,6 +219,7 @@ router.post(
     param('tournamentId').isMongoId(),
     param('categoryId').isMongoId(),
     body('userId').optional({ nullable: true }).isMongoId(),
+    body('shirtSize').optional({ nullable: true }).isString(),
   ],
   createTournamentEnrollment
 );
@@ -203,7 +231,8 @@ router.patch(
     param('tournamentId').isMongoId(),
     param('categoryId').isMongoId(),
     param('enrollmentId').isMongoId(),
-    body('status').isString().notEmpty(),
+    body('status').optional().isString().notEmpty(),
+    body('shirtSize').optional({ nullable: true }).isString(),
   ],
   updateEnrollmentStatus
 );
@@ -238,6 +267,45 @@ router.patch(
     body('notifyPlayers').optional().isBoolean(),
   ],
   updateTournamentMatch
+);
+
+router.post(
+  '/:tournamentId/categories/:categoryId/matches/:matchId/result',
+  [
+    param('tournamentId').isMongoId(),
+    param('categoryId').isMongoId(),
+    param('matchId').isMongoId(),
+    body('winner').isMongoId(),
+    body('score').optional({ nullable: true }).isString(),
+    body('notes').optional({ nullable: true }).isString(),
+  ],
+  submitTournamentMatchResult
+);
+
+router.post(
+  '/:tournamentId/categories/:categoryId/matches/:matchId/result/approve',
+  authorizeRoles('admin'),
+  [
+    param('tournamentId').isMongoId(),
+    param('categoryId').isMongoId(),
+    param('matchId').isMongoId(),
+    body('winner').optional({ nullable: true }).isMongoId(),
+    body('score').optional({ nullable: true }).isString(),
+    body('notes').optional({ nullable: true }).isString(),
+  ],
+  approveTournamentMatchResult
+);
+
+router.post(
+  '/:tournamentId/categories/:categoryId/matches/:matchId/result/reset',
+  authorizeRoles('admin'),
+  [
+    param('tournamentId').isMongoId(),
+    param('categoryId').isMongoId(),
+    param('matchId').isMongoId(),
+    body('reason').optional({ nullable: true }).isString(),
+  ],
+  resetTournamentMatchResult
 );
 
 router.post(
