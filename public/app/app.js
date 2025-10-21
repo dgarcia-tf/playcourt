@@ -945,6 +945,13 @@ const courtReservationStatus = document.getElementById('court-reservation-status
 const courtReservationSubmit = document.getElementById('court-reservation-submit');
 const courtReservationList = document.getElementById('court-reservation-list');
 const courtReservationEmpty = document.getElementById('court-reservation-empty');
+const courtReservationParticipantsContainer = document.getElementById(
+  'court-reservation-participants-container'
+);
+const courtReservationParticipantsHint = document.getElementById('court-reservation-participants-hint');
+const defaultCourtReservationParticipantsHint = courtReservationParticipantsHint
+  ? courtReservationParticipantsHint.textContent
+  : '';
 const courtAvailabilityDateInput = document.getElementById('court-availability-date');
 const courtAvailabilityList = document.getElementById('court-availability-list');
 const courtAvailabilityEmpty = document.getElementById('court-availability-empty');
