@@ -191,6 +191,17 @@
                   </button>
                 </div>
               </div>
+              <button type="button" class="menu-button" data-target="section-court-reservations">
+                Reservar pistas
+              </button>
+              <button
+                type="button"
+                class="menu-button"
+                data-target="section-court-admin"
+                data-requires-admin="true"
+              >
+                Administración de pistas
+              </button>
               <button type="button" class="menu-button" data-target="section-chat">
                 <span class="menu-label">Panel de avisos</span>
                 <span class="menu-badge" id="menu-notices-badge" hidden>0</span>
@@ -616,6 +627,89 @@
               </article>
             </section>
 
+            <section id="section-court-reservations" class="app-section" hidden>
+              <div class="courts-grid">
+                <article class="card" id="court-reservation-form-card">
+                  <div class="card-header">
+                    <h3>Reservar pista</h3>
+                    <p class="card-subtitle">
+                      Escoge fecha, hora y pista disponible según la configuración del club.
+                    </p>
+                  </div>
+                  <form id="court-reservation-form" class="form">
+                    <div class="form-grid">
+                      <label class="inline-field">
+                        Fecha
+                        <input type="date" id="court-reservation-date" name="date" required />
+                      </label>
+                      <label class="inline-field">
+                        Hora
+                        <input type="time" id="court-reservation-time" name="time" required step="900" />
+                      </label>
+                      <label class="inline-field">
+                        Duración
+                        <select id="court-reservation-duration" name="duration">
+                          <option value="60">60 minutos</option>
+                          <option value="90" selected>90 minutos</option>
+                          <option value="120">120 minutos</option>
+                        </select>
+                      </label>
+                      <label class="inline-field">
+                        Pista
+                        <select id="court-reservation-court" name="court" required>
+                          <option value="" disabled selected>
+                            Añade pistas en la sección del club para habilitar las reservas
+                          </option>
+                        </select>
+                      </label>
+                    </div>
+                    <label class="inline-field">
+                      Notas
+                      <textarea
+                        id="court-reservation-notes"
+                        name="notes"
+                        rows="2"
+                        maxlength="500"
+                        placeholder="Añade información relevante para el rival o el club"
+                      ></textarea>
+                    </label>
+                    <p class="status-message" id="court-reservation-status"></p>
+                    <div class="form-actions">
+                      <button type="submit" class="primary" id="court-reservation-submit">Guardar reserva</button>
+                    </div>
+                  </form>
+                </article>
+
+                <article class="card" id="court-availability-card">
+                  <div class="card-header">
+                    <h3>Disponibilidad de pistas</h3>
+                    <div class="card-actions">
+                      <label class="inline-field">
+                        Fecha
+                        <input type="date" id="court-availability-date" />
+                      </label>
+                    </div>
+                  </div>
+                  <ul class="list" id="court-availability-list">
+                    <li class="empty-state" id="court-availability-empty">
+                      Selecciona una fecha para consultar la disponibilidad de pistas.
+                    </li>
+                  </ul>
+                </article>
+
+                <article class="card" id="court-reservations-card">
+                  <div class="card-header">
+                    <h3>Mis reservas</h3>
+                  </div>
+                  <ul class="list" id="court-reservation-list">
+                    <li class="empty-state" id="court-reservation-empty">
+                      Aún no tienes reservas activas.
+                    </li>
+                  </ul>
+                </article>
+              </div>
+            </section>
+
             <section id="section-ranking" class="app-section" hidden>
               <article class="card" id="ranking-card">
                 <div class="card-header">
@@ -821,6 +915,30 @@
                 <ul class="list" id="player-directory-list"></ul>
                 <div class="empty-state" id="player-directory-empty" hidden>
                   Aún no hay jugadores que coincidan con el filtro seleccionado.
+                </div>
+              </article>
+            </section>
+            <section id="section-court-admin" class="app-section" data-admin-only="true" hidden>
+              <article class="card" id="court-admin-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Administración de pistas</h3>
+                    <p class="card-subtitle">
+                      Revisa y gestiona todas las reservas confirmadas para cada pista del club.
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <label class="inline-field">
+                      Fecha
+                      <input type="date" id="court-admin-date" />
+                    </label>
+                  </div>
+                </div>
+                <p class="status-message" id="court-admin-status"></p>
+                <div id="court-admin-schedule">
+                  <p class="empty-state" id="court-admin-empty">
+                    Configura pistas en el perfil del club para comenzar a registrar reservas.
+                  </p>
                 </div>
               </article>
             </section>

@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 const { Match } = require('../models/Match');
+const { CourtReservation } = require('../models/CourtReservation');
 const { Category } = require('../models/Category');
 const { Enrollment } = require('../models/Enrollment');
 const { Season } = require('../models/Season');
@@ -9,6 +10,12 @@ const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { refreshCategoryRanking } = require('../services/rankingService');
 const { MATCH_EXPIRATION_DAYS } = require('../services/matchExpirationService');
+const {
+  ensureReservationAvailability: ensureCourtReservationAvailability,
+  upsertMatchReservation,
+  cancelMatchReservation,
+  resolveEndsAt,
+} = require('../services/courtReservationService');
 
 const MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado'];
 const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caducado'].includes(status));
@@ -269,6 +276,19 @@ async function createMatch(req, res) {
     } catch (error) {
       return res.status(error.statusCode || 400).json({ message: error.message });
     }
+
+    if (resolvedCourt || matchPayload.court) {
+      const { startsAt: reservationStart, endsAt: reservationEnd } = resolveEndsAt(scheduledDate);
+      try {
+        await ensureCourtReservationAvailability({
+          court: resolvedCourt || matchPayload.court,
+          startsAt: reservationStart,
+          endsAt: reservationEnd,
+        });
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({ message: error.message });
+      }
+    }
   }
 
   const match = await Match.create(matchPayload);
@@ -293,6 +313,14 @@ async function createMatch(req, res) {
       });
     } catch (error) {
       console.error('No se pudo crear la notificación de recordatorio', error);
+    }
+
+    if (match.court) {
+      try {
+        await upsertMatchReservation({ match, createdBy: req.user.id });
+      } catch (error) {
+        console.error('No se pudo crear la reserva automática del partido', error);
+      }
     }
   }
 
@@ -378,6 +406,8 @@ async function updateMatch(req, res) {
   if (!match) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
+
+  const existingReservation = await CourtReservation.findOne({ match: matchId });
 
   let targetCategoryId = match.category?.toString();
   if (categoryId) {
@@ -481,7 +511,24 @@ async function updateMatch(req, res) {
     } catch (error) {
       return res.status(error.statusCode || 400).json({ message: error.message });
     }
+
+    if (match.court) {
+      const { startsAt: reservationStart, endsAt: reservationEnd } = resolveEndsAt(match.scheduledAt);
+      try {
+        await ensureCourtReservationAvailability({
+          court: match.court,
+          startsAt: reservationStart,
+          endsAt: reservationEnd,
+          excludeReservationId: existingReservation?._id,
+        });
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({ message: error.message });
+      }
+    }
   }
+
+  const shouldSyncReservation =
+    match.status === 'programado' && Boolean(match.scheduledAt) && Boolean(match.court);
 
   await match.save();
 
@@ -492,6 +539,20 @@ async function updateMatch(req, res) {
     .populate('players', 'fullName email gender phone')
     .populate('proposal.requestedBy', 'fullName email phone')
     .populate('proposal.requestedTo', 'fullName email phone');
+
+  if (shouldSyncReservation) {
+    try {
+      await upsertMatchReservation({ match, createdBy: req.user.id });
+    } catch (error) {
+      console.error('No se pudo sincronizar la reserva de pista del partido', error);
+    }
+  } else if (existingReservation) {
+    try {
+      await cancelMatchReservation(match._id, { cancelledBy: req.user.id });
+    } catch (error) {
+      console.error('No se pudo cancelar la reserva vinculada al partido', error);
+    }
+  }
 
   return res.json(updated);
 }
@@ -513,6 +574,12 @@ async function deleteMatch(req, res) {
     return res
       .status(400)
       .json({ message: 'No es posible eliminar un partido que ya fue completado.' });
+  }
+
+  try {
+    await cancelMatchReservation(matchId, { cancelledBy: req.user.id });
+  } catch (error) {
+    console.error('No se pudo cancelar la reserva asociada al partido eliminado', error);
   }
 
   await Promise.all([
@@ -1048,6 +1115,8 @@ async function respondToProposal(req, res) {
       .json({ message: 'El partido caducó y no admite respuestas a propuestas anteriores.' });
   }
 
+  const existingReservation = await CourtReservation.findOne({ match: matchId });
+
   const userId = req.user.id;
   if (match.proposal.requestedTo.toString() !== userId) {
     return res
@@ -1112,9 +1181,40 @@ async function respondToProposal(req, res) {
     } catch (error) {
       return res.status(error.statusCode || 400).json({ message: error.message });
     }
+
+    if (match.court) {
+      const { startsAt: reservationStart, endsAt: reservationEnd } = resolveEndsAt(scheduledDate);
+      try {
+        await ensureCourtReservationAvailability({
+          court: match.court,
+          startsAt: reservationStart,
+          endsAt: reservationEnd,
+          excludeReservationId: existingReservation?._id,
+        });
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({ message: error.message });
+      }
+    }
   }
 
+  const shouldSyncReservation =
+    match.status === 'programado' && Boolean(match.scheduledAt) && Boolean(match.court);
+
   await match.save();
+
+  if (shouldSyncReservation) {
+    try {
+      await upsertMatchReservation({ match, createdBy: userId });
+    } catch (error) {
+      console.error('No se pudo sincronizar la reserva de pista del partido', error);
+    }
+  } else if (existingReservation) {
+    try {
+      await cancelMatchReservation(match._id, { cancelledBy: userId });
+    } catch (error) {
+      console.error('No se pudo cancelar la reserva vinculada al partido', error);
+    }
+  }
 
   try {
     await Notification.deleteMany({ match: matchId, 'metadata.tipo': 'propuesta_partido' });
