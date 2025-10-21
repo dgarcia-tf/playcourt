@@ -41,6 +41,8 @@ const STATUS_LABELS = {
   caducado: 'Caducado',
 };
 
+const CALENDAR_MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision'];
+
 const MATCH_EXPIRATION_DAYS = 15;
 const MATCHES_PER_PAGE = 10;
 const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
@@ -5821,13 +5823,409 @@ function buildCalendarDataset(matches = []) {
   return { grouped, unscheduled };
 }
 
+const CALENDAR_MATCH_STATUS_SET = new Set(CALENDAR_MATCH_STATUSES);
+
+function getCalendarMatchesForDisplay() {
+  const matches = Array.isArray(state.calendarMatches) ? state.calendarMatches : [];
+  return matches.filter((match) => CALENDAR_MATCH_STATUS_SET.has(match.status));
+}
+
+function getScheduledCalendarMatches() {
+  return getCalendarMatchesForDisplay().filter((match) => Boolean(match.scheduledAt));
+}
+
+function findMatchById(matchId) {
+  const normalizedId = normalizeId(matchId);
+  if (!normalizedId) {
+    return null;
+  }
+
+  const sources = [
+    state.calendarMatches,
+    state.upcomingMatches,
+    state.myMatches,
+    state.pendingApprovalMatches,
+    state.completedMatches,
+  ];
+
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+    const found = source.find((item) => normalizeId(item) === normalizedId);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+function isUserMatchParticipant(match, user = state.user) {
+  if (!match || !Array.isArray(match.players)) {
+    return false;
+  }
+
+  const userId = normalizeId(user);
+  if (!userId) {
+    return false;
+  }
+
+  return match.players.some((player) => normalizeId(player) === userId);
+}
+
+function collectMatchDetailMessages(match) {
+  if (!match) {
+    return [];
+  }
+
+  const messages = [];
+  const resultStatus = match.result?.status || '';
+
+  if (match.status === 'programado') {
+    if (match.scheduledAt) {
+      const scheduleLabel = formatDate(match.scheduledAt);
+      const courtLabel = formatCourtDisplay(match.court);
+      messages.push(
+        courtLabel ? `Programado para ${scheduleLabel} · ${courtLabel}` : `Programado para ${scheduleLabel}`
+      );
+    } else if (match.court) {
+      const courtLabel = formatCourtDisplay(match.court);
+      if (courtLabel) {
+        messages.push(`Pista asignada: ${courtLabel}.`);
+      }
+    }
+  } else if (match.status === 'pendiente') {
+    messages.push('A la espera de que alguien proponga fecha y hora.');
+  } else if (match.status === 'propuesto' && match.proposal) {
+    const proposer = getPlayerDisplayName(match.proposal.requestedBy) || 'Un jugador';
+    if (match.proposal.proposedFor) {
+      messages.push(`${proposer} propuso ${formatDate(match.proposal.proposedFor)}.`);
+    } else {
+      messages.push(`${proposer} ha propuesto disputar el partido.`);
+    }
+    if (match.court) {
+      const courtLabel = formatCourtDisplay(match.court);
+      if (courtLabel) {
+        messages.push(`Pista sugerida: ${courtLabel}.`);
+      }
+    }
+    if (match.proposal.message) {
+      messages.push(`Mensaje: ${match.proposal.message}`);
+    }
+  } else if (match.status === 'revision' || resultStatus === 'en_revision') {
+    messages.push('Resultado pendiente de confirmación.');
+  } else if (match.status === 'caducado') {
+    messages.push('El plazo para disputar el partido venció sin puntos.');
+  }
+
+  if (resultStatus === 'rechazado') {
+    messages.push('El resultado enviado fue rechazado. Vuelve a registrarlo.');
+  }
+
+  return messages;
+}
+
+function getResultStatusMessage(status) {
+  switch (status) {
+    case 'confirmado':
+      return 'Resultado confirmado.';
+    case 'en_revision':
+      return 'Resultado pendiente de confirmación.';
+    case 'rechazado':
+      return 'El resultado enviado fue rechazado.';
+    case 'pendiente':
+      return 'Resultado pendiente.';
+    default:
+      return '';
+  }
+}
+
+function formatCourtDisplay(value) {
+  if (!value) {
+    return '';
+  }
+
+  const court = (typeof value === 'string' ? value : String(value)).trim();
+  if (!court) {
+    return '';
+  }
+
+  return court.toLocaleLowerCase('es-ES').startsWith('pista') ? court : `Pista ${court}`;
+}
+
+function getMatchParticipantName(match, participant) {
+  if (!participant) {
+    return '';
+  }
+
+  if (typeof participant === 'object') {
+    return getPlayerDisplayName(participant);
+  }
+
+  if (typeof participant === 'string' && Array.isArray(match?.players)) {
+    const found = match.players.find((player) => normalizeId(player) === participant);
+    if (found) {
+      return getPlayerDisplayName(found);
+    }
+  }
+
+  return '';
+}
+
+function openMatchViewer(match, { allowResultEdit = false, allowMatchEdit = false } = {}) {
+  if (!match) {
+    showGlobalMessage('No fue posible cargar los datos del partido.', 'error');
+    return;
+  }
+
+  const matchId = normalizeId(match);
+  const container = document.createElement('div');
+  container.className = 'match-viewer';
+
+  const infoSection = document.createElement('div');
+  infoSection.className = 'match-viewer__section';
+  const infoList = document.createElement('dl');
+  infoList.className = 'match-viewer__info';
+
+  const appendInfo = (label, value) => {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    infoList.appendChild(term);
+    const detail = document.createElement('dd');
+    if (value instanceof Node) {
+      detail.appendChild(value);
+    } else {
+      detail.textContent = value;
+    }
+    infoList.appendChild(detail);
+  };
+
+  const statusTag = document.createElement('span');
+  statusTag.className = `tag status-${match.status}`;
+  statusTag.textContent = STATUS_LABELS[match.status] || match.status || 'Estado por confirmar';
+  appendInfo('Estado', statusTag);
+
+  const categoryLabel = document.createElement('span');
+  categoryLabel.className = 'tag match-category-tag';
+  categoryLabel.textContent = match.category?.name || 'Sin categoría';
+  const categoryColor = match.category ? getCategoryColor(match.category) : '';
+  applyCategoryTagColor(categoryLabel, categoryColor);
+  appendInfo('Categoría', categoryLabel);
+
+  const scheduleLabel = match.scheduledAt ? formatDate(match.scheduledAt) : 'Por confirmar';
+  const courtDisplay = formatCourtDisplay(match.court) || 'Por confirmar';
+  appendInfo('Fecha', scheduleLabel);
+  appendInfo('Pista', courtDisplay);
+
+  infoSection.appendChild(infoList);
+  container.appendChild(infoSection);
+
+  const detailMessages = collectMatchDetailMessages(match);
+  if (detailMessages.length) {
+    const detailsSection = document.createElement('div');
+    detailsSection.className = 'match-viewer__section';
+    const detailsList = document.createElement('div');
+    detailsList.className = 'match-viewer__details';
+    detailMessages.forEach((message) => {
+      const paragraph = document.createElement('p');
+      paragraph.className = 'meta';
+      paragraph.textContent = message;
+      detailsList.appendChild(paragraph);
+    });
+    detailsSection.appendChild(detailsList);
+    container.appendChild(detailsSection);
+  }
+
+  const warningMessage = getExpirationWarningMessage(match);
+  if (warningMessage && match.status !== 'caducado') {
+    const warning = document.createElement('p');
+    warning.className = 'deadline-warning';
+    warning.textContent = warningMessage;
+    container.appendChild(warning);
+  }
+
+  const playersSection = document.createElement('div');
+  playersSection.className = 'match-viewer__section';
+  const playersTitle = document.createElement('h4');
+  playersTitle.textContent = 'Jugadores';
+  playersSection.appendChild(playersTitle);
+
+  const playersList = document.createElement('ul');
+  playersList.className = 'match-viewer__players';
+  const players = Array.isArray(match.players) ? match.players : [];
+
+  if (!players.length) {
+    const empty = document.createElement('li');
+    empty.className = 'match-viewer__player';
+    empty.textContent = 'Jugadores por definir.';
+    playersList.appendChild(empty);
+  } else {
+    const currentUserId = normalizeId(state.user);
+    players.forEach((player) => {
+      const item = document.createElement('li');
+      item.className = 'match-viewer__player';
+
+      const name = document.createElement('span');
+      name.className = 'match-viewer__player-name';
+      name.textContent = getPlayerDisplayName(player);
+      item.appendChild(name);
+
+      const meta = [];
+      if (player?.preferredSchedule) {
+        meta.push(`Horario preferido: ${translateSchedule(player.preferredSchedule)}`);
+      }
+      if (normalizeId(player) === currentUserId) {
+        meta.push('Tú');
+      }
+
+      if (meta.length) {
+        const metaRow = document.createElement('div');
+        metaRow.className = 'match-viewer__player-meta';
+        meta.forEach((entry) => {
+          if (entry === 'Tú') {
+            const selfTag = document.createElement('span');
+            selfTag.className = 'tag';
+            selfTag.textContent = entry;
+            metaRow.appendChild(selfTag);
+          } else {
+            const metaItem = document.createElement('span');
+            metaItem.textContent = entry;
+            metaRow.appendChild(metaItem);
+          }
+        });
+        item.appendChild(metaRow);
+      }
+
+      playersList.appendChild(item);
+    });
+  }
+
+  playersSection.appendChild(playersList);
+  container.appendChild(playersSection);
+
+  const resultSection = document.createElement('div');
+  resultSection.className = 'match-viewer__section';
+  const resultTitle = document.createElement('h4');
+  resultTitle.textContent = 'Resultado';
+  resultSection.appendChild(resultTitle);
+
+  const resultStatusMessage = getResultStatusMessage(match.result?.status);
+  if (resultStatusMessage) {
+    const statusParagraph = document.createElement('p');
+    statusParagraph.className = 'meta';
+    statusParagraph.textContent = resultStatusMessage;
+    resultSection.appendChild(statusParagraph);
+  }
+
+  const winnerName = getMatchParticipantName(match, match.result?.winner);
+  if (winnerName) {
+    const winnerParagraph = document.createElement('p');
+    winnerParagraph.className = 'meta';
+    winnerParagraph.textContent = `Ganador: ${winnerName}`;
+    resultSection.appendChild(winnerParagraph);
+  }
+
+  const scoreboard = createResultScoreboard(match);
+  const scoreSummary = formatMatchScore(match);
+
+  if (scoreboard) {
+    resultSection.appendChild(scoreboard);
+  } else if (scoreSummary) {
+    const summaryParagraph = document.createElement('p');
+    summaryParagraph.className = 'meta';
+    summaryParagraph.textContent = scoreSummary;
+    resultSection.appendChild(summaryParagraph);
+  }
+
+  if (match.result?.notes) {
+    const resultNotes = document.createElement('p');
+    resultNotes.className = 'match-viewer__notes';
+    resultNotes.textContent = match.result.notes;
+    resultSection.appendChild(resultNotes);
+  }
+
+  const reporterName = getMatchParticipantName(match, match.result?.reportedBy);
+  if (reporterName) {
+    const reporterParagraph = document.createElement('p');
+    reporterParagraph.className = 'meta';
+    reporterParagraph.textContent = `Reportado por ${reporterName}.`;
+    resultSection.appendChild(reporterParagraph);
+  }
+
+  if (resultSection.childNodes.length > 1) {
+    container.appendChild(resultSection);
+  }
+
+  if (isAdmin() && match.notes) {
+    const adminNotesSection = document.createElement('div');
+    adminNotesSection.className = 'match-viewer__section';
+    const adminNotesTitle = document.createElement('h4');
+    adminNotesTitle.textContent = 'Notas internas';
+    adminNotesSection.appendChild(adminNotesTitle);
+    const adminNotes = document.createElement('p');
+    adminNotes.className = 'match-viewer__notes';
+    adminNotes.textContent = match.notes;
+    adminNotesSection.appendChild(adminNotes);
+    container.appendChild(adminNotesSection);
+  }
+
+  if (allowMatchEdit || allowResultEdit) {
+    const actions = document.createElement('div');
+    actions.className = 'match-viewer__actions';
+
+    if (allowResultEdit && matchId) {
+      const needsReview = match.status === 'revision' || match.result?.status === 'en_revision';
+      const resultButton = document.createElement('button');
+      resultButton.type = 'button';
+      resultButton.className = 'primary';
+      resultButton.textContent = needsReview ? 'Revisar resultado' : 'Registrar resultado';
+      resultButton.addEventListener('click', () => {
+        closeModal();
+        openResultModal(matchId);
+      });
+      actions.appendChild(resultButton);
+    }
+
+    if (allowMatchEdit && matchId) {
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.className = 'secondary';
+      editButton.textContent = 'Editar partido';
+      editButton.addEventListener('click', () => {
+        closeModal();
+        openMatchModal(matchId);
+      });
+      actions.appendChild(editButton);
+    }
+
+    if (actions.childNodes.length) {
+      container.appendChild(actions);
+    }
+  }
+
+  const modalTitle = Array.isArray(match.players) && match.players.length
+    ? match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
+    : 'Detalle del partido';
+
+  openModal({
+    title: modalTitle,
+    content: (body) => {
+      body.appendChild(container);
+    },
+  });
+}
+
 function openCalendarMatch(matchId) {
   if (!matchId) return;
-  if (isAdmin()) {
-    openMatchModal(matchId);
-  } else {
-    openResultModal(matchId);
+
+  const match = findMatchById(matchId);
+  if (!match) {
+    showGlobalMessage('No fue posible cargar los datos del partido.', 'error');
+    return;
   }
+
+  const allowMatchEdit = isAdmin();
+  const allowResultEdit = allowMatchEdit || isUserMatchParticipant(match);
+  openMatchViewer(match, { allowMatchEdit, allowResultEdit });
 }
 
 function bindCalendarEvent(element, matchId) {
@@ -5912,8 +6310,9 @@ function renderUnscheduledMatches(matches = [], container = calendarContainer) {
   block.appendChild(header);
 
   matches.forEach((match) => {
+    const statusClass = match.status === 'programado' ? 'confirmed' : 'pending';
     const event = document.createElement('div');
-    event.className = 'calendar-event pending';
+    event.className = `calendar-event ${statusClass}`;
     const categoryColor = match.category ? getCategoryColor(match.category) : '';
     const title = document.createElement('strong');
     const players = Array.isArray(match.players)
@@ -5931,6 +6330,11 @@ function renderUnscheduledMatches(matches = [], container = calendarContainer) {
 
     const meta = document.createElement('div');
     meta.className = 'meta';
+    const statusTag = document.createElement('span');
+    statusTag.className = `tag status-${match.status}`;
+    statusTag.textContent = STATUS_LABELS[match.status] || match.status;
+    meta.appendChild(statusTag);
+
     if (match.category?.name) {
       const categoryTag = document.createElement('span');
       categoryTag.className = 'tag match-category-tag';
@@ -5938,7 +6342,9 @@ function renderUnscheduledMatches(matches = [], container = calendarContainer) {
       applyCategoryTagColor(categoryTag, categoryColor, { backgroundAlpha: 0.22 });
       meta.appendChild(categoryTag);
     } else {
-      meta.textContent = 'Categoría por confirmar';
+      const pendingCategory = document.createElement('span');
+      pendingCategory.textContent = 'Categoría por confirmar';
+      meta.appendChild(pendingCategory);
     }
     event.appendChild(meta);
 
@@ -6028,33 +6434,21 @@ function renderCalendarView({
 function renderCalendar() {
   if (!calendarContainer) return;
 
-  const matches = Array.isArray(state.calendarMatches) ? state.calendarMatches : [];
-  const categoryId = state.matchesCategoryId || '';
-  const filtered = matches.filter((match) => {
-    if (!categoryId) return true;
-    const matchCategoryId = normalizeId(match.category);
-    return matchCategoryId ? matchCategoryId === categoryId : false;
-  });
+  const matches = getCalendarMatchesForDisplay();
 
   renderCalendarView({
     container: calendarContainer,
     labelElement: calendarLabel,
     referenceDate: state.calendarDate,
-    matches: filtered,
+    matches,
     includeUnscheduled: true,
   });
-}
-
-function getConfirmedCalendarMatches() {
-  return (Array.isArray(state.calendarMatches) ? state.calendarMatches : []).filter(
-    (match) => match.status === 'programado' && match.scheduledAt
-  );
 }
 
 function renderGlobalCalendar() {
   if (!globalCalendarContainer) return;
 
-  const confirmedMatches = getConfirmedCalendarMatches();
+  const confirmedMatches = getScheduledCalendarMatches();
   renderCalendarView({
     container: globalCalendarContainer,
     labelElement: globalCalendarLabel,
@@ -12521,26 +12915,8 @@ function openPlayerModal(playerId = '') {
 
 function openMatchModal(matchId = '') {
   if (!isAdmin()) return;
-  const normalizedId = matchId || '';
-  let match = null;
-  if (normalizedId) {
-    const matchSources = [
-      state.calendarMatches,
-      state.myMatches,
-      state.upcomingMatches,
-      state.pendingApprovalMatches,
-      state.completedMatches,
-    ];
-
-    for (const source of matchSources) {
-      if (!Array.isArray(source)) continue;
-      const found = source.find((item) => normalizeId(item) === normalizedId);
-      if (found) {
-        match = found;
-        break;
-      }
-    }
-  }
+  const normalizedId = normalizeId(matchId);
+  const match = normalizedId ? findMatchById(normalizedId) : null;
 
   const categoryOptions = Array.isArray(state.categories)
     ? state.categories
@@ -13060,27 +13436,16 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
 function openResultModal(matchId) {
   if (!matchId) return;
 
-  const normalizedId = matchId;
-  let match = null;
-  const matchSources = [
-    state.calendarMatches,
-    state.upcomingMatches,
-    state.myMatches,
-    state.pendingApprovalMatches,
-    state.completedMatches,
-  ];
-
-  for (const source of matchSources) {
-    if (!Array.isArray(source)) continue;
-    const found = source.find((item) => normalizeId(item) === normalizedId);
-    if (found) {
-      match = found;
-      break;
-    }
-  }
+  const normalizedId = normalizeId(matchId);
+  const match = findMatchById(normalizedId);
 
   if (!match || !Array.isArray(match.players) || match.players.length < 2) {
     showGlobalMessage('No fue posible cargar los datos del partido.', 'error');
+    return;
+  }
+
+  if (!isAdmin() && !isUserMatchParticipant(match)) {
+    showGlobalMessage('Solo puedes registrar resultados de tus partidos.', 'error');
     return;
   }
 
@@ -14526,6 +14891,8 @@ matchesCategorySelect?.addEventListener('change', (event) => {
     'Aún no hay partidos confirmados para mostrar.',
     { listKey: 'completed' }
   );
+  renderCalendar();
+  renderGlobalCalendar();
 });
 
 tournamentsList?.addEventListener('click', async (event) => {
