@@ -141,39 +141,72 @@ function validateSetsForMatchFormat({ matchFormat, sets = [], winnerId, playerId
     return;
   }
 
-  if (format === MATCH_FORMATS.PRO_SET_NINE_GAMES) {
-    if (sortedSets.length !== 1) {
-      throw new Error('El formato a un set requiere registrar únicamente un set.');
+  if (format === MATCH_FORMATS.SINGLE_SET_TEN_GAMES_SUPER_TB) {
+    if (sortedSets.length < 1 || sortedSets.length > 2) {
+      throw new Error('El formato a 10 juegos permite registrar uno o dos sets.');
     }
 
     ensureSequentialSetNumbers();
 
-    const [set] = sortedSets;
+    const setWins = new Map(players.map((playerId) => [playerId, 0]));
 
-    if (set.tieBreak) {
-      throw new Error('El formato a un set no utiliza super tie-break.');
+    sortedSets.forEach((set, index) => {
+      const scores = getScoresForSet(set);
+      const [firstScore, secondScore] = scores;
+
+      if (firstScore.value === secondScore.value) {
+        throw new Error('Cada set debe tener un ganador.');
+      }
+
+      const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
+      const loserEntry = firstScore.value > secondScore.value ? secondScore : firstScore;
+
+      if (index === 0) {
+        if (set.tieBreak) {
+          throw new Error('El set principal no puede marcarse como super tie-break.');
+        }
+
+        if (winnerEntry.value < 10) {
+          throw new Error('El set principal debe alcanzar al menos 10 juegos.');
+        }
+      } else {
+        if (!set.tieBreak) {
+          throw new Error('El super tie-break debe registrarse como tal.');
+        }
+
+        if (winnerEntry.value <= loserEntry.value) {
+          throw new Error('El super tie-break debe tener un ganador con más puntos.');
+        }
+
+        if (winnerEntry.value < 10) {
+          throw new Error('El super tie-break debe alcanzar al menos 10 puntos.');
+        }
+      }
+
+      const currentWins = setWins.get(winnerEntry.playerId) || 0;
+      setWins.set(winnerEntry.playerId, currentWins + 1);
+    });
+
+    const wins = players.map((playerId) => setWins.get(playerId) || 0);
+    const maxWins = Math.max(...wins);
+    const minWins = Math.min(...wins);
+
+    if (maxWins === minWins) {
+      throw new Error('Los sets reportados no determinan un ganador.');
     }
 
-    const scores = getScoresForSet(set);
-    const [firstScore, secondScore] = scores;
-
-    if (firstScore.value === secondScore.value) {
-      throw new Error('El set debe tener un ganador.');
+    if (sortedSets.length === 1) {
+      if (maxWins !== 1) {
+        throw new Error('El partido debe registrar un ganador en el set principal.');
+      }
+    } else if (!(maxWins === 2 && minWins === 1)) {
+      throw new Error('El super tie-break debe definir al ganador del partido.');
     }
 
-    const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
-    const loserEntry = firstScore.value > secondScore.value ? secondScore : firstScore;
+    const computedWinner = players.find((playerId) => (setWins.get(playerId) || 0) === maxWins);
 
-    if (winnerEntry.value < 9) {
-      throw new Error('El set único debe llegar al menos a 9 juegos.');
-    }
-
-    if (winnerEntry.value <= loserEntry.value) {
-      throw new Error('El ganador debe sumar más juegos que su oponente.');
-    }
-
-    if (winnerEntry.playerId !== normalizedWinnerId) {
-      throw new Error('El ganador indicado no coincide con el set reportado.');
+    if (computedWinner !== normalizedWinnerId) {
+      throw new Error('El ganador indicado no coincide con los sets reportados.');
     }
   }
 }
@@ -224,7 +257,7 @@ function sanitizeSets(playerIds = [], sets = []) {
 
     sanitized.push({
       number,
-      tieBreak: number === 3 && Boolean(set.tieBreak),
+      tieBreak: Boolean(set.tieBreak),
       scores: normalizedScores,
     });
   });
