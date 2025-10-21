@@ -42,6 +42,9 @@ const STATUS_LABELS = {
 };
 
 const MATCH_EXPIRATION_DAYS = 15;
+const MATCHES_PER_PAGE = 10;
+const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
+const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const PUSH_SUPPORTED =
@@ -812,6 +815,11 @@ const state = {
   calendarDate: new Date(),
   globalCalendarDate: new Date(),
   matchesCategoryId: '',
+  matchPagination: {
+    upcoming: {},
+    pending: {},
+    completed: {},
+  },
   adminCategoryEditingId: null,
   adminPlayerEditingId: null,
   adminMatchEditingId: null,
@@ -6144,170 +6152,346 @@ async function loadAdminCourtData() {
   await refreshCourtAvailability('admin');
 }
 
-function renderMatches(matches = [], container, emptyMessage) {
+function createMatchListItem(match, { isResultManagementList = false } = {}) {
+  const item = document.createElement('li');
+  const matchId = match?._id || match?.id;
+  if (matchId) {
+    item.dataset.matchId = matchId;
+  }
+
+  const categoryColor = match?.category ? getCategoryColor(match.category) : '';
+  const title = document.createElement('strong');
+  const players = Array.isArray(match?.players)
+    ? match.players.map((player) => player.fullName || 'Jugador').join(' vs ')
+    : 'Jugadores por definir';
+  title.textContent = players;
+  if (categoryColor) {
+    const indicator = createCategoryColorIndicator(categoryColor, match.category?.name);
+    if (indicator) {
+      title.classList.add('with-category-color');
+      title.prepend(indicator);
+    }
+  }
+  item.appendChild(title);
+
+  const metaPrimary = document.createElement('div');
+  metaPrimary.className = 'meta';
+  metaPrimary.appendChild(document.createElement('span')).textContent = formatDate(match?.scheduledAt);
+  if (match?.court) {
+    metaPrimary.appendChild(document.createElement('span')).textContent = `Pista ${match.court}`;
+  }
+  if (match?.category?.name) {
+    const tag = document.createElement('span');
+    tag.className = 'tag match-category-tag';
+    tag.textContent = match.category.name;
+    applyCategoryTagColor(tag, categoryColor);
+    metaPrimary.appendChild(tag);
+  }
+  item.appendChild(metaPrimary);
+
+  if (categoryColor) {
+    applyCategoryColorStyles(item, categoryColor, { shadowAlpha: 0.18 });
+  }
+
+  if (match?.status === 'pendiente' || match?.status === 'propuesto') {
+    const warningMessage = getExpirationWarningMessage(match);
+    if (warningMessage) {
+      const warning = document.createElement('p');
+      warning.className = 'deadline-warning';
+      warning.textContent = warningMessage;
+      item.appendChild(warning);
+    }
+  } else if (match?.status === 'caducado') {
+    const deadlineDate = getMatchExpirationDate(match);
+    const deadlineLabel = formatExpirationDeadline(deadlineDate);
+    const warning = document.createElement('p');
+    warning.className = 'deadline-warning deadline-warning--expired';
+    warning.textContent = deadlineLabel
+      ? `El plazo venció el ${deadlineLabel}. El partido caducó sin puntos.`
+      : 'El plazo venció. El partido caducó sin puntos.';
+    item.appendChild(warning);
+  }
+
+  if (match?.status === 'revision' || match?.result?.status === 'en_revision') {
+    const pending = document.createElement('div');
+    pending.className = 'meta warning';
+    pending.textContent = 'Resultado pendiente de validación.';
+    item.appendChild(pending);
+  }
+
+  if (match?.result?.status === 'confirmado' || match?.status === 'completado') {
+    const summary = document.createElement('div');
+    summary.className = 'meta result-meta';
+    const winner = match?.result?.winner;
+    if (winner) {
+      const winnerName = getPlayerDisplayName(winner);
+      summary.appendChild(document.createElement('span')).textContent = `Ganador: ${winnerName}`;
+    }
+    const scoreLabel = formatMatchScoreLabel(match);
+    if (scoreLabel) {
+      summary.appendChild(document.createElement('span')).textContent = scoreLabel;
+    }
+    if (match?.result?.reportedBy) {
+      const reporterName = getPlayerDisplayName(match.result.reportedBy);
+      summary.appendChild(document.createElement('span')).textContent = `Reportado por ${reporterName}`;
+    }
+    item.appendChild(summary);
+
+    const scoreboard = createResultScoreboard(match);
+    if (!scoreboard && scoreLabel) {
+      const fallback = document.createElement('p');
+      fallback.className = 'meta';
+      fallback.textContent = scoreLabel;
+      item.appendChild(fallback);
+    }
+    if (scoreboard) {
+      item.appendChild(scoreboard);
+    }
+  } else if (match?.result?.status === 'rechazado') {
+    const rejected = document.createElement('div');
+    rejected.className = 'meta warning';
+    rejected.textContent = 'El último resultado fue rechazado.';
+    item.appendChild(rejected);
+  }
+
+  if (isAdmin()) {
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'secondary';
+    if (matchId) {
+      editButton.dataset.matchId = matchId;
+    }
+    if (isResultManagementList) {
+      editButton.dataset.action = 'edit-result';
+      editButton.textContent =
+        match?.status === 'revision' || match?.result?.status === 'en_revision'
+          ? 'Revisar resultado'
+          : 'Editar resultado';
+    } else {
+      editButton.dataset.action = 'edit-match';
+      editButton.textContent = 'Editar';
+    }
+    actions.appendChild(editButton);
+
+    if (!isResultManagementList && matchId && match?.status !== 'completado') {
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'danger';
+      deleteButton.dataset.matchId = matchId;
+      deleteButton.dataset.action = 'delete-match';
+      deleteButton.textContent = 'Eliminar';
+      actions.appendChild(deleteButton);
+
+      const resultButton = document.createElement('button');
+      resultButton.type = 'button';
+      resultButton.className = 'primary';
+      resultButton.dataset.matchId = matchId;
+      resultButton.dataset.action = 'report-result';
+      resultButton.textContent =
+        match?.status === 'revision' || match?.result?.status === 'en_revision'
+          ? 'Revisar resultado'
+          : 'Registrar resultado';
+      actions.appendChild(resultButton);
+    }
+    item.appendChild(actions);
+  }
+
+  return item;
+}
+
+function renderMatches(
+  matches = [],
+  container,
+  emptyMessage,
+  { listKey = 'upcoming' } = {}
+) {
   if (!container) return;
+
   container.innerHTML = '';
-  if (!matches.length) {
+
+  const baseMatches = Array.isArray(matches) ? matches.slice() : [];
+  const filteredMatches = filterMatchesByCategory(baseMatches);
+
+  if (!filteredMatches.length) {
     container.innerHTML = `<li class="empty-state">${emptyMessage}</li>`;
     return;
   }
 
-  matches.forEach((match) => {
-    const item = document.createElement('li');
-    const matchId = match._id || match.id;
-    if (matchId) {
-      item.dataset.matchId = matchId;
+  const isResultManagementList =
+    container === pendingApprovalsList || container === completedMatchesList;
+
+  const grouped = new Map();
+
+  filteredMatches.forEach((match) => {
+    const key = getMatchCategoryKey(match);
+    let group = grouped.get(key);
+    if (!group) {
+      const metadata = getMatchCategoryMetadata(key, match);
+      group = {
+        key,
+        name: metadata.name,
+        color: metadata.color,
+        matches: [],
+      };
+      grouped.set(key, group);
     }
-    const categoryColor = match.category ? getCategoryColor(match.category) : '';
-    const title = document.createElement('strong');
-    const players = Array.isArray(match.players)
-      ? match.players.map((player) => player.fullName || 'Jugador').join(' vs ')
-      : 'Jugadores por definir';
-    title.textContent = players;
-    if (categoryColor) {
-      const indicator = createCategoryColorIndicator(categoryColor, match.category?.name);
-      if (indicator) {
-        title.classList.add('with-category-color');
-        title.prepend(indicator);
+    group.matches.push(match);
+    if (!group.color) {
+      const metadata = getMatchCategoryMetadata(key, match);
+      group.color = metadata.color;
+      if (!group.name || group.name === 'Categoría') {
+        group.name = metadata.name;
       }
     }
-    item.appendChild(title);
-
-    const metaPrimary = document.createElement('div');
-    metaPrimary.className = 'meta';
-    metaPrimary.appendChild(document.createElement('span')).textContent = formatDate(match.scheduledAt);
-    if (match.court) {
-      metaPrimary.appendChild(document.createElement('span')).textContent = `Pista ${match.court}`;
-    }
-    if (match.category?.name) {
-      const tag = document.createElement('span');
-      tag.className = 'tag match-category-tag';
-      tag.textContent = match.category.name;
-      applyCategoryTagColor(tag, categoryColor);
-      metaPrimary.appendChild(tag);
-    }
-    item.appendChild(metaPrimary);
-
-    if (categoryColor) {
-      applyCategoryColorStyles(item, categoryColor, { shadowAlpha: 0.18 });
-    }
-
-    if (match.status === 'pendiente' || match.status === 'propuesto') {
-      const warningMessage = getExpirationWarningMessage(match);
-      if (warningMessage) {
-        const warning = document.createElement('p');
-        warning.className = 'deadline-warning';
-        warning.textContent = warningMessage;
-        item.appendChild(warning);
-      }
-    } else if (match.status === 'caducado') {
-      const deadlineDate = getMatchExpirationDate(match);
-      const deadlineLabel = formatExpirationDeadline(deadlineDate);
-      const warning = document.createElement('p');
-      warning.className = 'deadline-warning deadline-warning--expired';
-      warning.textContent = deadlineLabel
-        ? `El plazo venció el ${deadlineLabel}. El partido caducó sin puntos.`
-        : 'El plazo venció. El partido caducó sin puntos.';
-      item.appendChild(warning);
-    }
-
-    if (match.status === 'revision' || match.result?.status === 'en_revision') {
-      const pending = document.createElement('div');
-      pending.className = 'meta warning';
-      pending.textContent = 'Resultado pendiente de validación.';
-      item.appendChild(pending);
-    }
-
-    if (match.result?.status === 'confirmado' || match.status === 'completado') {
-      const resultSummary = document.createElement('div');
-      resultSummary.className = 'meta result-meta';
-      const winner = match.result?.winner;
-      let winnerName = '';
-      if (winner) {
-        if (typeof winner === 'object') {
-          winnerName = winner.fullName || winner.email || 'Ganador';
-        } else if (typeof winner === 'string') {
-          const participant = Array.isArray(match.players)
-            ? match.players.find((player) => normalizeId(player) === winner)
-            : null;
-          winnerName = participant?.fullName || participant?.email || 'Ganador';
-        }
-      }
-
-      if (winnerName) {
-        resultSummary.appendChild(document.createElement('span')).textContent = `Ganador: ${winnerName}`;
-      }
-
-      const scoreboard = createResultScoreboard(match);
-      const scoreLabel = formatMatchScore(match);
-
-      if (!scoreboard && scoreLabel) {
-        resultSummary.appendChild(document.createElement('span')).textContent = scoreLabel;
-      }
-
-      if (resultSummary.childNodes.length) {
-        item.appendChild(resultSummary);
-      }
-
-      if (scoreboard) {
-        item.appendChild(scoreboard);
-      }
-    } else if (match.result?.status === 'rechazado') {
-      const rejected = document.createElement('div');
-      rejected.className = 'meta warning';
-      rejected.textContent = 'El último resultado fue rechazado.';
-      item.appendChild(rejected);
-    }
-
-    const isResultManagementList =
-      container === pendingApprovalsList || container === completedMatchesList;
-
-    if (isAdmin()) {
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      const editButton = document.createElement('button');
-      editButton.type = 'button';
-      editButton.className = 'secondary';
-      if (matchId) {
-        editButton.dataset.matchId = matchId;
-      }
-      if (isResultManagementList) {
-        editButton.dataset.action = 'edit-result';
-        editButton.textContent =
-          match.status === 'revision' || match.result?.status === 'en_revision'
-            ? 'Revisar resultado'
-            : 'Editar resultado';
-      } else {
-        editButton.dataset.action = 'edit-match';
-        editButton.textContent = 'Editar';
-      }
-      actions.appendChild(editButton);
-
-      if (!isResultManagementList && matchId && match.status !== 'completado') {
-        const deleteButton = document.createElement('button');
-        deleteButton.type = 'button';
-        deleteButton.className = 'danger';
-        deleteButton.dataset.matchId = matchId;
-        deleteButton.dataset.action = 'delete-match';
-        deleteButton.textContent = 'Eliminar';
-        actions.appendChild(deleteButton);
-
-        const resultButton = document.createElement('button');
-        resultButton.type = 'button';
-        resultButton.className = 'primary';
-        resultButton.dataset.matchId = matchId;
-        resultButton.dataset.action = 'report-result';
-        resultButton.textContent =
-          match.status === 'revision' || match.result?.status === 'en_revision'
-            ? 'Revisar resultado'
-            : 'Registrar resultado';
-        actions.appendChild(resultButton);
-      }
-      item.appendChild(actions);
-    }
-
-    container.appendChild(item);
   });
+
+  const sortedGroups = Array.from(grouped.values()).sort((a, b) => {
+    const nameA = (a.name || '').toLocaleLowerCase('es-ES');
+    const nameB = (b.name || '').toLocaleLowerCase('es-ES');
+    return nameA.localeCompare(nameB);
+  });
+
+  sortedGroups.forEach((group) => {
+    const totalMatches = group.matches.length;
+    const totalPages = Math.max(1, Math.ceil(totalMatches / MATCHES_PER_PAGE));
+    const currentPage = getMatchPaginationPage(listKey, group.key);
+    const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+    if (safePage !== currentPage) {
+      setMatchPaginationPage(listKey, group.key, safePage);
+    }
+    const startIndex = (safePage - 1) * MATCHES_PER_PAGE;
+    const pageMatches = group.matches.slice(startIndex, startIndex + MATCHES_PER_PAGE);
+
+    const groupItem = document.createElement('li');
+    groupItem.className = 'match-category-group';
+    groupItem.dataset.categoryId = group.key;
+
+    const header = document.createElement('div');
+    header.className = 'match-category-group__header';
+
+    const title = document.createElement('div');
+    title.className = 'match-category-group__title';
+    if (group.color) {
+      const indicator = createCategoryColorIndicator(group.color, group.name);
+      if (indicator) {
+        title.appendChild(indicator);
+      }
+    }
+    const name = document.createElement('strong');
+    name.textContent = group.name || UNCATEGORIZED_CATEGORY_LABEL;
+    title.appendChild(name);
+    header.appendChild(title);
+
+    const count = document.createElement('span');
+    count.className = 'match-category-group__count';
+    count.textContent = `${totalMatches} ${totalMatches === 1 ? 'partido' : 'partidos'}`;
+    header.appendChild(count);
+
+    groupItem.appendChild(header);
+
+    const list = document.createElement('ul');
+    list.className = 'match-category-group__matches list';
+
+    pageMatches.forEach((match) => {
+      list.appendChild(createMatchListItem(match, { isResultManagementList }));
+    });
+
+    groupItem.appendChild(list);
+
+    if (totalPages > 1) {
+      const pagination = document.createElement('div');
+      pagination.className = 'match-category-group__pagination';
+
+      const info = document.createElement('span');
+      info.className = 'match-category-group__pagination-info';
+      info.textContent = `Página ${safePage} de ${totalPages}`;
+      pagination.appendChild(info);
+
+      const controls = document.createElement('div');
+      controls.className = 'match-category-group__pagination-controls';
+
+      const prevButton = document.createElement('button');
+      prevButton.type = 'button';
+      prevButton.className = 'ghost';
+      prevButton.dataset.action = 'paginate';
+      prevButton.dataset.list = listKey;
+      prevButton.dataset.category = group.key;
+      prevButton.dataset.direction = 'previous';
+      prevButton.textContent = 'Anterior';
+      prevButton.disabled = safePage <= 1;
+      controls.appendChild(prevButton);
+
+      const nextButton = document.createElement('button');
+      nextButton.type = 'button';
+      nextButton.className = 'ghost';
+      nextButton.dataset.action = 'paginate';
+      nextButton.dataset.list = listKey;
+      nextButton.dataset.category = group.key;
+      nextButton.dataset.direction = 'next';
+      nextButton.textContent = 'Siguiente';
+      nextButton.disabled = safePage >= totalPages;
+      controls.appendChild(nextButton);
+
+      pagination.appendChild(controls);
+      groupItem.appendChild(pagination);
+    }
+
+    container.appendChild(groupItem);
+  });
+}
+
+const MATCH_LIST_CONFIG = {
+  upcoming: {
+    getMatches: () => state.upcomingMatches,
+    container: () => upcomingList,
+    emptyMessage: 'No hay partidos programados.',
+  },
+  pending: {
+    getMatches: () => state.pendingApprovalMatches,
+    container: () => pendingApprovalsList,
+    emptyMessage: 'No hay resultados pendientes por aprobar.',
+  },
+  completed: {
+    getMatches: () => state.completedMatches,
+    container: () => completedMatchesList,
+    emptyMessage: 'Aún no hay partidos confirmados para mostrar.',
+  },
+};
+
+function rerenderMatchList(listKey) {
+  const config = MATCH_LIST_CONFIG[listKey];
+  if (!config) {
+    return;
+  }
+  const container = typeof config.container === 'function' ? config.container() : null;
+  if (!container) {
+    return;
+  }
+  const matches = config.getMatches ? config.getMatches() : [];
+  renderMatches(Array.isArray(matches) ? matches : [], container, config.emptyMessage, { listKey });
+}
+
+function handleMatchPagination(dataset = {}) {
+  const listKey = dataset.list || 'upcoming';
+  const categoryKey = dataset.category;
+  const currentPage = getMatchPaginationPage(listKey, categoryKey);
+  let nextPage = currentPage;
+
+  if (dataset.direction === 'previous') {
+    nextPage = Math.max(1, currentPage - 1);
+  } else if (dataset.direction === 'next') {
+    nextPage = currentPage + 1;
+  } else if (dataset.page) {
+    const parsed = Number(dataset.page);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      nextPage = Math.floor(parsed);
+    }
+  }
+
+  setMatchPaginationPage(listKey, categoryKey, nextPage);
+  rerenderMatchList(listKey);
 }
 
 function getReservationParticipants(reservation) {
@@ -7235,6 +7419,73 @@ function filterMatchesByCategory(matches = []) {
     return matches;
   }
   return matches.filter((match) => normalizeId(match.category) === categoryId);
+}
+
+function getMatchCategoryKey(match) {
+  const normalized = normalizeId(match?.category);
+  return normalized || UNCATEGORIZED_CATEGORY_KEY;
+}
+
+function getMatchCategoryMetadata(categoryKey, match) {
+  if (match?.category && typeof match.category === 'object') {
+    return {
+      name: match.category.name || UNCATEGORIZED_CATEGORY_LABEL,
+      color: getCategoryColor(match.category),
+    };
+  }
+
+  const fallback = state.categories.find((category) => normalizeId(category) === categoryKey);
+  if (fallback) {
+    return {
+      name: fallback.name || UNCATEGORIZED_CATEGORY_LABEL,
+      color: getCategoryColor(fallback),
+    };
+  }
+
+  if (categoryKey === UNCATEGORIZED_CATEGORY_KEY) {
+    return {
+      name: UNCATEGORIZED_CATEGORY_LABEL,
+      color: '',
+    };
+  }
+
+  return {
+    name: 'Categoría',
+    color: '',
+  };
+}
+
+function getMatchPaginationStore(listKey) {
+  if (!state.matchPagination[listKey]) {
+    state.matchPagination[listKey] = {};
+  }
+  return state.matchPagination[listKey];
+}
+
+function getMatchPaginationPage(listKey, categoryKey) {
+  const store = getMatchPaginationStore(listKey);
+  const key = categoryKey || UNCATEGORIZED_CATEGORY_KEY;
+  const value = Number(store[key]);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function setMatchPaginationPage(listKey, categoryKey, page) {
+  const store = getMatchPaginationStore(listKey);
+  const key = categoryKey || UNCATEGORIZED_CATEGORY_KEY;
+  const numeric = Number(page);
+  store[key] = Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 1;
+}
+
+function resetMatchPaginationState(listKey) {
+  if (state.matchPagination[listKey]) {
+    state.matchPagination[listKey] = {};
+  }
+}
+
+function resetAllMatchPagination() {
+  resetMatchPaginationState('upcoming');
+  resetMatchPaginationState('pending');
+  resetMatchPaginationState('completed');
 }
 
 function closeProposalForm() {
@@ -13632,10 +13883,12 @@ async function loadAllData() {
     ]);
 
     state.upcomingMatches = Array.isArray(upcomingMatches) ? upcomingMatches : [];
+    resetAllMatchPagination();
     renderMatches(
-      filterMatchesByCategory(state.upcomingMatches),
+      state.upcomingMatches,
       upcomingList,
-      'No hay partidos programados.'
+      'No hay partidos programados.',
+      { listKey: 'upcoming' }
     );
     state.myMatches = Array.isArray(myMatches) ? myMatches : [];
     renderMyMatches(state.myMatches);
@@ -13650,15 +13903,17 @@ async function loadAllData() {
     }
     state.pendingApprovalMatches = pendingMatches;
     renderMatches(
-      filterMatchesByCategory(state.pendingApprovalMatches),
+      state.pendingApprovalMatches,
       pendingApprovalsList,
-      'No hay resultados pendientes por aprobar.'
+      'No hay resultados pendientes por aprobar.',
+      { listKey: 'pending' }
     );
     state.completedMatches = Array.isArray(completedMatches) ? completedMatches : [];
     renderMatches(
-      filterMatchesByCategory(state.completedMatches),
+      state.completedMatches,
       completedMatchesList,
-      'Aún no hay partidos confirmados para mostrar.'
+      'Aún no hay partidos confirmados para mostrar.',
+      { listKey: 'completed' }
     );
     renderNotifications(notifications);
     if (clubProfile) {
@@ -14241,6 +14496,7 @@ logoutButtons.forEach((button) => {
     state.pendingEnrollmentRequestCount = 0;
     state.calendarDate = new Date();
     state.globalCalendarDate = new Date();
+    state.matchPagination = { upcoming: {}, pending: {}, completed: {} };
     clearSession();
     updateNotificationCounts([]);
     updateAuthUI();
@@ -14251,20 +14507,24 @@ logoutButtons.forEach((button) => {
 
 matchesCategorySelect?.addEventListener('change', (event) => {
   state.matchesCategoryId = event.target.value || '';
+  resetAllMatchPagination();
   renderMatches(
-    filterMatchesByCategory(state.upcomingMatches),
+    state.upcomingMatches,
     upcomingList,
-    'No hay partidos programados.'
+    'No hay partidos programados.',
+    { listKey: 'upcoming' }
   );
   renderMatches(
-    filterMatchesByCategory(state.pendingApprovalMatches),
+    state.pendingApprovalMatches,
     pendingApprovalsList,
-    'No hay resultados pendientes por aprobar.'
+    'No hay resultados pendientes por aprobar.',
+    { listKey: 'pending' }
   );
   renderMatches(
-    filterMatchesByCategory(state.completedMatches),
+    state.completedMatches,
     completedMatchesList,
-    'Aún no hay partidos confirmados para mostrar.'
+    'Aún no hay partidos confirmados para mostrar.',
+    { listKey: 'completed' }
   );
 });
 
@@ -14690,7 +14950,14 @@ upcomingList?.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
 
-  const { matchId, action } = button.dataset;
+  const { action } = button.dataset;
+  if (action === 'paginate') {
+    event.preventDefault();
+    handleMatchPagination(button.dataset);
+    return;
+  }
+
+  const { matchId } = button.dataset;
   if (!matchId) return;
 
   if (action === 'delete-match') {
@@ -14711,7 +14978,14 @@ pendingApprovalsList?.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
 
-  const { matchId, action } = button.dataset;
+  const { action } = button.dataset;
+  if (action === 'paginate') {
+    event.preventDefault();
+    handleMatchPagination(button.dataset);
+    return;
+  }
+
+  const { matchId } = button.dataset;
   if (!matchId) return;
 
   if (action === 'delete-match') {
@@ -14732,7 +15006,14 @@ completedMatchesList?.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
 
-  const { matchId, action } = button.dataset;
+  const { action } = button.dataset;
+  if (action === 'paginate') {
+    event.preventDefault();
+    handleMatchPagination(button.dataset);
+    return;
+  }
+
+  const { matchId } = button.dataset;
   if (!matchId) return;
 
   if (action === 'delete-match') {
