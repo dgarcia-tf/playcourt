@@ -2,7 +2,7 @@ const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 const { Match } = require('../models/Match');
 const { CourtReservation } = require('../models/CourtReservation');
-const { Category } = require('../models/Category');
+const { Category, MATCH_FORMATS, DEFAULT_CATEGORY_MATCH_FORMAT } = require('../models/Category');
 const { Enrollment } = require('../models/Enrollment');
 const { Season } = require('../models/Season');
 const { Notification } = require('../models/Notification');
@@ -22,6 +22,161 @@ const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caduc
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MIN_MATCH_DURATION_MS = 90 * 60 * 1000;
 const MATCH_EXPIRATION_MS = MATCH_EXPIRATION_DAYS * DAY_IN_MS;
+
+function normalizeMatchFormat(value) {
+  return Object.values(MATCH_FORMATS).includes(value) ? value : DEFAULT_CATEGORY_MATCH_FORMAT;
+}
+
+function validateSetsForMatchFormat({ matchFormat, sets = [], winnerId, playerIds = [] }) {
+  if (!Array.isArray(sets) || !sets.length) {
+    return;
+  }
+
+  const normalizedWinnerId = winnerId ? winnerId.toString() : null;
+  const players = Array.from(new Set(playerIds.map((playerId) => playerId && playerId.toString()))).filter(
+    Boolean
+  );
+
+  if (players.length !== 2) {
+    return;
+  }
+
+  const format = normalizeMatchFormat(matchFormat);
+  const sortedSets = [...sets].sort((a, b) => a.number - b.number);
+
+  const ensureSequentialSetNumbers = () => {
+    sortedSets.forEach((set, index) => {
+      const expectedNumber = index + 1;
+      if (set.number !== expectedNumber) {
+        throw new Error('Los sets deben registrarse en orden correlativo.');
+      }
+    });
+  };
+
+  const getScoresForSet = (set) =>
+    players.map((playerId) => ({
+      playerId,
+      value: Number(set.scores?.[playerId]) || 0,
+    }));
+
+  if (
+    format === MATCH_FORMATS.TWO_SETS_SIX_GAMES_SUPER_TB ||
+    format === MATCH_FORMATS.TWO_SETS_FOUR_GAMES_SUPER_TB
+  ) {
+    if (sortedSets.length < 2 || sortedSets.length > 3) {
+      throw new Error('El formato al mejor de tres requiere registrar dos o tres sets.');
+    }
+
+    ensureSequentialSetNumbers();
+
+    const requiredGames =
+      format === MATCH_FORMATS.TWO_SETS_SIX_GAMES_SUPER_TB ? 6 : 4;
+    const setWins = new Map(players.map((playerId) => [playerId, 0]));
+
+    sortedSets.forEach((set, index) => {
+      if (index < 2 && set.tieBreak) {
+        throw new Error('Los dos primeros sets no pueden marcarse como super tie-break.');
+      }
+
+      if (index === 2) {
+        set.tieBreak = true;
+      }
+
+      const scores = getScoresForSet(set);
+      const [firstScore, secondScore] = scores;
+
+      if (firstScore.value === secondScore.value) {
+        throw new Error('Cada set debe tener un ganador.');
+      }
+
+      const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
+      const loserEntry = firstScore.value > secondScore.value ? secondScore : firstScore;
+
+      if (index < 2) {
+        if (winnerEntry.value < requiredGames) {
+          throw new Error(`Los sets se deben cerrar al llegar al menos a ${requiredGames} juegos.`);
+        }
+      } else {
+        if (!set.tieBreak) {
+          throw new Error('El tercer set debe registrarse como super tie-break.');
+        }
+        if (winnerEntry.value <= loserEntry.value) {
+          throw new Error('El super tie-break debe tener un ganador con más puntos.');
+        }
+        if (winnerEntry.value < 7) {
+          throw new Error('El super tie-break debe alcanzar al menos 7 puntos.');
+        }
+      }
+
+      const currentWins = setWins.get(winnerEntry.playerId) || 0;
+      setWins.set(winnerEntry.playerId, currentWins + 1);
+    });
+
+    const wins = players.map((playerId) => setWins.get(playerId) || 0);
+    const maxWins = Math.max(...wins);
+    const minWins = Math.min(...wins);
+
+    if (maxWins < 2) {
+      throw new Error('El ganador debe obtener al menos dos sets.');
+    }
+
+    if (maxWins === minWins) {
+      throw new Error('Los sets reportados no determinan un ganador.');
+    }
+
+    const computedWinner = players.find((playerId) => (setWins.get(playerId) || 0) === maxWins);
+
+    if (computedWinner !== normalizedWinnerId) {
+      throw new Error('El ganador indicado no coincide con los sets reportados.');
+    }
+
+    if (sortedSets.length === 2 && maxWins !== 2) {
+      throw new Error('Un partido al mejor de tres debe cerrarse con dos sets ganados.');
+    }
+
+    if (sortedSets.length === 3 && !(maxWins === 2 && minWins === 1)) {
+      throw new Error('El super tie-break debe definir al ganador del partido.');
+    }
+
+    return;
+  }
+
+  if (format === MATCH_FORMATS.PRO_SET_NINE_GAMES) {
+    if (sortedSets.length !== 1) {
+      throw new Error('El formato a un set requiere registrar únicamente un set.');
+    }
+
+    ensureSequentialSetNumbers();
+
+    const [set] = sortedSets;
+
+    if (set.tieBreak) {
+      throw new Error('El formato a un set no utiliza super tie-break.');
+    }
+
+    const scores = getScoresForSet(set);
+    const [firstScore, secondScore] = scores;
+
+    if (firstScore.value === secondScore.value) {
+      throw new Error('El set debe tener un ganador.');
+    }
+
+    const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
+    const loserEntry = firstScore.value > secondScore.value ? secondScore : firstScore;
+
+    if (winnerEntry.value < 9) {
+      throw new Error('El set único debe llegar al menos a 9 juegos.');
+    }
+
+    if (winnerEntry.value <= loserEntry.value) {
+      throw new Error('El ganador debe sumar más juegos que su oponente.');
+    }
+
+    if (winnerEntry.playerId !== normalizedWinnerId) {
+      throw new Error('El ganador indicado no coincide con el set reportado.');
+    }
+  }
+}
 
 function sanitizeScores(playerIds = [], scores = {}) {
   const normalized = {};
@@ -374,7 +529,7 @@ async function listMatches(req, res) {
   }
 
   const matches = await Match.find(query)
-    .populate('category', 'name gender color')
+    .populate('category', 'name gender color matchFormat')
     .populate('league', 'name year status')
     .populate('season', 'name year')
     .populate('players', 'fullName email gender')
@@ -533,7 +688,7 @@ async function updateMatch(req, res) {
   await match.save();
 
   const updated = await Match.findById(matchId)
-    .populate('category', 'name gender color')
+    .populate('category', 'name gender color matchFormat')
     .populate('league', 'name year status')
     .populate('season', 'name year')
     .populate('players', 'fullName email gender phone')
@@ -600,7 +755,7 @@ async function reportResult(req, res) {
   const { winnerId, scores, sets, notes } = req.body;
 
   const match = await Match.findById(matchId)
-    .populate('category', 'name color')
+    .populate('category', 'name color matchFormat')
     .populate('league', 'name year status');
 
   if (!match) {
@@ -626,6 +781,18 @@ async function reportResult(req, res) {
   }
 
   const sanitizedSets = sanitizeSets(playerIds, sets);
+
+  try {
+    validateSetsForMatchFormat({
+      matchFormat: match.category?.matchFormat,
+      sets: sanitizedSets,
+      winnerId,
+      playerIds,
+    });
+  } catch (validationError) {
+    return res.status(400).json({ message: validationError.message });
+  }
+
   const sanitizedScores = sanitizedSets.length
     ? buildTotalsFromSets(playerIds, sanitizedSets)
     : sanitizeScores(playerIds, scores);
@@ -679,7 +846,7 @@ async function reportResult(req, res) {
   }
 
   const populated = await Match.findById(matchId)
-    .populate('category', 'name gender color')
+    .populate('category', 'name gender color matchFormat')
     .populate('league', 'name year status')
     .populate('season', 'name year')
     .populate('players', 'fullName email gender phone')
@@ -796,7 +963,7 @@ async function confirmResult(req, res) {
     await match.save();
 
     const populated = await Match.findById(matchId)
-      .populate('category', 'name gender color')
+      .populate('category', 'name gender color matchFormat')
       .populate('league', 'name year status')
       .populate('season', 'name year')
       .populate('players', 'fullName email gender phone')
@@ -853,7 +1020,7 @@ async function confirmResult(req, res) {
   }
 
   const populated = await Match.findById(matchId)
-    .populate('category', 'name gender color')
+    .populate('category', 'name gender color matchFormat')
     .populate('league', 'name year status')
     .populate('season', 'name year')
     .populate('players', 'fullName email gender phone')
@@ -1026,7 +1193,7 @@ async function proposeMatch(req, res) {
   await match.save();
 
   const populated = await Match.findById(matchId)
-    .populate('category', 'name gender color')
+    .populate('category', 'name gender color matchFormat')
     .populate('league', 'name year status')
     .populate('players', 'fullName email phone')
     .populate('proposal.requestedBy', 'fullName email phone')
@@ -1223,7 +1390,7 @@ async function respondToProposal(req, res) {
   }
 
   const populated = await Match.findById(matchId)
-    .populate('category', 'name gender color')
+    .populate('category', 'name gender color matchFormat')
     .populate('league', 'name year status')
     .populate('players', 'fullName email phone')
     .populate('proposal.requestedBy', 'fullName email phone')

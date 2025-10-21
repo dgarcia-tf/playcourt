@@ -13,6 +13,14 @@ const CATEGORY_SKILL_LEVELS = {
   ADVANCED: 'Avanzado',
 };
 
+const MATCH_FORMATS = {
+  TWO_SETS_SIX_GAMES_SUPER_TB: 'two_sets_six_games_super_tb',
+  TWO_SETS_FOUR_GAMES_SUPER_TB: 'two_sets_four_games_super_tb',
+  PRO_SET_NINE_GAMES: 'pro_set_nine_games',
+};
+
+const DEFAULT_CATEGORY_MATCH_FORMAT = MATCH_FORMATS.TWO_SETS_SIX_GAMES_SUPER_TB;
+
 const categorySchema = new mongoose.Schema(
   {
     name: {
@@ -141,6 +149,11 @@ const categorySchema = new mongoose.Schema(
       default: DEFAULT_CATEGORY_COLOR,
       set: (value) => resolveCategoryColor(value),
     },
+    matchFormat: {
+      type: String,
+      enum: Object.values(MATCH_FORMATS),
+      default: DEFAULT_CATEGORY_MATCH_FORMAT,
+    },
   },
   {
     timestamps: true,
@@ -162,4 +175,6 @@ module.exports = {
   CATEGORY_STATUSES,
   CATEGORY_SKILL_LEVELS,
   DEFAULT_CATEGORY_COLOR,
+  MATCH_FORMATS,
+  DEFAULT_CATEGORY_MATCH_FORMAT,
 };

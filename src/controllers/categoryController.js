@@ -1,5 +1,11 @@
 const { validationResult } = require('express-validator');
-const { Category, CATEGORY_SKILL_LEVELS, CATEGORY_STATUSES } = require('../models/Category');
+const {
+  Category,
+  CATEGORY_SKILL_LEVELS,
+  CATEGORY_STATUSES,
+  MATCH_FORMATS,
+  DEFAULT_CATEGORY_MATCH_FORMAT,
+} = require('../models/Category');
 const { League, LEAGUE_STATUS } = require('../models/League');
 const { Match } = require('../models/Match');
 const { Enrollment } = require('../models/Enrollment');
@@ -17,7 +23,17 @@ async function createCategory(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { name, description, gender, skillLevel, status, leagueId, minimumAge, color } = req.body;
+  const {
+    name,
+    description,
+    gender,
+    skillLevel,
+    status,
+    leagueId,
+    minimumAge,
+    color,
+    matchFormat,
+  } = req.body;
 
   const league = await League.findById(leagueId);
   if (!league) {
@@ -31,6 +47,9 @@ async function createCategory(req, res) {
 
   try {
     const normalizedColor = normalizeHexColor(color);
+    const normalizedMatchFormat = Object.values(MATCH_FORMATS).includes(matchFormat)
+      ? matchFormat
+      : DEFAULT_CATEGORY_MATCH_FORMAT;
 
     const category = await Category.create({
       name,
@@ -43,6 +62,7 @@ async function createCategory(req, res) {
       league: league._id,
       minimumAge: minimumAge === null || minimumAge === undefined ? undefined : minimumAge,
       color: normalizedColor || undefined,
+      matchFormat: normalizedMatchFormat,
     });
 
     if (!Array.isArray(league.categories)) {
@@ -159,8 +179,13 @@ async function listCategories(req, res) {
     const leagueEnrollmentFee =
       typeof league?.enrollmentFee === 'number' ? league.enrollmentFee : null;
 
+    const resolvedMatchFormat = Object.values(MATCH_FORMATS).includes(category.matchFormat)
+      ? category.matchFormat
+      : DEFAULT_CATEGORY_MATCH_FORMAT;
+
     return {
       ...category,
+      matchFormat: resolvedMatchFormat,
       color: resolvedColor,
       enrollmentCount: countMap.get(category._id.toString()) || 0,
       isEnrolled: enrolledSet.has(category._id.toString()),
@@ -205,6 +230,7 @@ async function updateCategory(req, res) {
     leagueId,
     minimumAge,
     color,
+    matchFormat,
   } = req.body;
 
   const isEmptyValue = (value) => value === undefined || value === null || value === '';
@@ -253,6 +279,12 @@ async function updateCategory(req, res) {
       const normalizedColor = normalizeHexColor(color);
       category.color = normalizedColor || DEFAULT_CATEGORY_COLOR;
     }
+  }
+
+  if (matchFormat !== undefined) {
+    category.matchFormat = Object.values(MATCH_FORMATS).includes(matchFormat)
+      ? matchFormat
+      : DEFAULT_CATEGORY_MATCH_FORMAT;
   }
 
   if (leagueId) {
