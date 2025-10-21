@@ -425,6 +425,134 @@ function populateCourtReservationCourts() {
   courtReservationCourtSelect.value = resolvedValue;
 }
 
+function populateCourtBlockCourts() {
+  if (!courtBlockCourtsSelect) {
+    return;
+  }
+
+  const previousSelection = new Set(
+    Array.from(courtBlockCourtsSelect.selectedOptions || []).map((option) => option.value)
+  );
+  const courtNames = getClubCourtNames();
+  courtBlockCourtsSelect.innerHTML = '';
+
+  if (!courtNames.length) {
+    const option = new Option(
+      'Añade pistas en la sección del club para poder bloquearlas',
+      '',
+      true,
+      true
+    );
+    option.disabled = true;
+    courtBlockCourtsSelect.appendChild(option);
+    courtBlockCourtsSelect.disabled = true;
+    return;
+  }
+
+  courtBlockCourtsSelect.disabled = false;
+  courtNames.forEach((name) => {
+    const option = new Option(name, name, false, previousSelection.has(name));
+    courtBlockCourtsSelect.appendChild(option);
+  });
+}
+
+function populateCourtBlockEntities() {
+  if (!courtBlockEntitySelect) {
+    return;
+  }
+
+  const contextType = courtBlockContextSelect?.value || 'league';
+  const entities =
+    contextType === 'league'
+      ? Array.isArray(state.leagues)
+        ? state.leagues
+        : []
+      : Array.isArray(state.tournaments)
+        ? state.tournaments
+        : [];
+
+  const previousValue = courtBlockEntitySelect.value;
+  courtBlockEntitySelect.innerHTML = '';
+
+  if (!entities.length) {
+    const message =
+      contextType === 'league'
+        ? 'No hay ligas activas para asignar bloqueos.'
+        : 'No hay torneos activos para asignar bloqueos.';
+    const option = new Option(message, '', true, true);
+    option.disabled = true;
+    courtBlockEntitySelect.appendChild(option);
+    courtBlockEntitySelect.disabled = true;
+    if (courtBlockSubmit) {
+      courtBlockSubmit.disabled = true;
+    }
+    return;
+  }
+
+  courtBlockEntitySelect.disabled = false;
+  if (courtBlockSubmit) {
+    courtBlockSubmit.disabled = false;
+  }
+
+  const options = entities.map((entity) => {
+    const id = entity?._id || entity?.id;
+    const labelParts = [];
+    if (entity?.name) {
+      labelParts.push(entity.name);
+    }
+    if (entity?.year) {
+      labelParts.push(entity.year);
+    }
+    const label = labelParts.length ? labelParts.join(' · ') : 'Competición';
+    return { id, label };
+  });
+
+  let resolvedValue = previousValue;
+  if (!options.some((option) => option.id === resolvedValue)) {
+    resolvedValue = options[0]?.id || '';
+  }
+
+  options.forEach((option) => {
+    if (!option.id) {
+      return;
+    }
+    const element = new Option(option.label, option.id, false, option.id === resolvedValue);
+    courtBlockEntitySelect.appendChild(element);
+  });
+
+  courtBlockEntitySelect.value = resolvedValue;
+}
+
+function setCourtBlockDefaultRange(baseDate = new Date()) {
+  if (!courtBlockStartInput || !courtBlockEndInput) {
+    return;
+  }
+
+  const reference = new Date(baseDate);
+  if (Number.isNaN(reference.getTime())) {
+    return;
+  }
+
+  if (reference.getHours() === 0 && reference.getMinutes() === 0) {
+    reference.setHours(9, 0, 0, 0);
+  }
+
+  const start = roundDateUpToInterval(reference, CALENDAR_TIME_SLOT_MINUTES);
+  const end = new Date(start.getTime() + COURT_RESERVATION_DEFAULT_DURATION * 60 * 1000);
+  courtBlockStartInput.value = formatDateTimeLocal(start);
+  courtBlockEndInput.value = formatDateTimeLocal(end);
+}
+
+function ensureCourtBlockRangeDefaults(baseDate = new Date()) {
+  if (!courtBlockStartInput || !courtBlockEndInput) {
+    return;
+  }
+
+  if (!courtBlockStartInput.value || !courtBlockEndInput.value) {
+    setCourtBlockDefaultRange(baseDate);
+  }
+}
+
 function resetCourtReservationForm() {
   if (!courtReservationForm) {
     return;
@@ -711,6 +839,10 @@ const state = {
   courtAvailabilityDate: new Date(),
   courtAdminDate: new Date(),
   courtAdminSchedule: [],
+  courtAdminBlocks: [],
+  courtCalendarDate: new Date(),
+  courtCalendarEvents: [],
+  courtBlocks: [],
   push: {
     supported: PUSH_SUPPORTED,
     permission: PUSH_SUPPORTED ? Notification.permission : 'default',
@@ -811,6 +943,22 @@ const courtAdminDateInput = document.getElementById('court-admin-date');
 const courtAdminSchedule = document.getElementById('court-admin-schedule');
 const courtAdminEmpty = document.getElementById('court-admin-empty');
 const courtAdminStatus = document.getElementById('court-admin-status');
+const courtCalendarContainer = document.getElementById('court-calendar-container');
+const courtCalendarLabel = document.getElementById('court-calendar-label');
+const courtCalendarPrev = document.getElementById('court-calendar-prev');
+const courtCalendarNext = document.getElementById('court-calendar-next');
+const courtCalendarStatus = document.getElementById('court-calendar-status');
+const courtBlockForm = document.getElementById('court-block-form');
+const courtBlockContextSelect = document.getElementById('court-block-context');
+const courtBlockEntitySelect = document.getElementById('court-block-entity');
+const courtBlockCourtsSelect = document.getElementById('court-block-courts');
+const courtBlockStartInput = document.getElementById('court-block-start');
+const courtBlockEndInput = document.getElementById('court-block-end');
+const courtBlockNotesInput = document.getElementById('court-block-notes');
+const courtBlockStatus = document.getElementById('court-block-status');
+const courtBlocksList = document.getElementById('court-blocks-list');
+const courtBlocksEmpty = document.getElementById('court-blocks-empty');
+const courtBlockSubmit = courtBlockForm ? courtBlockForm.querySelector('button[type="submit"]') : null;
 const rankingPrintButton = document.getElementById('ranking-print-button');
 const logoutButtons = Array.from(document.querySelectorAll('[data-action="logout"]'));
 const globalMessage = document.getElementById('global-message');
@@ -884,6 +1032,13 @@ const rankingEmpty = document.getElementById('ranking-empty');
 const menuButtons = appMenu ? Array.from(appMenu.querySelectorAll('.menu-button')) : [];
 const adminMenuButtons = menuButtons.filter((button) => button.dataset.requiresAdmin === 'true');
 const adminSectionIds = new Set(adminMenuButtons.map((button) => button.dataset.target));
+const courtManagerMenuButtons = menuButtons.filter(
+  (button) => button.dataset.requiresCourtManager === 'true'
+);
+const courtManagerSectionIds = new Set(
+  courtManagerMenuButtons.map((button) => button.dataset.target)
+);
+const menuButtonInitialHidden = new Map(menuButtons.map((button) => [button, button.hidden]));
 const adminToggleElements = document.querySelectorAll('[data-admin-visible="toggle"]');
 
 function setMenuGroupExpanded(menuGroup, expanded) {
@@ -1814,6 +1969,45 @@ function updateAdminMenuVisibility() {
   }
 }
 
+function updateCourtManagerMenuVisibility() {
+  if (!courtManagerMenuButtons.length) return;
+  const shouldShow = hasCourtManagementAccess();
+  courtManagerMenuButtons.forEach((button) => {
+    button.hidden = !shouldShow;
+  });
+
+  if (!shouldShow && courtManagerSectionIds.has(state.activeSection)) {
+    showSection('section-dashboard');
+  }
+}
+
+function applyCourtManagerMenuRestrictions() {
+  if (!menuButtons.length) return;
+
+  const restricted = isCourtManager() && !isAdmin();
+  const allowedTargets = new Set(['section-court-reservations', 'section-court-admin', 'section-account']);
+
+  menuButtons.forEach((button) => {
+    if (button.dataset.requiresAdmin === 'true' || button.dataset.requiresCourtManager === 'true') {
+      return;
+    }
+
+    const initialHidden = menuButtonInitialHidden.get(button) === true;
+    if (!restricted) {
+      button.hidden = initialHidden;
+      return;
+    }
+
+    const target = button.dataset.target;
+    if (!target || button.dataset.action === 'logout') {
+      button.hidden = initialHidden;
+      return;
+    }
+
+    button.hidden = !allowedTargets.has(target);
+  });
+}
+
 function showSection(sectionId) {
   if (!sectionId || !appSections.length) return;
 
@@ -1824,6 +2018,15 @@ function showSection(sectionId) {
   if (targetSection.dataset.adminOnly === 'true' && !isAdmin()) {
     resolvedSectionId = 'section-dashboard';
     showGlobalMessage('Necesitas permisos de administrador para acceder a esta sección.', 'error');
+  } else if (targetSection.dataset.requiresCourtManager === 'true' && !hasCourtManagementAccess()) {
+    resolvedSectionId = 'section-dashboard';
+    showGlobalMessage('Necesitas permisos de gestor de pistas para acceder a esta sección.', 'error');
+  } else if (isCourtManager() && !isAdmin()) {
+    const allowed = new Set(['section-court-reservations', 'section-court-admin', 'section-account']);
+    if (!allowed.has(sectionId)) {
+      resolvedSectionId = 'section-court-admin';
+      showGlobalMessage('Tu perfil solo tiene acceso a la gestión de pistas y reservas.', 'error');
+    }
   }
 
   state.activeSection = resolvedSectionId;
@@ -2489,6 +2692,10 @@ function resetData() {
   state.courtReservations = [];
   state.courtAvailability = [];
   state.courtAdminSchedule = [];
+  state.courtAdminBlocks = [];
+  state.courtCalendarEvents = [];
+  state.courtBlocks = [];
+  state.courtCalendarDate = new Date();
   state.reservationPlayers = [];
   state.reservationPlayersLoaded = false;
   state.reservationPlayersLoading = false;
@@ -2581,6 +2788,30 @@ function resetData() {
   }
   if (courtAdminEmpty) {
     courtAdminEmpty.hidden = false;
+  }
+  if (courtCalendarContainer) {
+    courtCalendarContainer.innerHTML =
+      '<p class="meta">Inicia sesión con una cuenta autorizada para revisar el calendario de pistas.</p>';
+  }
+  if (courtCalendarLabel) {
+    courtCalendarLabel.textContent = '';
+  }
+  if (courtCalendarStatus) {
+    setStatusMessage(courtCalendarStatus, '', '');
+  }
+  if (courtBlockForm) {
+    courtBlockForm.reset();
+    setCourtBlockDefaultRange();
+  }
+  if (courtBlockStatus) {
+    setStatusMessage(courtBlockStatus, '', '');
+  }
+  if (courtBlocksList) {
+    courtBlocksList.innerHTML =
+      '<li class="empty-state">Inicia sesión con una cuenta autorizada para gestionar bloqueos.</li>';
+  }
+  if (courtBlocksEmpty) {
+    courtBlocksEmpty.hidden = true;
   }
   if (courtReservationParticipantsContainer) {
     courtReservationParticipantsContainer.innerHTML = '';
@@ -2888,6 +3119,14 @@ function isAdmin() {
   return entityHasRole(state.user, 'admin');
 }
 
+function isCourtManager() {
+  return entityHasRole(state.user, 'court_manager');
+}
+
+function hasCourtManagementAccess() {
+  return isAdmin() || isCourtManager();
+}
+
 function updateAuthUI() {
   const loggedIn = Boolean(state.token && state.user);
   authView.hidden = loggedIn;
@@ -2919,6 +3158,8 @@ function updateAuthUI() {
   }
 
   updateAdminMenuVisibility();
+  updateCourtManagerMenuVisibility();
+  applyCourtManagerMenuRestrictions();
   updatePushSettingsUI();
 }
 
@@ -3114,6 +3355,26 @@ function startOfWeek(date) {
 function addDays(date, days) {
   const copy = new Date(date);
   copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function startOfMonth(date) {
+  const copy = new Date(date);
+  copy.setDate(1);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function endOfMonth(date) {
+  const end = startOfMonth(date);
+  end.setMonth(end.getMonth() + 1);
+  return end;
+}
+
+function addMonths(date, months) {
+  const copy = new Date(date);
+  copy.setDate(1);
+  copy.setMonth(copy.getMonth() + months);
   return copy;
 }
 
@@ -5530,6 +5791,9 @@ async function refreshCourtAvailability(scope = 'player') {
     const courts = Array.isArray(availability?.courts) ? availability.courts : [];
     if (scope === 'admin') {
       state.courtAdminSchedule = courts;
+      state.courtAdminBlocks = Array.isArray(availability?.blocks)
+        ? availability.blocks
+        : [];
       renderCourtAdminSchedule();
       if (courtAdminStatus) {
         setStatusMessage(courtAdminStatus, '', '');
@@ -5541,6 +5805,7 @@ async function refreshCourtAvailability(scope = 'player') {
   } catch (error) {
     if (scope === 'admin') {
       state.courtAdminSchedule = [];
+      state.courtAdminBlocks = [];
       renderCourtAdminSchedule();
       if (courtAdminStatus) {
         setStatusMessage(courtAdminStatus, 'error', error.message);
@@ -5554,8 +5819,9 @@ async function refreshCourtAvailability(scope = 'player') {
 }
 
 async function loadAdminCourtData() {
-  if (!isAdmin()) {
+  if (!hasCourtManagementAccess()) {
     state.courtAdminSchedule = [];
+    state.courtAdminBlocks = [];
     renderCourtAdminSchedule();
     return;
   }
@@ -5745,6 +6011,14 @@ function getReservationParticipants(reservation) {
   return [];
 }
 
+function formatReservationParticipantsLabel(reservation) {
+  const participants = getReservationParticipants(reservation);
+  if (!participants.length) {
+    return '';
+  }
+  return participants.map((participant) => getPlayerDisplayName(participant)).join(' · ');
+}
+
 function renderCourtReservations() {
   if (!courtReservationList) {
     return;
@@ -5875,12 +6149,34 @@ function renderCourtAvailability() {
     item.appendChild(title);
 
     const reservations = Array.isArray(entry.reservations) ? entry.reservations : [];
-    if (!reservations.length) {
+    const blocks = Array.isArray(entry.blocks) ? entry.blocks : [];
+
+    if (!reservations.length && !blocks.length) {
       const meta = document.createElement('div');
       meta.className = 'meta';
       meta.textContent = 'Disponible todo el día';
       item.appendChild(meta);
     } else {
+      blocks.forEach((block) => {
+        const blockRow = document.createElement('div');
+        blockRow.className = 'meta court-availability-block';
+        const timeLabel = formatTimeRangeLabel(block.startsAt, block.endsAt);
+        blockRow.appendChild(document.createElement('span')).textContent = `${timeLabel}`;
+        const labelParts = [];
+        if (block.contextName) {
+          labelParts.push(block.contextName);
+        }
+        if (block.appliesToAllCourts) {
+          labelParts.push('Todas las pistas');
+        }
+        labelParts.push('Bloqueo oficial');
+        blockRow.appendChild(document.createElement('span')).textContent = labelParts.join(' · ');
+        if (block.notes) {
+          blockRow.appendChild(document.createElement('span')).textContent = block.notes;
+        }
+        item.appendChild(blockRow);
+      });
+
       reservations.forEach((reservation) => {
         const slot = document.createElement('div');
         slot.className = 'meta court-availability-slot';
@@ -5943,13 +6239,88 @@ function renderCourtAdminSchedule() {
     block.appendChild(heading);
 
     const reservations = Array.isArray(entry.reservations) ? entry.reservations : [];
-    if (!reservations.length) {
+    const blocks = Array.isArray(entry.blocks) ? entry.blocks : [];
+    const timeline = [];
+
+    reservations.forEach((reservation) => {
+      timeline.push({
+        type: 'reservation',
+        startsAt: reservation.startsAt,
+        endsAt: reservation.endsAt,
+        reservation,
+      });
+    });
+
+    blocks.forEach((blockEntry) => {
+      timeline.push({
+        type: 'block',
+        startsAt: blockEntry.startsAt,
+        endsAt: blockEntry.endsAt,
+        block: blockEntry,
+      });
+    });
+
+    timeline.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+    if (!timeline.length) {
       const meta = document.createElement('div');
       meta.className = 'meta';
       meta.textContent = 'Sin reservas registradas para este día.';
       block.appendChild(meta);
     } else {
-      reservations.forEach((reservation) => {
+      timeline.forEach((timelineEntry) => {
+        if (timelineEntry.type === 'block') {
+          const { block: blockEntry } = timelineEntry;
+          if (!blockEntry) {
+            return;
+          }
+
+          const row = document.createElement('div');
+          row.className = 'court-schedule-row court-schedule-row--block';
+
+          const info = document.createElement('div');
+          info.className = 'court-schedule-info';
+          info.appendChild(document.createElement('span')).textContent = formatTimeRangeLabel(
+            blockEntry.startsAt,
+            blockEntry.endsAt
+          );
+
+          const details = [];
+          if (blockEntry.contextName) {
+            details.push(blockEntry.contextName);
+          }
+          if (blockEntry.appliesToAllCourts) {
+            details.push('Todas las pistas');
+          } else if (Array.isArray(blockEntry.courts) && blockEntry.courts.length) {
+            details.push(`Pistas: ${blockEntry.courts.join(', ')}`);
+          }
+          details.push('Bloqueo oficial');
+          info.appendChild(document.createElement('span')).textContent = details.join(' · ');
+
+          if (blockEntry.notes) {
+            info.appendChild(document.createElement('span')).textContent = blockEntry.notes;
+          }
+
+          row.appendChild(info);
+
+          if (hasCourtManagementAccess() && blockEntry.id) {
+            const actions = document.createElement('div');
+            actions.className = 'court-schedule-actions';
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'ghost danger';
+            deleteButton.dataset.action = 'delete-block';
+            deleteButton.dataset.blockId = blockEntry.id;
+            deleteButton.textContent = 'Eliminar bloqueo';
+            actions.appendChild(deleteButton);
+            row.appendChild(actions);
+          }
+
+          block.appendChild(row);
+          return;
+        }
+
+        const reservation = timelineEntry.reservation;
         const row = document.createElement('div');
         row.className = 'court-schedule-row';
 
@@ -6001,6 +6372,516 @@ function renderCourtAdminSchedule() {
   });
 }
 
+function isAllDaySegment(start, end) {
+  if (!start || !end) {
+    return false;
+  }
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return false;
+  }
+  const dayStart = startOfDay(startDate).getTime();
+  const nextDayStart = addDays(startOfDay(startDate), 1).getTime();
+  return startDate.getTime() === dayStart && endDate.getTime() === nextDayStart;
+}
+
+function buildCourtCalendarDayMap(events = []) {
+  const grouped = new Map();
+  events.forEach((event) => {
+    if (!event || !event.startsAt || !event.endsAt) {
+      return;
+    }
+    const start = new Date(event.startsAt);
+    const end = new Date(event.endsAt);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return;
+    }
+
+    const safeEnd = end > start ? end : new Date(start.getTime() + 30 * 60 * 1000);
+    let cursor = startOfDay(start);
+    const finalDay = startOfDay(new Date(safeEnd.getTime() - 1));
+
+    while (cursor.getTime() <= finalDay.getTime()) {
+      const dayKey = cursor.getTime();
+      if (!grouped.has(dayKey)) {
+        grouped.set(dayKey, []);
+      }
+
+      const dayStart = cursor;
+      const dayEnd = addDays(cursor, 1);
+      const displayStartsAt = start > dayStart ? start : dayStart;
+      const displayEndsAt = safeEnd < dayEnd ? safeEnd : dayEnd;
+      const spansMultipleDays = finalDay.getTime() !== startOfDay(start).getTime();
+
+      grouped.get(dayKey).push({
+        ...event,
+        displayStartsAt,
+        displayEndsAt,
+        spansMultipleDays,
+      });
+
+      cursor = addDays(cursor, 1);
+    }
+  });
+
+  grouped.forEach((list) => {
+    list.sort((a, b) => {
+      const first = new Date(a.displayStartsAt || a.startsAt);
+      const second = new Date(b.displayStartsAt || b.startsAt);
+      return first - second;
+    });
+  });
+
+  return grouped;
+}
+
+function createCourtCalendarEvent(event) {
+  const container = document.createElement('div');
+  const type = event.type || 'reservation';
+  container.className = `calendar-event calendar-event--${type}`;
+  if (event.spansMultipleDays) {
+    container.classList.add('calendar-event--spanning');
+  }
+
+  const title = document.createElement('strong');
+  title.textContent = event.title || 'Reserva de pista';
+  container.appendChild(title);
+
+  const displayStart = event.displayStartsAt || event.startsAt;
+  const displayEnd = event.displayEndsAt || event.endsAt;
+  const timeLabel = isAllDaySegment(displayStart, displayEnd)
+    ? 'Todo el día'
+    : formatTimeRangeLabel(displayStart, displayEnd);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const courtLabel = event.courtLabel || event.court || 'Pista por confirmar';
+  meta.textContent = `${timeLabel} · ${courtLabel}`;
+  container.appendChild(meta);
+
+  if (event.subtitle) {
+    const subtitle = document.createElement('div');
+    subtitle.className = 'meta calendar-event-subtitle';
+    subtitle.textContent = event.subtitle;
+    container.appendChild(subtitle);
+  }
+
+  if (event.notes) {
+    const notes = document.createElement('div');
+    notes.className = 'meta calendar-event-notes';
+    notes.textContent = event.notes;
+    container.appendChild(notes);
+  }
+
+  if (type === 'match' && event.matchId) {
+    bindCalendarEvent(container, event.matchId);
+  } else if (type === 'reservation') {
+    container.dataset.calendarAction = 'open-reservation';
+    container.dataset.startsAt = event.startsAt ? new Date(event.startsAt).toISOString() : '';
+    container.dataset.court = event.court || '';
+    container.classList.add('calendar-event--actionable');
+    container.tabIndex = 0;
+    container.setAttribute('role', 'button');
+    container.addEventListener('click', () => {
+      openReservationEditorFromCalendar(event);
+    });
+    container.addEventListener('keydown', (keyboardEvent) => {
+      if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+        keyboardEvent.preventDefault();
+        openReservationEditorFromCalendar(event);
+      }
+    });
+  }
+
+  return container;
+}
+
+function renderCourtCalendar() {
+  if (!courtCalendarContainer) {
+    return;
+  }
+
+  const reference = state.courtCalendarDate instanceof Date ? new Date(state.courtCalendarDate) : new Date();
+  const monthStart = startOfMonth(reference);
+  state.courtCalendarDate = monthStart;
+
+  if (courtCalendarLabel) {
+    courtCalendarLabel.textContent = formatMonthLabel(monthStart);
+  }
+
+  const events = Array.isArray(state.courtCalendarEvents) ? state.courtCalendarEvents : [];
+  const grouped = buildCourtCalendarDayMap(events);
+
+  courtCalendarContainer.innerHTML = '';
+
+  let cursor = startOfWeek(monthStart);
+  for (let weekIndex = 0; weekIndex < 6; weekIndex += 1) {
+    const weekRow = document.createElement('div');
+    weekRow.className = 'calendar-week';
+
+    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+      const day = addDays(cursor, dayIndex);
+      const key = startOfDay(day).getTime();
+      const dayEvents = grouped.get(key) || [];
+      const column = document.createElement('div');
+      column.className = 'calendar-day calendar-day--actionable';
+      column.dataset.calendarDate = formatDateInput(day);
+      column.tabIndex = 0;
+      column.setAttribute('role', 'button');
+      column.setAttribute('aria-label', `Agenda del ${formatDateOnly(day)}`);
+
+      if (day.getMonth() !== monthStart.getMonth()) {
+        column.classList.add('calendar-day--muted');
+      }
+
+      const header = document.createElement('div');
+      header.className = 'calendar-day-header';
+      header.innerHTML = `<strong>${day.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
+        weekday: 'short',
+      }).format(day)}</span>`;
+      column.appendChild(header);
+
+      if (!dayEvents.length) {
+        const empty = document.createElement('div');
+        empty.className = 'calendar-empty';
+        empty.textContent = '—';
+        column.appendChild(empty);
+      } else {
+        dayEvents.forEach((event) => {
+          column.appendChild(createCourtCalendarEvent(event));
+        });
+      }
+
+      weekRow.appendChild(column);
+    }
+
+    courtCalendarContainer.appendChild(weekRow);
+    cursor = addDays(cursor, 7);
+    if (cursor.getMonth() > monthStart.getMonth() && cursor.getDate() >= 7) {
+      break;
+    }
+  }
+}
+
+function resetCourtCalendarView() {
+  if (courtCalendarContainer) {
+    courtCalendarContainer.innerHTML =
+      '<p class="empty-state">Selecciona un mes para ver las reservas y bloqueos de pistas.</p>';
+  }
+  if (courtCalendarLabel) {
+    const reference = state.courtCalendarDate instanceof Date ? state.courtCalendarDate : new Date();
+    courtCalendarLabel.textContent = formatMonthLabel(startOfMonth(reference));
+  }
+  if (courtBlocksEmpty) {
+    courtBlocksEmpty.hidden = false;
+  }
+}
+
+function renderCourtBlocksList() {
+  if (!courtBlocksList) {
+    return;
+  }
+
+  const blocks = Array.isArray(state.courtBlocks) ? state.courtBlocks.slice() : [];
+  blocks.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+  courtBlocksList.innerHTML = '';
+
+  if (!blocks.length) {
+    if (courtBlocksEmpty) {
+      courtBlocksEmpty.hidden = false;
+      courtBlocksEmpty.textContent = 'No hay bloqueos registrados para el mes seleccionado.';
+      courtBlocksList.appendChild(courtBlocksEmpty);
+    } else {
+      const emptyItem = document.createElement('li');
+      emptyItem.className = 'empty-state';
+      emptyItem.textContent = 'No hay bloqueos registrados para el mes seleccionado.';
+      courtBlocksList.appendChild(emptyItem);
+    }
+    return;
+  }
+
+  if (courtBlocksEmpty) {
+    courtBlocksEmpty.hidden = true;
+  }
+
+  blocks.forEach((block) => {
+    const item = document.createElement('li');
+    item.className = 'court-block-item';
+
+    const header = document.createElement('div');
+    header.className = 'court-block-item__header';
+
+    const title = document.createElement('strong');
+    title.textContent = block.contextName || 'Bloqueo programado';
+    header.appendChild(title);
+
+    const badge = document.createElement('span');
+    badge.className = 'tag tag--block';
+    badge.textContent = block.contextType === 'league' ? 'Liga' : 'Torneo';
+    header.appendChild(badge);
+
+    item.appendChild(header);
+
+    const courts = Array.isArray(block.courts) ? block.courts : [];
+    const rangeLabel = formatDateRangeLabel(block.startsAt, block.endsAt);
+    const schedule = document.createElement('div');
+    schedule.className = 'meta court-block-item__schedule';
+    schedule.textContent = `${rangeLabel} · ${formatTimeRangeLabel(block.startsAt, block.endsAt)}`;
+    item.appendChild(schedule);
+
+    const courtLabel = document.createElement('div');
+    courtLabel.className = 'meta court-block-item__courts';
+    courtLabel.textContent = block.appliesToAllCourts
+      ? 'Todas las pistas del club'
+      : `Pistas: ${courts.join(', ')}`;
+    item.appendChild(courtLabel);
+
+    if (block.notes) {
+      const notes = document.createElement('div');
+      notes.className = 'meta court-block-item__notes';
+      notes.textContent = block.notes;
+      item.appendChild(notes);
+    }
+
+    if (hasCourtManagementAccess() && block.id) {
+      const actions = document.createElement('div');
+      actions.className = 'court-block-item__actions';
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'ghost danger';
+      deleteButton.dataset.action = 'delete-block';
+      deleteButton.dataset.blockId = block.id;
+      deleteButton.textContent = 'Eliminar bloqueo';
+      actions.appendChild(deleteButton);
+      item.appendChild(actions);
+    }
+
+    courtBlocksList.appendChild(item);
+  });
+}
+
+async function loadCourtCalendarData() {
+  if (!hasCourtManagementAccess()) {
+    state.courtCalendarEvents = [];
+    state.courtBlocks = [];
+    resetCourtCalendarView();
+    renderCourtBlocksList();
+    return;
+  }
+
+  const reference = state.courtCalendarDate instanceof Date ? new Date(state.courtCalendarDate) : new Date();
+  const monthStart = startOfMonth(reference);
+  const monthEnd = endOfMonth(monthStart);
+  state.courtCalendarDate = monthStart;
+
+  if (courtCalendarStatus) {
+    setStatusMessage(courtCalendarStatus, 'info', 'Cargando calendario de pistas...');
+  }
+
+  const startParam = encodeURIComponent(monthStart.toISOString());
+  const endParam = encodeURIComponent(monthEnd.toISOString());
+
+  try {
+    const [reservationsResponse, blocksResponse] = await Promise.all([
+      request(`/courts/reservations?start=${startParam}&end=${endParam}`),
+      request(`/courts/blocks?start=${startParam}&end=${endParam}`),
+    ]);
+
+    const reservations = Array.isArray(reservationsResponse) ? reservationsResponse : [];
+    const blocks = Array.isArray(blocksResponse) ? blocksResponse : [];
+
+    const events = [];
+
+    reservations.forEach((reservation) => {
+      const startsAt = reservation.startsAt ? new Date(reservation.startsAt) : null;
+      const endsAt = reservation.endsAt ? new Date(reservation.endsAt) : null;
+      if (!startsAt || !endsAt || Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+        return;
+      }
+
+      const participantsLabel = formatReservationParticipantsLabel(reservation);
+      const courtLabel = reservation.court || 'Pista por definir';
+
+      if (reservation.match) {
+        const players = Array.isArray(reservation.match.players)
+          ? reservation.match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
+          : participantsLabel || 'Partido programado';
+        const subtitleParts = ['Partido oficial'];
+        if (reservation.match.league?.name) {
+          subtitleParts.push(reservation.match.league.name);
+        }
+        if (reservation.match.tournament?.name) {
+          subtitleParts.push(reservation.match.tournament.name);
+        }
+
+        events.push({
+          id: reservation._id || reservation.id,
+          type: 'match',
+          startsAt,
+          endsAt,
+          title: players,
+          subtitle: subtitleParts.join(' · '),
+          court: reservation.court,
+          courtLabel,
+          matchId: reservation.match._id || reservation.match.id,
+        });
+        return;
+      }
+
+      const createdByLabel = reservation.createdBy
+        ? getPlayerDisplayName(reservation.createdBy)
+        : 'Reserva manual';
+      const subtitle = participantsLabel ? `Participantes: ${participantsLabel}` : '';
+
+      events.push({
+        id: reservation._id || reservation.id,
+        type: 'reservation',
+        startsAt,
+        endsAt,
+        title: `Reserva de ${createdByLabel}`,
+        subtitle,
+        notes: reservation.notes || '',
+        court: reservation.court,
+        courtLabel,
+        reservationId: reservation._id || reservation.id,
+      });
+    });
+
+    const normalizedBlocks = blocks.map((block) => {
+      const startsAt = block.startsAt ? new Date(block.startsAt) : null;
+      const endsAt = block.endsAt ? new Date(block.endsAt) : null;
+      return {
+        ...block,
+        startsAt,
+        endsAt,
+      };
+    });
+
+    normalizedBlocks.forEach((block) => {
+      if (!block.startsAt || !block.endsAt || Number.isNaN(block.startsAt.getTime()) || Number.isNaN(block.endsAt.getTime())) {
+        return;
+      }
+      const courts = Array.isArray(block.courts) ? block.courts : [];
+      events.push({
+        id: block.id,
+        type: 'block',
+        startsAt: block.startsAt,
+        endsAt: block.endsAt,
+        title: block.contextName ? `Bloqueo · ${block.contextName}` : 'Bloqueo de pistas',
+        subtitle: block.appliesToAllCourts
+          ? 'Aplica a todas las pistas'
+          : courts.length
+            ? `Pistas: ${courts.join(', ')}`
+            : 'Pistas por confirmar',
+        notes: block.notes || '',
+        courtLabel: block.appliesToAllCourts
+          ? 'Todas las pistas'
+          : courts.length
+            ? courts.join(', ')
+            : 'Pistas por confirmar',
+      });
+    });
+
+    state.courtCalendarEvents = events;
+    state.courtBlocks = normalizedBlocks;
+
+    renderCourtCalendar();
+    renderCourtBlocksList();
+    ensureCourtBlockRangeDefaults(monthStart);
+    if (courtCalendarStatus) {
+      setStatusMessage(courtCalendarStatus, '', '');
+    }
+  } catch (error) {
+    state.courtCalendarEvents = [];
+    state.courtBlocks = [];
+    resetCourtCalendarView();
+    renderCourtBlocksList();
+    if (courtCalendarStatus) {
+      setStatusMessage(courtCalendarStatus, 'error', error.message);
+    }
+  }
+}
+
+async function deleteCourtBlock(blockId, { button } = {}) {
+  if (!blockId) {
+    return false;
+  }
+
+  const confirmed = window.confirm('¿Seguro que deseas eliminar este bloqueo de pistas?');
+  if (!confirmed) {
+    return false;
+  }
+
+  if (button) {
+    button.disabled = true;
+  }
+
+  try {
+    await request(`/courts/blocks/${blockId}`, { method: 'DELETE' });
+    showGlobalMessage('Bloqueo eliminado correctamente.', 'success');
+    await Promise.all([loadAdminCourtData(), loadCourtCalendarData()]);
+    return true;
+  } catch (error) {
+    showGlobalMessage(error.message, 'error');
+    return false;
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function handleCourtCalendarDaySelection(dateValue) {
+  if (!dateValue) {
+    return;
+  }
+
+  const nextDate = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(nextDate.getTime())) {
+    return;
+  }
+
+  state.courtAdminDate = nextDate;
+  if (courtAdminDateInput) {
+    courtAdminDateInput.value = formatDateInput(nextDate);
+  }
+  showSection('section-court-admin');
+  ensureCourtBlockRangeDefaults(nextDate);
+  await refreshCourtAvailability('admin');
+}
+
+function openReservationEditorFromCalendar(eventData = {}) {
+  if (!courtReservationForm) {
+    return;
+  }
+
+  showSection('section-court-reservations');
+
+  const start = eventData.startsAt ? new Date(eventData.startsAt) : null;
+  if (start && !Number.isNaN(start.getTime())) {
+    if (courtReservationDateInput) {
+      courtReservationDateInput.value = formatDateInput(start);
+    }
+    if (courtReservationTimeInput) {
+      courtReservationTimeInput.value = formatTimeInputValue(start);
+    }
+  } else if (state.courtAdminDate && courtReservationDateInput) {
+    courtReservationDateInput.value = formatDateInput(state.courtAdminDate);
+  }
+
+  if (eventData.court && courtReservationCourtSelect) {
+    const options = Array.from(courtReservationCourtSelect.options || []);
+    const exists = options.some((option) => option.value === eventData.court);
+    if (exists) {
+      courtReservationCourtSelect.value = eventData.court;
+    }
+  }
+
+  courtReservationNotesInput?.focus();
+}
+
 async function cancelCourtReservation(reservationId, { button } = {}) {
   if (!reservationId) {
     return false;
@@ -6019,8 +6900,8 @@ async function cancelCourtReservation(reservationId, { button } = {}) {
     await request(`/courts/reservations/${reservationId}`, { method: 'DELETE' });
     showGlobalMessage('Reserva cancelada correctamente.', 'success');
     await loadPlayerCourtData();
-    if (isAdmin()) {
-      await loadAdminCourtData();
+    if (hasCourtManagementAccess()) {
+      await Promise.all([loadAdminCourtData(), loadCourtCalendarData()]);
     }
     return true;
   } catch (error) {
@@ -7219,6 +8100,7 @@ function renderClubProfile(club = {}) {
   }
 
   populateCourtReservationCourts();
+  populateCourtBlockCourts();
   populateAdminMatchCourtOptions();
 
   renderRules();
@@ -12006,6 +12888,8 @@ async function loadAllData() {
     if (state.selectedTournamentId) {
       await refreshTournamentDetail(state.selectedTournamentId);
     }
+    populateCourtBlockEntities();
+    ensureCourtBlockRangeDefaults(state.courtAdminDate);
 
     await Promise.all([
       loadGlobalOverview(),
@@ -12069,17 +12953,20 @@ async function loadAllData() {
         resetCourtReservationForm();
       }
     }
+    populateCourtBlockCourts();
     state.seasons = Array.isArray(seasons) ? seasons : [];
     state.calendarMatches = Array.isArray(calendarMatches) ? calendarMatches : [];
     renderAdminMatchList(state.calendarMatches);
     renderAllCalendars();
 
     await loadPlayerCourtData();
-    if (isAdmin()) {
-      await loadAdminCourtData();
+    if (hasCourtManagementAccess()) {
+      await Promise.all([loadAdminCourtData(), loadCourtCalendarData()]);
     } else {
       state.courtAdminSchedule = [];
+      state.courtAdminBlocks = [];
       renderCourtAdminSchedule();
+      resetCourtCalendarView();
     }
 
     if (isAdmin()) {
@@ -12326,17 +13213,164 @@ courtAdminDateInput?.addEventListener('change', async (event) => {
 });
 
 courtAdminSchedule?.addEventListener('click', async (event) => {
-  const button = event.target.closest('button[data-action="cancel-reservation"]');
+  const cancelButton = event.target.closest('button[data-action="cancel-reservation"]');
+  if (cancelButton) {
+    const { reservationId } = cancelButton.dataset;
+    if (reservationId) {
+      await cancelCourtReservation(reservationId, { button: cancelButton });
+    }
+    return;
+  }
+
+  const blockButton = event.target.closest('button[data-action="delete-block"]');
+  if (blockButton) {
+    const { blockId } = blockButton.dataset;
+    if (blockId) {
+      await deleteCourtBlock(blockId, { button: blockButton });
+    }
+  }
+});
+
+courtBlocksList?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action="delete-block"]');
   if (!button) {
     return;
   }
 
-  const { reservationId } = button.dataset;
-  if (!reservationId) {
+  const { blockId } = button.dataset;
+  if (!blockId) {
     return;
   }
 
-  await cancelCourtReservation(reservationId, { button });
+  await deleteCourtBlock(blockId, { button });
+});
+
+courtCalendarPrev?.addEventListener('click', async () => {
+  const reference = state.courtCalendarDate instanceof Date ? state.courtCalendarDate : new Date();
+  state.courtCalendarDate = addMonths(reference, -1);
+  await loadCourtCalendarData();
+});
+
+courtCalendarNext?.addEventListener('click', async () => {
+  const reference = state.courtCalendarDate instanceof Date ? state.courtCalendarDate : new Date();
+  state.courtCalendarDate = addMonths(reference, 1);
+  await loadCourtCalendarData();
+});
+
+courtCalendarContainer?.addEventListener('click', (event) => {
+  if (event.target.closest('.calendar-event')) {
+    return;
+  }
+
+  const day = event.target.closest('[data-calendar-date]');
+  if (!day) {
+    return;
+  }
+
+  const { calendarDate } = day.dataset;
+  if (!calendarDate) {
+    return;
+  }
+
+  handleCourtCalendarDaySelection(calendarDate).catch(() => {});
+});
+
+courtCalendarContainer?.addEventListener('keydown', (event) => {
+  if (event.target.closest('.calendar-event')) {
+    return;
+  }
+
+  if (event.key !== 'Enter' && event.key !== ' ') {
+    return;
+  }
+
+  const day = event.target.closest('[data-calendar-date]');
+  if (!day) {
+    return;
+  }
+
+  event.preventDefault();
+  const { calendarDate } = day.dataset;
+  if (!calendarDate) {
+    return;
+  }
+  handleCourtCalendarDaySelection(calendarDate).catch(() => {});
+});
+
+courtBlockContextSelect?.addEventListener('change', () => {
+  populateCourtBlockEntities();
+});
+
+courtBlockForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!hasCourtManagementAccess()) {
+    showGlobalMessage('No tienes permisos para crear bloqueos de pistas.', 'error');
+    return;
+  }
+
+  const formData = new FormData(courtBlockForm);
+  const payload = {
+    contextType: formData.get('contextType'),
+    contextId: formData.get('contextId'),
+    startsAt: formData.get('startsAt'),
+    endsAt: formData.get('endsAt'),
+  };
+
+  const notesValue = (formData.get('notes') || '').toString().trim();
+  if (notesValue) {
+    payload.notes = notesValue;
+  }
+
+  if (!payload.contextType || !payload.contextId) {
+    setStatusMessage(courtBlockStatus, 'error', 'Selecciona la competición asociada al bloqueo.');
+    return;
+  }
+
+  if (!payload.startsAt || !payload.endsAt) {
+    setStatusMessage(courtBlockStatus, 'error', 'Debes indicar la fecha de inicio y fin del bloqueo.');
+    return;
+  }
+
+  const courts = formData.getAll('courts').filter((value) => typeof value === 'string' && value.trim().length);
+  if (courts.length) {
+    payload.courts = courts;
+  }
+
+  if (courtBlockStatus) {
+    setStatusMessage(courtBlockStatus, 'info', 'Guardando bloqueo de pistas...');
+  }
+  if (courtBlockSubmit) {
+    courtBlockSubmit.disabled = true;
+  }
+
+  try {
+    await request('/courts/blocks', { method: 'POST', body: payload });
+    setStatusMessage(courtBlockStatus, 'success', 'Bloqueo registrado correctamente.');
+
+    const baseDate = payload.startsAt ? new Date(payload.startsAt) : state.courtAdminDate;
+    courtBlockForm.reset();
+    if (courtBlockContextSelect) {
+      courtBlockContextSelect.value = payload.contextType || 'league';
+    }
+    populateCourtBlockEntities();
+    if (courtBlockEntitySelect && payload.contextId) {
+      courtBlockEntitySelect.value = payload.contextId;
+    }
+    populateCourtBlockCourts();
+    if (baseDate) {
+      setCourtBlockDefaultRange(baseDate);
+    } else {
+      setCourtBlockDefaultRange();
+    }
+
+    await Promise.all([loadAdminCourtData(), loadCourtCalendarData()]);
+  } catch (error) {
+    setStatusMessage(courtBlockStatus, 'error', error.message);
+  } finally {
+    if (courtBlockSubmit) {
+      courtBlockSubmit.disabled = false;
+    }
+  }
 });
 
 profileForm?.addEventListener('submit', async (event) => {

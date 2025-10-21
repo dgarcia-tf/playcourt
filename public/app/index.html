@@ -263,6 +263,15 @@
               <button type="button" class="menu-button" data-target="section-court-reservations">
                 Reservar pistas
               </button>
+              <button
+                type="button"
+                class="menu-button"
+                data-target="section-court-admin"
+                data-requires-court-manager="true"
+                hidden
+              >
+                Gestión de pistas
+              </button>
               <div
                 class="menu-group"
                 data-requires-admin="true"
@@ -307,15 +316,6 @@
                     data-requires-admin="true"
                   >
                     Usuarios
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-court-admin"
-                    data-parent-target="section-admin"
-                    data-requires-admin="true"
-                  >
-                    Gestión Pistas
                   </button>
                 </div>
               </div>
@@ -1327,6 +1327,7 @@
                       <option value="">Todos</option>
                       <option value="player">Jugador</option>
                       <option value="admin">Administrador</option>
+                      <option value="court_manager">Gestor de pistas</option>
                     </select>
                   </label>
                   <label class="inline-field">
@@ -1342,29 +1343,115 @@
                 </div>
               </article>
             </section>
-            <section id="section-court-admin" class="app-section" data-admin-only="true" hidden>
-              <article class="card" id="court-admin-card">
-                <div class="card-header">
-                  <div>
-                    <h3>Administración de pistas</h3>
-                    <p class="card-subtitle">
-                      Revisa y gestiona todas las reservas confirmadas para cada pista del club.
+            <section
+              id="section-court-admin"
+              class="app-section"
+              data-requires-court-manager="true"
+              hidden
+            >
+              <div class="courts-grid courts-management-grid">
+                <article class="card" id="court-calendar-card">
+                  <div class="card-header">
+                    <div>
+                      <h3>Calendario de pistas</h3>
+                      <p class="card-subtitle">
+                        Visualiza partidos, reservas manuales y bloqueos especiales por mes.
+                      </p>
+                    </div>
+                    <div class="calendar-nav">
+                      <button type="button" class="ghost" id="court-calendar-prev" aria-label="Mes anterior">
+                        ◀
+                      </button>
+                      <span class="calendar-label" id="court-calendar-label">Mes</span>
+                      <button type="button" class="ghost" id="court-calendar-next" aria-label="Mes siguiente">
+                        ▶
+                      </button>
+                    </div>
+                  </div>
+                  <div class="calendar-container" id="court-calendar-container"></div>
+                  <p class="status-message" id="court-calendar-status"></p>
+                </article>
+
+                <article class="card" id="court-block-card">
+                  <div class="card-header">
+                    <div>
+                      <h3>Bloquear pistas</h3>
+                      <p class="card-subtitle">
+                        Reserva franjas horarias para partidos oficiales de liga o torneos.
+                      </p>
+                    </div>
+                  </div>
+                  <form id="court-block-form" class="form">
+                    <div class="form-grid">
+                      <label class="inline-field">
+                        Contexto
+                        <select id="court-block-context" name="contextType" required>
+                          <option value="league">Liga</option>
+                          <option value="tournament">Torneo</option>
+                        </select>
+                      </label>
+                      <label class="inline-field">
+                        Competición
+                        <select id="court-block-entity" name="contextId" required></select>
+                      </label>
+                    </div>
+                    <div class="form-grid">
+                      <label class="inline-field">
+                        Inicio
+                        <input type="datetime-local" id="court-block-start" name="startsAt" required />
+                      </label>
+                      <label class="inline-field">
+                        Fin
+                        <input type="datetime-local" id="court-block-end" name="endsAt" required />
+                      </label>
+                    </div>
+                    <label class="inline-field">
+                      Pistas incluidas
+                      <select id="court-block-courts" name="courts" multiple></select>
+                      <span class="form-hint"
+                        >Deja vacío para aplicar el bloqueo a todas las pistas configuradas.</span
+                      >
+                    </label>
+                    <label class="inline-field">
+                      Notas internas
+                      <textarea id="court-block-notes" name="notes" rows="2" maxlength="500"></textarea>
+                    </label>
+                    <div class="form-actions">
+                      <button type="submit" class="primary">Guardar bloqueo</button>
+                    </div>
+                  </form>
+                  <p class="status-message" id="court-block-status"></p>
+                  <h4>Bloqueos del periodo</h4>
+                  <ul class="list" id="court-blocks-list">
+                    <li class="empty-state" id="court-blocks-empty">
+                      No hay bloqueos registrados para el mes seleccionado.
+                    </li>
+                  </ul>
+                </article>
+
+                <article class="card" id="court-admin-card">
+                  <div class="card-header">
+                    <div>
+                      <h3>Agenda diaria</h3>
+                      <p class="card-subtitle">
+                        Consulta las reservas confirmadas y bloqueos activos en la fecha seleccionada.
+                      </p>
+                    </div>
+                    <div class="card-actions">
+                      <label class="inline-field">
+                        Fecha
+                        <input type="date" id="court-admin-date" />
+                      </label>
+                    </div>
+                  </div>
+                  <p class="status-message" id="court-admin-status"></p>
+                  <div id="court-admin-schedule">
+                    <p class="empty-state" id="court-admin-empty">
+                      Configura pistas en el perfil del club para comenzar a registrar reservas.
                     </p>
                   </div>
-                  <div class="card-actions">
-                    <label class="inline-field">
-                      Fecha
-                      <input type="date" id="court-admin-date" />
-                    </label>
-                  </div>
-                </div>
-                <p class="status-message" id="court-admin-status"></p>
-                <div id="court-admin-schedule">
-                  <p class="empty-state" id="court-admin-empty">
-                    Configura pistas en el perfil del club para comenzar a registrar reservas.
-                  </p>
-                </div>
-              </article>
+                </article>
+              </div>
             </section>
             <section id="section-account" class="app-section" hidden>
               <article class="card">

@@ -2,7 +2,9 @@ const { validationResult, body, query } = require('express-validator');
 const mongoose = require('mongoose');
 const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
-const { USER_ROLES, userHasRole } = require('../models/User');
+const { User, USER_ROLES, userHasRole } = require('../models/User');
+const { CourtBlock } = require('../models/CourtBlock');
+const { formatCourtBlock, buildContextLabelMap } = require('./courtBlockController');
 const {
   ensureReservationAvailability,
   DEFAULT_RESERVATION_DURATION_MINUTES,
@@ -45,6 +47,10 @@ function buildDayRange(dateInput) {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { start, end };
+}
+
+function hasCourtManagementAccess(user) {
+  return userHasRole(user, USER_ROLES.ADMIN) || userHasRole(user, USER_ROLES.COURT_MANAGER);
 }
 
 async function ensureCourtExists(courtName) {
@@ -106,6 +112,14 @@ const validateListReservations = [
     .optional()
     .isString()
     .withMessage('La pista debe ser un texto.'),
+  query('start')
+    .optional()
+    .custom((value) => toDate(value) !== null)
+    .withMessage('La fecha inicial no es válida.'),
+  query('end')
+    .optional()
+    .custom((value) => toDate(value) !== null)
+    .withMessage('La fecha final no es válida.'),
 ];
 
 async function createReservation(req, res) {
@@ -176,17 +190,30 @@ async function listReservations(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { date, court: rawCourt } = req.query;
+  const { date, court: rawCourt, start: rawStart, end: rawEnd } = req.query;
 
   const filters = {
     status: RESERVATION_STATUS.RESERVED,
   };
 
-  if (!userHasRole(req.user, USER_ROLES.ADMIN)) {
+  if (!hasCourtManagementAccess(req.user)) {
     filters.createdBy = req.user.id;
   }
 
-  if (date) {
+  const rangeConditions = [];
+  const startDate = toDate(rawStart);
+  const endDate = toDate(rawEnd);
+
+  if (startDate) {
+    rangeConditions.push({ endsAt: { $gt: startDate } });
+  }
+  if (endDate) {
+    rangeConditions.push({ startsAt: { $lt: endDate } });
+  }
+
+  if (rangeConditions.length) {
+    filters.$and = rangeConditions;
+  } else if (date) {
     const range = buildDayRange(date);
     if (range) {
       filters.startsAt = { $gte: range.start, $lt: range.end };
@@ -230,6 +257,7 @@ async function cancelReservation(req, res) {
 
   const isOwner = reservation.createdBy?.toString() === req.user.id.toString();
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
+  const isCourtManager = userHasRole(req.user, USER_ROLES.COURT_MANAGER);
 
   if (reservation.match) {
     return res.status(409).json({
@@ -237,7 +265,7 @@ async function cancelReservation(req, res) {
     });
   }
 
-  if (!isOwner && !isAdmin) {
+  if (!isOwner && !isAdmin && !isCourtManager) {
     return res.status(403).json({ message: 'No tienes permisos para cancelar esta reserva.' });
   }
 
@@ -284,9 +312,33 @@ async function getAvailability(req, res) {
       ],
     });
 
+  const blocks = await CourtBlock.find({
+    startsAt: { $lt: range.end },
+    endsAt: { $gt: range.start },
+  })
+    .sort({ startsAt: 1 })
+    .lean();
+
+  const blockLabels = await buildContextLabelMap(blocks);
+  const serializedBlocks = blocks
+    .map((block) => formatCourtBlock(block, blockLabels))
+    .filter(Boolean);
+
+  const blocksByCourt = new Map();
+  serializedBlocks.forEach((block) => {
+    const targetCourts = block.courts && block.courts.length ? block.courts : courts;
+    targetCourts.forEach((courtName) => {
+      if (!blocksByCourt.has(courtName)) {
+        blocksByCourt.set(courtName, []);
+      }
+      blocksByCourt.get(courtName).push(block);
+    });
+  });
+
   const grouped = courts.map((courtName) => ({
     court: courtName,
     reservations: [],
+    blocks: blocksByCourt.get(courtName) || [],
   }));
 
   reservations.forEach((reservation) => {
@@ -298,7 +350,7 @@ async function getAvailability(req, res) {
     }
   });
 
-  return res.json({ date: range.start, courts: grouped });
+  return res.json({ date: range.start, courts: grouped, blocks: serializedBlocks });
 }
 
 async function listReservationPlayers(req, res) {

@@ -71,7 +71,11 @@ async function register(req, res) {
   let roles = normalizeRoles(requestedRoles);
 
   if (adminExists) {
-    roles = normalizeRoles(roles.filter((item) => item !== USER_ROLES.ADMIN));
+    roles = normalizeRoles(
+      roles.filter(
+        (item) => item !== USER_ROLES.ADMIN && item !== USER_ROLES.COURT_MANAGER
+      )
+    );
   } else if (!roles.includes(USER_ROLES.ADMIN)) {
     roles = normalizeRoles([...roles, USER_ROLES.ADMIN]);
   }

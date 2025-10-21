@@ -1735,7 +1735,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin: 0;
 }
 
-.tag {
+.tag { 
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -1745,6 +1745,11 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   font-weight: 600;
   color: var(--accent-strong);
   background: rgba(37, 99, 235, 0.12);
+}
+
+.tag--block {
+  background: rgba(245, 158, 11, 0.18);
+  color: #92400e;
 }
 
 .tag.match-type-tag {
@@ -2536,13 +2541,22 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
-.calendar-day {  
+.calendar-day {
   border-radius: var(--radius-sm);
   padding: 1rem;
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(255, 255, 255, 0.85);
   display: grid;
   gap: 0.6rem;
+}
+
+.calendar-day--actionable {
+  cursor: pointer;
+}
+
+.calendar-day--actionable:focus {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 3px;
 }
 
 .calendar-day-header {
@@ -2570,12 +2584,41 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   gap: 0.3rem;
 }
 
+.calendar-event--reservation {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+.calendar-event--match {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.32);
+}
+
+.calendar-event--block {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.32);
+  color: #92400e;
+}
+
+.calendar-event--spanning {
+  border-style: dashed;
+}
+
 .calendar-event strong {
   font-size: 0.95rem;
 }
 
 .calendar-event .meta {
   font-size: 0.8rem;
+}
+
+.calendar-event-subtitle {
+  color: var(--text-secondary);
+}
+
+.calendar-event-notes {
+  color: #4b5563;
+  font-style: italic;
 }
 
 .calendar-day--muted {
@@ -2947,6 +2990,10 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   }
 }
 
+.courts-management-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
 .court-reservation-item {
   position: relative;
 }
@@ -2995,6 +3042,18 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-primary);
 }
 
+.court-availability-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: rgba(245, 158, 11, 0.14);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.85rem;
+  color: #92400e;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+}
+
 .court-schedule {
   background: #ffffff;
   border-radius: var(--radius-md);
@@ -3026,6 +3085,21 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   padding-top: 0;
 }
 
+.court-schedule-row--block {
+  background: rgba(245, 158, 11, 0.12);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  padding: 0.75rem 0.85rem;
+}
+
+.court-schedule-row--block .court-schedule-info {
+  color: #92400e;
+}
+
+.court-schedule-row--block .court-schedule-info span:first-child {
+  color: #7c2d12;
+}
+
 .court-schedule-info {
   display: flex;
   flex-direction: column;
@@ -3037,4 +3111,44 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .court-schedule-info span:first-child {
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.court-block-item {
+  display: grid;
+  gap: 0.5rem;
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.9rem 1rem;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+}
+
+.court-block-item__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.court-block-item__header strong {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.court-block-item__schedule,
+.court-block-item__courts,
+.court-block-item__notes {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.court-block-item__notes {
+  font-style: italic;
+}
+
+.court-block-item__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
 }
