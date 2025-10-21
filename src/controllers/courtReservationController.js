@@ -156,10 +156,9 @@ async function createReservation(req, res) {
     type: RESERVATION_TYPES.MANUAL,
   });
 
-  await reservation.populate([
-    { path: 'createdBy', select: 'fullName email roles' },
-    { path: 'participants', select: 'fullName email roles' },
-  ]);
+  await reservation
+    .populate('createdBy', 'fullName email roles')
+    .populate('participants', 'fullName email roles');
 
   return res.status(201).json(reservation);
 }
