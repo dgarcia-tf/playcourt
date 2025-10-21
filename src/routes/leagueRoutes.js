@@ -6,6 +6,8 @@ const {
   getLeagueDetail,
   updateLeague,
   deleteLeague,
+  addLeaguePaymentRecord,
+  updateLeaguePaymentRecord,
 } = require('../controllers/leagueController');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const { LEAGUE_STATUS } = require('../models/League');
@@ -109,6 +111,41 @@ router.delete(
   authorizeRoles('admin'),
   [param('leagueId').isMongoId()],
   deleteLeague
+);
+
+router.post(
+  '/:leagueId/payments',
+  authenticate,
+  authorizeRoles('admin'),
+  [
+    param('leagueId').isMongoId(),
+    body('user').optional({ nullable: true }).isMongoId(),
+    body('amount').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('status').optional().isIn(['pendiente', 'pagado', 'exento', 'fallido']),
+    body('method').optional({ nullable: true }).isString(),
+    body('reference').optional({ nullable: true }).isString(),
+    body('notes').optional({ nullable: true }).isString(),
+    body('paidAt').optional({ nullable: true }).isISO8601().toDate(),
+  ],
+  addLeaguePaymentRecord
+);
+
+router.patch(
+  '/:leagueId/payments/:paymentId',
+  authenticate,
+  authorizeRoles('admin'),
+  [
+    param('leagueId').isMongoId(),
+    param('paymentId').isMongoId(),
+    body('user').optional({ nullable: true }).isMongoId(),
+    body('amount').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('status').optional().isIn(['pendiente', 'pagado', 'exento', 'fallido']),
+    body('method').optional({ nullable: true }).isString(),
+    body('reference').optional({ nullable: true }).isString(),
+    body('notes').optional({ nullable: true }).isString(),
+    body('paidAt').optional({ nullable: true }).isISO8601().toDate(),
+  ],
+  updateLeaguePaymentRecord
 );
 
 module.exports = router;

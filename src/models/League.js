@@ -5,6 +5,44 @@ const LEAGUE_STATUS = {
   CLOSED: 'cerrada',
 };
 
+const paymentRecordSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    amount: {
+      type: Number,
+      min: 0,
+    },
+    status: {
+      type: String,
+      enum: ['pendiente', 'pagado', 'exento', 'fallido'],
+      default: 'pendiente',
+    },
+    method: {
+      type: String,
+      trim: true,
+    },
+    reference: {
+      type: String,
+      trim: true,
+    },
+    paidAt: {
+      type: Date,
+    },
+    notes: {
+      type: String,
+      trim: true,
+    },
+    recordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+  },
+  { timestamps: true }
+);
+
 const leagueSchema = new mongoose.Schema(
   {
     name: {
@@ -51,6 +89,10 @@ const leagueSchema = new mongoose.Schema(
     closedAt: {
       type: Date,
     },
+    payments: {
+      type: [paymentRecordSchema],
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -58,6 +100,7 @@ const leagueSchema = new mongoose.Schema(
 );
 
 leagueSchema.path('categories').default([]);
+leagueSchema.path('payments').default([]);
 
 leagueSchema.index(
   { year: 1, name: 1 },

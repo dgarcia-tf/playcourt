@@ -215,12 +215,139 @@ async function getLeagueDetail(req, res) {
 
   const { leagueId } = req.params;
 
-  const league = await League.findById(leagueId).populate('categories', 'name gender skillLevel color');
+  const league = await League.findById(leagueId)
+    .populate('categories', 'name gender skillLevel color')
+    .populate('payments.user', 'fullName email phone photo preferredSchedule')
+    .populate('payments.recordedBy', 'fullName email');
   if (!league) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
 
-  return res.json({ league });
+  const result = league.toObject();
+  result.payments = Array.isArray(result.payments) ? result.payments : [];
+
+  return res.json({ league: result });
+}
+
+async function addLeaguePaymentRecord(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { leagueId } = req.params;
+  const { user, amount, status, method, reference, notes, paidAt } = req.body;
+
+  const league = await League.findById(leagueId);
+  if (!league) {
+    return res.status(404).json({ message: 'Liga no encontrada' });
+  }
+
+  const record = {
+    status: PAYMENT_STATUSES.includes(status) ? status : 'pendiente',
+    recordedBy: req.user.id,
+  };
+
+  if (user) {
+    record.user = new mongoose.Types.ObjectId(user);
+  }
+
+  const numericAmount = Number(amount);
+  if (Number.isFinite(numericAmount) && numericAmount >= 0) {
+    record.amount = numericAmount;
+  } else if (Number.isFinite(Number(league.enrollmentFee))) {
+    record.amount = Number(league.enrollmentFee);
+  }
+
+  const trimmedMethod = typeof method === 'string' ? method.trim() : '';
+  if (trimmedMethod) {
+    record.method = trimmedMethod;
+  }
+
+  const trimmedReference = typeof reference === 'string' ? reference.trim() : '';
+  if (trimmedReference) {
+    record.reference = trimmedReference;
+  }
+
+  const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
+  if (trimmedNotes) {
+    record.notes = trimmedNotes;
+  }
+
+  if (paidAt) {
+    record.paidAt = new Date(paidAt);
+  }
+
+  league.payments.push(record);
+  await league.save();
+
+  await league.populate([
+    { path: 'payments.user', select: 'fullName email phone photo preferredSchedule' },
+    { path: 'payments.recordedBy', select: 'fullName email' },
+  ]);
+
+  return res.status(201).json(league.payments[league.payments.length - 1]);
+}
+
+async function updateLeaguePaymentRecord(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { leagueId, paymentId } = req.params;
+  const updates = req.body || {};
+
+  const league = await League.findById(leagueId);
+  if (!league) {
+    return res.status(404).json({ message: 'Liga no encontrada' });
+  }
+
+  const payment = league.payments.id(paymentId);
+  if (!payment) {
+    return res.status(404).json({ message: 'Registro de pago no encontrado' });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'user')) {
+    payment.user = updates.user ? new mongoose.Types.ObjectId(updates.user) : undefined;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'amount')) {
+    const numericAmount = Number(updates.amount);
+    if (Number.isFinite(numericAmount) && numericAmount >= 0) {
+      payment.amount = numericAmount;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'status')) {
+    if (PAYMENT_STATUSES.includes(updates.status)) {
+      payment.status = updates.status;
+    }
+  }
+
+  ['method', 'reference', 'notes'].forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(updates, field)) {
+      const value = typeof updates[field] === 'string' ? updates[field].trim() : updates[field];
+      payment[field] = value ? value : undefined;
+    }
+  });
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'paidAt')) {
+    payment.paidAt = updates.paidAt ? new Date(updates.paidAt) : undefined;
+  }
+
+  payment.recordedBy = req.user.id;
+
+  await league.save();
+
+  await league.populate([
+    { path: 'payments.user', select: 'fullName email phone photo preferredSchedule' },
+    { path: 'payments.recordedBy', select: 'fullName email' },
+  ]);
+
+  const updatedPayment = league.payments.id(paymentId);
+
+  return res.json(updatedPayment);
 }
 
 async function updateLeague(req, res) {
@@ -369,6 +496,10 @@ module.exports = {
   createLeague,
   listLeagues,
   getLeagueDetail,
+  addLeaguePaymentRecord,
+  updateLeaguePaymentRecord,
   updateLeague,
   deleteLeague,
 };
+const PAYMENT_STATUSES = ['pendiente', 'pagado', 'exento', 'fallido'];
+
