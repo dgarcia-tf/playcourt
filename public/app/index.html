@@ -191,6 +191,45 @@
                   </button>
                 </div>
               </div>
+              <div class="menu-group">
+                <button type="button" class="menu-button menu-button--parent" data-target="section-tournaments">
+                  Torneos
+                </button>
+                <div class="menu-submenu" role="group" aria-label="Secciones de torneos">
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-tournaments"
+                    data-parent-target="section-tournaments"
+                  >
+                    Resumen
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-tournament-categories"
+                    data-parent-target="section-tournaments"
+                  >
+                    Categorías
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-tournament-enrollments"
+                    data-parent-target="section-tournaments"
+                  >
+                    Jugadores inscritos
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-tournament-matches"
+                    data-parent-target="section-tournaments"
+                  >
+                    Partidos
+                  </button>
+                </div>
+              </div>
               <button type="button" class="menu-button" data-target="section-court-reservations">
                 Reservar pistas
               </button>
@@ -428,22 +467,116 @@
             </section>
 
             <section id="section-categories" class="app-section" hidden>
-          <article class="card" id="categories-card">
-            <div class="card-header">
-              <h3>Categorías activas</h3>
-              <button
-                type="button"
-                class="primary"
-                id="category-create-button"
-                data-admin-only="true"
-                data-admin-visible="toggle"
-                hidden
-              >
-                Nueva categoría
-              </button>
-            </div>
-            <ul class="list" id="categories-list"></ul>
-          </article>
+              <article class="card" id="categories-card">
+                <div class="card-header">
+                  <h3>Categorías activas</h3>
+                  <button
+                    type="button"
+                    class="primary"
+                    id="category-create-button"
+                    data-admin-only="true"
+                    data-admin-visible="toggle"
+                    hidden
+                  >
+                    Nueva categoría
+                  </button>
+                </div>
+                <ul class="list" id="categories-list"></ul>
+              </article>
+            </section>
+
+            <section id="section-tournaments" class="app-section" hidden>
+              <div class="tournament-grid">
+                <article class="card" id="tournaments-card">
+                  <div class="card-header">
+                    <div>
+                      <h3>Torneos disponibles</h3>
+                      <p class="card-subtitle">Consulta el estado y fechas de los torneos programados.</p>
+                    </div>
+                  </div>
+                  <ul class="list" id="tournaments-list"></ul>
+                </article>
+                <article class="card" id="tournament-detail-card">
+                  <div class="card-header">
+                    <div>
+                      <h3 id="tournament-detail-title">Detalle del torneo</h3>
+                      <p class="card-subtitle" id="tournament-detail-subtitle">
+                        Selecciona un torneo para ver la información ampliada.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="tournament-detail" id="tournament-detail-body"></div>
+                </article>
+              </div>
+            </section>
+
+            <section id="section-tournament-categories" class="app-section" hidden>
+              <article class="card" id="tournament-categories-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Categorías del torneo</h3>
+                    <p class="card-subtitle">Revisa las divisiones disponibles para cada torneo.</p>
+                  </div>
+                  <label class="inline-field">
+                    Torneo
+                    <select id="tournament-category-tournament"></select>
+                  </label>
+                </div>
+                <ul class="list" id="tournament-categories-list"></ul>
+                <p class="empty-state" id="tournament-categories-empty">
+                  Selecciona un torneo para consultar sus categorías.
+                </p>
+              </article>
+            </section>
+
+            <section id="section-tournament-enrollments" class="app-section" hidden>
+              <article class="card" id="tournament-enrollments-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Jugadores inscritos</h3>
+                    <p class="card-subtitle">Filtra por torneo y categoría para ver las inscripciones.</p>
+                  </div>
+                  <div class="card-actions">
+                    <label class="inline-field">
+                      Torneo
+                      <select id="tournament-enrollment-tournament"></select>
+                    </label>
+                    <label class="inline-field">
+                      Categoría
+                      <select id="tournament-enrollment-category" disabled></select>
+                    </label>
+                  </div>
+                </div>
+                <ul class="list" id="tournament-enrollment-list"></ul>
+                <p class="empty-state" id="tournament-enrollment-empty">
+                  Selecciona una categoría para mostrar las inscripciones registradas.
+                </p>
+              </article>
+            </section>
+
+            <section id="section-tournament-matches" class="app-section" hidden>
+              <article class="card" id="tournament-matches-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Partidos del torneo</h3>
+                    <p class="card-subtitle">Consulta los cruces planificados y sus horarios.</p>
+                  </div>
+                  <div class="card-actions">
+                    <label class="inline-field">
+                      Torneo
+                      <select id="tournament-match-tournament"></select>
+                    </label>
+                    <label class="inline-field">
+                      Categoría
+                      <select id="tournament-match-category" disabled></select>
+                    </label>
+                  </div>
+                </div>
+                <ul class="list" id="tournament-matches-list"></ul>
+                <p class="empty-state" id="tournament-matches-empty">
+                  Selecciona una categoría para revisar sus partidos.
+                </p>
+              </article>
             </section>
 
             <section id="section-matches" class="app-section" hidden>
