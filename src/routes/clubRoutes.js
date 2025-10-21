@@ -21,6 +21,7 @@ router.put(
     body('contactPhone').optional().isString().trim().isLength({ max: 40 }),
     body('website').optional().isString().trim().isLength({ max: 200 }),
     body('regulation').optional().isString().trim().isLength({ max: 5000 }),
+    body('tournamentRegulation').optional().isString().trim().isLength({ max: 5000 }),
     body('logo')
       .optional({ checkFalsy: true })
       .custom((value) => isValidImageDataUrl(value))

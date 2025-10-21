@@ -92,6 +92,11 @@ const clubSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    tournamentRegulation: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     logo: {
       type: String,
       trim: true,
