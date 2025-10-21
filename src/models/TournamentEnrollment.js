@@ -39,6 +39,10 @@ const tournamentEnrollmentSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    shirtSize: {
+      type: String,
+      trim: true,
+    },
     metadata: {
       type: Map,
       of: String,

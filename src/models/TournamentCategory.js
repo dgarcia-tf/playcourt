@@ -129,6 +129,10 @@ const tournamentCategorySchema = new mongoose.Schema(
       type: [bracketRoundSchema],
       default: [],
     },
+    consolationDraw: {
+      type: [bracketRoundSchema],
+      default: [],
+    },
     seeds: {
       type: [seedSchema],
       default: [],
@@ -149,6 +153,7 @@ const uniqueIndexOptions = {
 tournamentCategorySchema.index({ tournament: 1, name: 1, gender: 1 }, uniqueIndexOptions);
 
 tournamentCategorySchema.path('draw').default([]);
+tournamentCategorySchema.path('consolationDraw').default([]);
 tournamentCategorySchema.path('seeds').default([]);
 
 tournamentCategorySchema.methods.normalizeMenuTitle = function normalizeMenuTitle() {

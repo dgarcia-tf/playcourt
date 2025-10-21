@@ -8,6 +8,12 @@ const TOURNAMENT_MATCH_STATUS = {
   COMPLETED: 'completado',
 };
 
+const TOURNAMENT_BRACKETS = {
+  MAIN: 'principal',
+  CONSOLATION: 'consolacion',
+  MANUAL: 'manual',
+};
+
 const confirmationSchema = new mongoose.Schema(
   {
     status: {
@@ -48,6 +54,17 @@ const tournamentMatchSchema = new mongoose.Schema(
       type: Number,
       min: 1,
     },
+    roundOrder: {
+      type: Number,
+      min: 1,
+      default: 1,
+    },
+    bracketType: {
+      type: String,
+      enum: Object.values(TOURNAMENT_BRACKETS),
+      default: TOURNAMENT_BRACKETS.MANUAL,
+      index: true,
+    },
     players: {
       type: [
         {
@@ -57,10 +74,11 @@ const tournamentMatchSchema = new mongoose.Schema(
       ],
       validate: {
         validator(value) {
-          return Array.isArray(value) && value.length === 2;
+          return Array.isArray(value) && value.length <= 2;
         },
-        message: 'Un partido debe tener exactamente dos jugadores',
+        message: 'Un partido no puede tener más de dos jugadores',
       },
+      default: [],
     },
     scheduledAt: {
       type: Date,
@@ -78,6 +96,31 @@ const tournamentMatchSchema = new mongoose.Schema(
       type: Map,
       of: confirmationSchema,
       default: () => ({}),
+    },
+    previousMatches: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'TournamentMatch',
+        },
+      ],
+      default: [],
+    },
+    nextMatch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TournamentMatch',
+    },
+    nextMatchSlot: {
+      type: Number,
+      enum: [0, 1],
+    },
+    loserNextMatch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TournamentMatch',
+    },
+    loserNextMatchSlot: {
+      type: Number,
+      enum: [0, 1],
     },
     result: {
       winner: {
@@ -99,6 +142,36 @@ const tournamentMatchSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
       },
+    },
+    resultStatus: {
+      type: String,
+      enum: ['sin_resultado', 'pendiente_admin', 'revision_requerida', 'confirmado'],
+      default: 'sin_resultado',
+    },
+    resultProposals: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          winner: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+          },
+          score: {
+            type: String,
+            trim: true,
+          },
+          notes: {
+            type: String,
+            trim: true,
+          },
+          submittedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+        { _id: false }
+      ),
+      default: () => ({}),
     },
     notifications: {
       type: [
@@ -125,4 +198,5 @@ tournamentMatchSchema.index({ status: 1, scheduledAt: 1 });
 module.exports = {
   TournamentMatch: mongoose.model('TournamentMatch', tournamentMatchSchema),
   TOURNAMENT_MATCH_STATUS,
+  TOURNAMENT_BRACKETS,
 };

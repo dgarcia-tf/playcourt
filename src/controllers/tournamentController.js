@@ -1,5 +1,7 @@
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const { Tournament, TOURNAMENT_STATUS } = require('../models/Tournament');
 const {
   TournamentCategory,
@@ -10,6 +12,31 @@ const {
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
 const { TournamentMatch } = require('../models/TournamentMatch');
+
+const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
+const POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'tournaments');
+
+async function removeFileIfExists(filePath) {
+  if (!filePath) {
+    return;
+  }
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+}
+
+function buildPosterPublicPath(filename) {
+  if (!filename) {
+    return undefined;
+  }
+
+  return path.posix.join('uploads', 'tournaments', filename);
+}
 
 function normalizeFeeCollection(fees = []) {
   if (!Array.isArray(fees)) {
@@ -41,6 +68,22 @@ function normalizeFeeCollection(fees = []) {
   return normalized;
 }
 
+function normalizeShirtSizes(sizes, hasShirt) {
+  if (!hasShirt) {
+    return [];
+  }
+
+  if (!Array.isArray(sizes)) {
+    return [];
+  }
+
+  const normalized = sizes
+    .map((size) => (typeof size === 'string' ? size.trim() : ''))
+    .filter((size, index, array) => size && array.indexOf(size) === index);
+
+  return normalized;
+}
+
 async function createTournament(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -56,6 +99,8 @@ async function createTournament(req, res) {
     poster,
     fees = [],
     status,
+    hasShirt = false,
+    shirtSizes = [],
   } = req.body;
 
   if (startDate && endDate && endDate < startDate) {
@@ -75,6 +120,8 @@ async function createTournament(req, res) {
     poster,
     fees: normalizeFeeCollection(fees),
     createdBy: req.user.id,
+    hasShirt: Boolean(hasShirt),
+    shirtSizes: normalizeShirtSizes(shirtSizes, Boolean(hasShirt)),
   };
 
   if (status && Object.values(TOURNAMENT_STATUS).includes(status)) {
@@ -186,6 +233,8 @@ async function getTournamentDetail(req, res) {
 
   const result = tournament.toObject();
   result.categories = categoriesWithStats;
+  result.materials = Array.isArray(result.materials) ? result.materials : [];
+  result.payments = Array.isArray(result.payments) ? result.payments : [];
 
   return res.json(result);
 }
@@ -230,6 +279,17 @@ async function updateTournament(req, res) {
     }
   );
 
+  if (Object.prototype.hasOwnProperty.call(updates, 'hasShirt')) {
+    tournament.hasShirt = Boolean(updates.hasShirt);
+    if (!tournament.hasShirt) {
+      tournament.shirtSizes = [];
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'shirtSizes')) {
+    tournament.shirtSizes = normalizeShirtSizes(updates.shirtSizes, tournament.hasShirt);
+  }
+
   if (updates.status && Object.values(TOURNAMENT_STATUS).includes(updates.status)) {
     tournament.status = updates.status;
   }
@@ -238,6 +298,47 @@ async function updateTournament(req, res) {
   await tournament.populate('categories');
 
   return res.json(tournament);
+}
+
+async function uploadTournamentPoster(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId } = req.params;
+  const { file } = req;
+
+  if (!file) {
+    return res.status(400).json({ message: 'No se recibió ningún archivo de imagen' });
+  }
+
+  const tournament = await Tournament.findById(tournamentId);
+  if (!tournament) {
+    await removeFileIfExists(file.path);
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  const previousPosterFile = tournament.posterFile?.filename
+    ? path.join(POSTER_UPLOAD_DIR, tournament.posterFile.filename)
+    : null;
+
+  const relativePosterPath = buildPosterPublicPath(file.filename);
+  tournament.poster = relativePosterPath ? `/${relativePosterPath}` : undefined;
+  tournament.posterFile = {
+    filename: file.filename,
+    mimetype: file.mimetype,
+    size: file.size,
+    uploadedAt: new Date(),
+  };
+
+  await tournament.save();
+
+  if (previousPosterFile) {
+    await removeFileIfExists(previousPosterFile);
+  }
+
+  return res.status(201).json({ poster: tournament.poster, posterFile: tournament.posterFile });
 }
 
 async function deleteTournament(req, res) {
@@ -461,6 +562,7 @@ module.exports = {
   removeMaterialRecord,
   addPaymentRecord,
   updatePaymentRecord,
+  uploadTournamentPoster,
   TOURNAMENT_STATUS,
   TOURNAMENT_CATEGORY_STATUSES,
   TOURNAMENT_ENROLLMENT_STATUS,

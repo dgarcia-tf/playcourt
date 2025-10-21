@@ -21,6 +21,8 @@ function createApp() {
 
   const appDirectory = path.join(__dirname, '..', 'public', 'app');
   app.use(express.static(appDirectory));
+  const uploadsDirectory = path.join(__dirname, '..', 'public', 'uploads');
+  app.use('/uploads', express.static(uploadsDirectory));
 
   app.get('/health', (req, res) => {
     res.json({ status: 'ok' });

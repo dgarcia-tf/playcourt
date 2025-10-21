@@ -36,6 +36,7 @@ async function createTournamentEnrollment(req, res) {
 
   const { tournamentId, categoryId } = req.params;
   const requestedUserId = req.body?.userId;
+  const requestedShirtSize = typeof req.body?.shirtSize === 'string' ? req.body.shirtSize.trim() : '';
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
   const playerId = requestedUserId && (isAdmin || requestedUserId === req.user.id)
     ? requestedUserId
@@ -70,12 +71,27 @@ async function createTournamentEnrollment(req, res) {
     return res.status(400).json({ message: 'El género del jugador no coincide con la categoría' });
   }
 
+  if (tournament.hasShirt && !requestedShirtSize) {
+    return res.status(400).json({ message: 'Debe indicar la talla de camiseta para completar la inscripción' });
+  }
+
+  if (
+    requestedShirtSize &&
+    tournament.hasShirt &&
+    Array.isArray(tournament.shirtSizes) &&
+    tournament.shirtSizes.length &&
+    !tournament.shirtSizes.includes(requestedShirtSize)
+  ) {
+    return res.status(400).json({ message: 'La talla de camiseta seleccionada no es válida para este torneo' });
+  }
+
   try {
     const enrollment = await TournamentEnrollment.create({
       tournament: tournament.id,
       category: category.id,
       user: user.id,
       status: TOURNAMENT_ENROLLMENT_STATUS.PENDING,
+      shirtSize: requestedShirtSize || undefined,
     });
 
     await enrollment.populate('user', 'fullName email gender phone photo');
@@ -114,6 +130,18 @@ async function updateEnrollmentStatus(req, res) {
 
   const { tournamentId, categoryId, enrollmentId } = req.params;
   const { status } = req.body;
+  const requestedShirtSize = Object.prototype.hasOwnProperty.call(req.body, 'shirtSize')
+    ? typeof req.body.shirtSize === 'string'
+      ? req.body.shirtSize.trim()
+      : ''
+    : undefined;
+
+  let context;
+  try {
+    context = await ensureTournamentAndCategory(tournamentId, categoryId);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
 
   const enrollment = await TournamentEnrollment.findOne({
     _id: enrollmentId,
@@ -125,11 +153,36 @@ async function updateEnrollmentStatus(req, res) {
     return res.status(404).json({ message: 'Inscripción no encontrada' });
   }
 
-  if (!Object.values(TOURNAMENT_ENROLLMENT_STATUS).includes(status)) {
+  if (status && !Object.values(TOURNAMENT_ENROLLMENT_STATUS).includes(status)) {
     return res.status(400).json({ message: 'Estado de inscripción inválido' });
   }
 
-  enrollment.status = status;
+  if (status) {
+    enrollment.status = status;
+  }
+
+  if (typeof requestedShirtSize !== 'undefined') {
+    if (context.tournament.hasShirt && !requestedShirtSize) {
+      return res
+        .status(400)
+        .json({ message: 'Debe indicar la talla de camiseta cuando el torneo incluye camisetas' });
+    }
+
+    if (
+      requestedShirtSize &&
+      context.tournament.hasShirt &&
+      Array.isArray(context.tournament.shirtSizes) &&
+      context.tournament.shirtSizes.length &&
+      !context.tournament.shirtSizes.includes(requestedShirtSize)
+    ) {
+      return res
+        .status(400)
+        .json({ message: 'La talla de camiseta seleccionada no es válida para este torneo' });
+    }
+
+    enrollment.shirtSize = requestedShirtSize || undefined;
+  }
+
   await enrollment.save();
 
   return res.json(enrollment);
