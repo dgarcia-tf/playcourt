@@ -7,6 +7,22 @@ const MAX_NOTICE_ATTACHMENT_SIZE = 3 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENTS = 5;
 const CALENDAR_TIME_SLOT_MINUTES = 15;
 const CALENDAR_TIME_SLOT_STEP_SECONDS = CALENDAR_TIME_SLOT_MINUTES * 60;
+const COURT_RESERVATION_DEFAULT_DURATION = 90;
+
+const COURT_MATCH_TYPES = {
+  SINGLES: 'singles',
+  DOUBLES: 'dobles',
+};
+
+const COURT_MATCH_TYPE_LABELS = {
+  [COURT_MATCH_TYPES.SINGLES]: 'Individual',
+  [COURT_MATCH_TYPES.DOUBLES]: 'Dobles',
+};
+
+const COURT_MATCH_TYPE_PLAYER_COUNT = {
+  [COURT_MATCH_TYPES.SINGLES]: 2,
+  [COURT_MATCH_TYPES.DOUBLES]: 4,
+};
 
 const SCHEDULE_LABELS = {
   manana: 'Mañana',
@@ -363,6 +379,280 @@ function getClubCourtNames() {
   return Array.from(new Set(names));
 }
 
+function populateCourtReservationCourts() {
+  if (!courtReservationCourtSelect) {
+    return;
+  }
+
+  const currentValue = courtReservationCourtSelect.value;
+  const courtNames = getClubCourtNames();
+  courtReservationCourtSelect.innerHTML = '';
+
+  if (!courtNames.length) {
+    const option = new Option('Añade pistas en la sección del club para habilitar las reservas', '');
+    option.disabled = true;
+    option.selected = true;
+    courtReservationCourtSelect.appendChild(option);
+    courtReservationCourtSelect.disabled = true;
+    if (courtReservationSubmit) {
+      courtReservationSubmit.disabled = true;
+    }
+    return;
+  }
+
+  courtReservationCourtSelect.disabled = false;
+  if (courtReservationSubmit) {
+    courtReservationSubmit.disabled = false;
+  }
+
+  let resolvedValue = currentValue && courtNames.includes(currentValue) ? currentValue : courtNames[0];
+  courtNames.forEach((name) => {
+    const option = new Option(name, name, false, name === resolvedValue);
+    courtReservationCourtSelect.appendChild(option);
+  });
+  courtReservationCourtSelect.value = resolvedValue;
+}
+
+async function loadReservationPlayers({ force = false } = {}) {
+  if (!state.token) {
+    return;
+  }
+
+  if (!force && state.reservationPlayersLoaded && state.reservationPlayers.length) {
+    return;
+  }
+
+  state.reservationPlayersLoading = true;
+  renderCourtReservationParticipants();
+
+  try {
+    const players = await request('/courts/reservations/players');
+    state.reservationPlayers = Array.isArray(players) ? players : [];
+    state.reservationPlayersLoaded = true;
+  } catch (error) {
+    state.reservationPlayers = [];
+    state.reservationPlayersLoaded = false;
+    throw error;
+  } finally {
+    state.reservationPlayersLoading = false;
+    renderCourtReservationParticipants();
+  }
+}
+
+function getCourtReservationMatchType() {
+  const value = courtReservationMatchTypeSelect?.value;
+  if (value === COURT_MATCH_TYPES.DOUBLES) {
+    return COURT_MATCH_TYPES.DOUBLES;
+  }
+  return COURT_MATCH_TYPES.SINGLES;
+}
+
+function getAdditionalReservationPlayerCount(matchType = getCourtReservationMatchType()) {
+  const requiredPlayers = COURT_MATCH_TYPE_PLAYER_COUNT[matchType];
+  const normalized = Number.isFinite(requiredPlayers)
+    ? requiredPlayers
+    : COURT_MATCH_TYPE_PLAYER_COUNT[COURT_MATCH_TYPES.SINGLES];
+  return Math.max((normalized || 0) - 1, 0);
+}
+
+function getReservationPlayerOptions() {
+  const players = Array.isArray(state.reservationPlayers) ? state.reservationPlayers : [];
+  const currentUserId = normalizeId(state.user);
+  return players
+    .map((player) => ({
+      id: normalizeId(player),
+      fullName: player?.fullName || '',
+      email: player?.email || '',
+    }))
+    .filter((player) => player.id && player.id !== currentUserId)
+    .sort((a, b) => {
+      const labelA = (a.fullName || a.email || '').toLocaleLowerCase('es');
+      const labelB = (b.fullName || b.email || '').toLocaleLowerCase('es');
+      return labelA.localeCompare(labelB, 'es');
+    });
+}
+
+function updateReservationParticipantOptionState() {
+  if (!courtReservationParticipantsContainer) {
+    return;
+  }
+
+  const selects = Array.from(
+    courtReservationParticipantsContainer.querySelectorAll('select[data-participant-select]')
+  );
+
+  if (!selects.length) {
+    return;
+  }
+
+  const selectedValues = selects.map((select) => select.value);
+  selects.forEach((select, index) => {
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) return;
+      const isSelectedElsewhere = selectedValues.some(
+        (value, valueIndex) => value && value === option.value && valueIndex !== index
+      );
+      option.disabled = isSelectedElsewhere;
+    });
+  });
+}
+
+function renderCourtReservationParticipants() {
+  if (!courtReservationParticipantsContainer) {
+    return;
+  }
+
+  const matchType = getCourtReservationMatchType();
+  const additionalPlayers = getAdditionalReservationPlayerCount(matchType);
+  const previousSelections = Array.from(
+    courtReservationParticipantsContainer.querySelectorAll('select[data-participant-select]')
+  ).map((select) => select.value);
+
+  courtReservationParticipantsContainer.innerHTML = '';
+
+  if (courtReservationParticipantsHint) {
+    if (additionalPlayers <= 0) {
+      courtReservationParticipantsHint.hidden = true;
+    } else if (!state.reservationPlayersLoading) {
+      courtReservationParticipantsHint.hidden = false;
+      courtReservationParticipantsHint.textContent =
+        defaultCourtReservationParticipantsHint ||
+        'Selecciona a tu rival o al resto de jugadores para confirmar la reserva.';
+    }
+  }
+
+  if (additionalPlayers <= 0) {
+    courtReservationParticipantsContainer.hidden = true;
+    return;
+  }
+
+  courtReservationParticipantsContainer.hidden = false;
+
+  if (state.reservationPlayersLoading) {
+    const loading = document.createElement('p');
+    loading.className = 'meta';
+    loading.textContent = 'Cargando jugadores disponibles...';
+    courtReservationParticipantsContainer.appendChild(loading);
+    return;
+  }
+
+  const options = getReservationPlayerOptions();
+  if (!options.length) {
+    const empty = document.createElement('p');
+    empty.className = 'meta';
+    empty.textContent = 'No hay jugadores disponibles para seleccionar.';
+    courtReservationParticipantsContainer.appendChild(empty);
+    if (courtReservationParticipantsHint) {
+      courtReservationParticipantsHint.hidden = true;
+    }
+    return;
+  }
+
+  const labelsByMatchType = {
+    [COURT_MATCH_TYPES.SINGLES]: ['Rival'],
+    [COURT_MATCH_TYPES.DOUBLES]: ['Compañero/a', 'Rival 1', 'Rival 2'],
+  };
+  const labels = labelsByMatchType[matchType] || [];
+
+  for (let index = 0; index < additionalPlayers; index += 1) {
+    const wrapper = document.createElement('label');
+    wrapper.className = 'inline-field';
+
+    const title = document.createElement('span');
+    title.textContent = labels[index] || `Jugador ${index + 2}`;
+    wrapper.appendChild(title);
+
+    const select = document.createElement('select');
+    select.required = true;
+    select.dataset.participantSelect = 'true';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Selecciona un jugador';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+
+    options.forEach((player) => {
+      const option = document.createElement('option');
+      option.value = player.id;
+      option.textContent = player.fullName || player.email || 'Jugador';
+      select.appendChild(option);
+    });
+
+    const previousValue = previousSelections[index];
+    if (previousValue && options.some((player) => player.id === previousValue)) {
+      select.value = previousValue;
+    }
+
+    wrapper.appendChild(select);
+    courtReservationParticipantsContainer.appendChild(wrapper);
+  }
+
+  updateReservationParticipantOptionState();
+}
+
+function collectReservationParticipantIds() {
+  if (!courtReservationParticipantsContainer) {
+    return { values: [], unique: [], missing: false, hasDuplicates: false };
+  }
+
+  const selects = Array.from(
+    courtReservationParticipantsContainer.querySelectorAll('select[data-participant-select]')
+  );
+  if (!selects.length) {
+    return { values: [], unique: [], missing: false, hasDuplicates: false };
+  }
+
+  const values = [];
+  let missing = false;
+  selects.forEach((select) => {
+    const value = select.value;
+    if (!value) {
+      missing = true;
+    } else {
+      values.push(value);
+    }
+  });
+
+  const unique = Array.from(new Set(values));
+  const hasDuplicates = unique.length !== values.length;
+  return { values, unique, missing, hasDuplicates };
+}
+
+function resetCourtReservationForm() {
+  if (!courtReservationForm) {
+    return;
+  }
+
+  const baseDate = roundDateUpToInterval(new Date(), CALENDAR_TIME_SLOT_MINUTES);
+  const dateValue = formatDateInput(baseDate);
+  const timeValue = formatTimeInputValue(baseDate);
+  if (courtReservationDateInput) {
+    courtReservationDateInput.value = dateValue;
+  }
+  if (courtReservationTimeInput) {
+    courtReservationTimeInput.value = timeValue;
+  }
+  if (courtReservationDurationSelect) {
+    courtReservationDurationSelect.value = String(COURT_RESERVATION_DEFAULT_DURATION);
+  }
+  if (courtReservationMatchTypeSelect) {
+    courtReservationMatchTypeSelect.value = COURT_MATCH_TYPES.SINGLES;
+  }
+  if (courtReservationNotesInput) {
+    courtReservationNotesInput.value = '';
+  }
+  populateCourtReservationCourts();
+  renderCourtReservationParticipants();
+  if (state.token) {
+    loadReservationPlayers().catch(() => {
+      /* Silenciar errores iniciales */
+    });
+  }
+  setStatusMessage(courtReservationStatus, '', '');
+}
+
 function getPlayerDisplayName(player) {
   if (!player) return 'Jugador';
   if (player.fullName) return player.fullName;
@@ -602,6 +892,14 @@ const state = {
     role: '',
     category: '',
   },
+  courtReservations: [],
+  courtAvailability: [],
+  courtAvailabilityDate: new Date(),
+  courtAdminDate: new Date(),
+  courtAdminSchedule: [],
+  reservationPlayers: [],
+  reservationPlayersLoaded: false,
+  reservationPlayersLoading: false,
   push: {
     supported: PUSH_SUPPORTED,
     permission: PUSH_SUPPORTED ? Notification.permission : 'default',
@@ -679,6 +977,28 @@ const clubFacilitiesList = document.getElementById('club-facilities-list');
 const clubFacilitiesEmpty = document.getElementById('club-facilities-empty');
 const clubEditButton = document.getElementById('club-edit-button');
 const clubStatus = document.getElementById('club-status');
+const courtReservationForm = document.getElementById('court-reservation-form');
+const courtReservationDateInput = document.getElementById('court-reservation-date');
+const courtReservationTimeInput = document.getElementById('court-reservation-time');
+const courtReservationDurationSelect = document.getElementById('court-reservation-duration');
+const courtReservationCourtSelect = document.getElementById('court-reservation-court');
+const courtReservationMatchTypeSelect = document.getElementById('court-reservation-match-type');
+const courtReservationParticipantsContainer = document.getElementById('court-reservation-participants');
+const courtReservationParticipantsHint = document.getElementById('court-reservation-participants-hint');
+const courtReservationNotesInput = document.getElementById('court-reservation-notes');
+const courtReservationStatus = document.getElementById('court-reservation-status');
+const courtReservationSubmit = document.getElementById('court-reservation-submit');
+const courtReservationList = document.getElementById('court-reservation-list');
+const courtReservationEmpty = document.getElementById('court-reservation-empty');
+const defaultCourtReservationParticipantsHint =
+  courtReservationParticipantsHint?.textContent?.trim() || '';
+const courtAvailabilityDateInput = document.getElementById('court-availability-date');
+const courtAvailabilityList = document.getElementById('court-availability-list');
+const courtAvailabilityEmpty = document.getElementById('court-availability-empty');
+const courtAdminDateInput = document.getElementById('court-admin-date');
+const courtAdminSchedule = document.getElementById('court-admin-schedule');
+const courtAdminEmpty = document.getElementById('court-admin-empty');
+const courtAdminStatus = document.getElementById('court-admin-status');
 const rankingPrintButton = document.getElementById('ranking-print-button');
 const logoutButtons = Array.from(document.querySelectorAll('[data-action="logout"]'));
 const globalMessage = document.getElementById('global-message');
@@ -1889,6 +2209,12 @@ function resetData() {
   state.dashboardSummary = null;
   state.dashboardCategoryId = '';
   state.matchesCategoryId = '';
+  state.courtReservations = [];
+  state.courtAvailability = [];
+  state.courtAdminSchedule = [];
+  state.reservationPlayers = [];
+  state.reservationPlayersLoaded = false;
+  state.reservationPlayersLoading = false;
   state.generalChatMessages = [];
   state.noticeUnreadCount = 0;
   updateCategoryControlsAvailability();
@@ -1905,6 +2231,32 @@ function resetData() {
   if (pendingApprovalsList) {
     pendingApprovalsList.innerHTML =
       '<li class="empty-state">Inicia sesión para consultar los resultados pendientes.</li>';
+  }
+  if (courtReservationList) {
+    courtReservationList.innerHTML =
+      '<li class="empty-state">Inicia sesión para gestionar tus reservas.</li>';
+  }
+  if (courtAvailabilityList) {
+    courtAvailabilityList.innerHTML =
+      '<li class="empty-state">Inicia sesión para consultar la disponibilidad de pistas.</li>';
+  }
+  if (courtAvailabilityEmpty) {
+    courtAvailabilityEmpty.hidden = false;
+  }
+  if (courtAdminSchedule) {
+    courtAdminSchedule.innerHTML =
+      '<p class="meta">Inicia sesión con una cuenta administradora para ver el detalle de reservas.</p>';
+  }
+  if (courtAdminEmpty) {
+    courtAdminEmpty.hidden = false;
+  }
+  if (courtReservationParticipantsContainer) {
+    courtReservationParticipantsContainer.innerHTML = '';
+    courtReservationParticipantsContainer.hidden = true;
+  }
+  if (courtReservationParticipantsHint) {
+    courtReservationParticipantsHint.hidden = true;
+    courtReservationParticipantsHint.textContent = defaultCourtReservationParticipantsHint;
   }
   if (completedMatchesList) {
     completedMatchesList.innerHTML =
@@ -2263,6 +2615,12 @@ function formatTime(value) {
   }
 }
 
+function formatTimeRangeLabel(start, end) {
+  const startLabel = formatTime(start);
+  const endLabel = formatTime(end);
+  return `${startLabel} – ${endLabel}`;
+}
+
 function formatDateOnly(value, options = {}) {
   try {
     return new Intl.DateTimeFormat('es-ES', {
@@ -2349,6 +2707,29 @@ function formatDateTimeLocal(value) {
   const hours = `${date.getHours()}`.padStart(2, '0');
   const minutes = `${date.getMinutes()}`.padStart(2, '0');
   return `${datePart}T${hours}:${minutes}`;
+}
+
+function formatTimeInputValue(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function combineDateAndTime(dateValue, timeValue) {
+  if (!dateValue || !timeValue) {
+    return null;
+  }
+  const isoString = `${dateValue}T${timeValue}`;
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
 }
 
 function hasActiveLeagues() {
@@ -3558,6 +3939,73 @@ async function loadDashboardSummary(categoryId = '') {
   }
 }
 
+async function loadPlayerCourtData() {
+  if (!state.token) {
+    return;
+  }
+
+  try {
+    const reservations = await request('/courts/reservations');
+    state.courtReservations = Array.isArray(reservations) ? reservations : [];
+    renderCourtReservations();
+  } catch (error) {
+    state.courtReservations = [];
+    renderCourtReservations();
+    showGlobalMessage(error.message, 'error');
+  }
+
+  await refreshCourtAvailability('player');
+}
+
+async function refreshCourtAvailability(scope = 'player') {
+  const targetDate = scope === 'admin' ? state.courtAdminDate : state.courtAvailabilityDate;
+  const formatted = formatDateInput(targetDate) || formatDateInput(new Date());
+  if (!formatted) {
+    return;
+  }
+
+  if (scope === 'admin' && courtAdminStatus) {
+    setStatusMessage(courtAdminStatus, 'info', 'Cargando reservas...');
+  }
+
+  try {
+    const availability = await request(`/courts/availability?date=${formatted}`);
+    const courts = Array.isArray(availability?.courts) ? availability.courts : [];
+    if (scope === 'admin') {
+      state.courtAdminSchedule = courts;
+      renderCourtAdminSchedule();
+      if (courtAdminStatus) {
+        setStatusMessage(courtAdminStatus, '', '');
+      }
+    } else {
+      state.courtAvailability = courts;
+      renderCourtAvailability();
+    }
+  } catch (error) {
+    if (scope === 'admin') {
+      state.courtAdminSchedule = [];
+      renderCourtAdminSchedule();
+      if (courtAdminStatus) {
+        setStatusMessage(courtAdminStatus, 'error', error.message);
+      }
+    } else {
+      state.courtAvailability = [];
+      renderCourtAvailability();
+      showGlobalMessage(error.message, 'error');
+    }
+  }
+}
+
+async function loadAdminCourtData() {
+  if (!isAdmin()) {
+    state.courtAdminSchedule = [];
+    renderCourtAdminSchedule();
+    return;
+  }
+
+  await refreshCourtAvailability('admin');
+}
+
 function renderMatches(matches = [], container, emptyMessage) {
   if (!container) return;
   container.innerHTML = '';
@@ -3722,6 +4170,345 @@ function renderMatches(matches = [], container, emptyMessage) {
 
     container.appendChild(item);
   });
+}
+
+function getReservationParticipants(reservation) {
+  if (!reservation) {
+    return [];
+  }
+  if (Array.isArray(reservation.participants) && reservation.participants.length) {
+    return reservation.participants;
+  }
+  if (reservation.match && Array.isArray(reservation.match.players) && reservation.match.players.length) {
+    return reservation.match.players;
+  }
+  if (reservation.createdBy) {
+    return [reservation.createdBy];
+  }
+  return [];
+}
+
+function inferReservationMatchType(reservation) {
+  if (!reservation) {
+    return COURT_MATCH_TYPES.SINGLES;
+  }
+
+  const rawType = reservation.matchType;
+  if (rawType === COURT_MATCH_TYPES.DOUBLES || rawType === COURT_MATCH_TYPES.SINGLES) {
+    return rawType;
+  }
+
+  const participants = getReservationParticipants(reservation);
+  if (participants.length >= COURT_MATCH_TYPE_PLAYER_COUNT[COURT_MATCH_TYPES.DOUBLES]) {
+    return COURT_MATCH_TYPES.DOUBLES;
+  }
+
+  return COURT_MATCH_TYPES.SINGLES;
+}
+
+function getReservationMatchTypeLabel(reservation) {
+  const type = inferReservationMatchType(reservation);
+  return COURT_MATCH_TYPE_LABELS[type] || COURT_MATCH_TYPE_LABELS[COURT_MATCH_TYPES.SINGLES];
+}
+
+function renderCourtReservations() {
+  if (!courtReservationList) {
+    return;
+  }
+
+  const reservations = Array.isArray(state.courtReservations) ? state.courtReservations.slice() : [];
+  reservations.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+  courtReservationList.innerHTML = '';
+
+  if (!reservations.length) {
+    if (courtReservationEmpty) {
+      courtReservationEmpty.hidden = false;
+    }
+    return;
+  }
+
+  if (courtReservationEmpty) {
+    courtReservationEmpty.hidden = true;
+  }
+
+  reservations.forEach((reservation) => {
+    const item = document.createElement('li');
+    item.className = 'court-reservation-item';
+    if (reservation.status === 'cancelada') {
+      item.classList.add('court-reservation-item--cancelled');
+    }
+
+    const reservationId = reservation._id || reservation.id;
+    if (reservationId) {
+      item.dataset.reservationId = reservationId;
+    }
+
+    const title = document.createElement('strong');
+    title.textContent = reservation.court ? `Pista ${reservation.court}` : 'Pista por confirmar';
+    item.appendChild(title);
+
+    const scheduleRow = document.createElement('div');
+    scheduleRow.className = 'meta';
+    scheduleRow.appendChild(document.createElement('span')).textContent = formatDate(reservation.startsAt);
+    scheduleRow.appendChild(document.createElement('span')).textContent = formatTimeRangeLabel(
+      reservation.startsAt,
+      reservation.endsAt
+    );
+    if (reservation.type === 'partido' || reservation.match) {
+      const matchTag = document.createElement('span');
+      matchTag.className = 'tag';
+      matchTag.textContent = 'Partido';
+      scheduleRow.appendChild(matchTag);
+    } else {
+      const manualTag = document.createElement('span');
+      manualTag.className = 'tag';
+      manualTag.textContent = 'Reserva';
+      scheduleRow.appendChild(manualTag);
+    }
+    const matchTypeTag = document.createElement('span');
+    matchTypeTag.className = 'tag match-type-tag';
+    matchTypeTag.textContent = getReservationMatchTypeLabel(reservation);
+    scheduleRow.appendChild(matchTypeTag);
+    if (reservation.status === 'cancelada') {
+      const cancelledTag = document.createElement('span');
+      cancelledTag.className = 'tag danger';
+      cancelledTag.textContent = 'Cancelada';
+      scheduleRow.appendChild(cancelledTag);
+    }
+    item.appendChild(scheduleRow);
+
+    const participants = getReservationParticipants(reservation);
+    if (participants.length) {
+      const participantsRow = document.createElement('div');
+      participantsRow.className = 'meta';
+      participantsRow.appendChild(document.createElement('span')).textContent = 'Jugadores:';
+      participants.forEach((participant) => {
+        participantsRow.appendChild(document.createElement('span')).textContent = getPlayerDisplayName(participant);
+      });
+      item.appendChild(participantsRow);
+    }
+
+    if (reservation.notes && reservation.type !== 'partido') {
+      const notesRow = document.createElement('p');
+      notesRow.className = 'reservation-notes';
+      notesRow.textContent = reservation.notes;
+      item.appendChild(notesRow);
+    }
+
+    const canCancel =
+      reservation.status === 'reservada' && (!reservation.match || reservation.type !== 'partido');
+    if (canCancel && reservationId) {
+      const actions = document.createElement('div');
+      actions.className = 'reservation-actions';
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.className = 'secondary';
+      cancelButton.dataset.action = 'cancel-reservation';
+      cancelButton.dataset.reservationId = reservationId;
+      cancelButton.textContent = 'Cancelar';
+      actions.appendChild(cancelButton);
+      item.appendChild(actions);
+    }
+
+    courtReservationList.appendChild(item);
+  });
+}
+
+function renderCourtAvailability() {
+  if (courtAvailabilityDateInput) {
+    courtAvailabilityDateInput.value = formatDateInput(state.courtAvailabilityDate);
+  }
+  if (!courtAvailabilityList) {
+    return;
+  }
+
+  const availability = Array.isArray(state.courtAvailability) ? state.courtAvailability : [];
+  courtAvailabilityList.innerHTML = '';
+
+  if (!availability.length) {
+    if (courtAvailabilityEmpty) {
+      courtAvailabilityEmpty.hidden = false;
+    }
+    return;
+  }
+
+  if (courtAvailabilityEmpty) {
+    courtAvailabilityEmpty.hidden = true;
+  }
+
+  availability.forEach((entry) => {
+    const item = document.createElement('li');
+    item.className = 'court-availability-item';
+    const title = document.createElement('strong');
+    title.textContent = entry.court || 'Pista por definir';
+    item.appendChild(title);
+
+    const reservations = Array.isArray(entry.reservations) ? entry.reservations : [];
+    if (!reservations.length) {
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = 'Disponible todo el día';
+      item.appendChild(meta);
+    } else {
+      reservations.forEach((reservation) => {
+        const slot = document.createElement('div');
+        slot.className = 'meta court-availability-slot';
+        slot.appendChild(document.createElement('span')).textContent = formatTimeRangeLabel(
+          reservation.startsAt,
+          reservation.endsAt
+        );
+        const participants = getReservationParticipants(reservation);
+        if (participants.length) {
+          slot.appendChild(document.createElement('span')).textContent = participants
+            .map((participant) => getPlayerDisplayName(participant))
+            .join(' · ');
+        }
+        const matchTypeTag = document.createElement('span');
+        matchTypeTag.className = 'tag match-type-tag';
+        matchTypeTag.textContent = getReservationMatchTypeLabel(reservation);
+        slot.appendChild(matchTypeTag);
+        if (reservation.type === 'partido' || reservation.match) {
+          const tag = document.createElement('span');
+          tag.className = 'tag';
+          tag.textContent = 'Partido';
+          slot.appendChild(tag);
+        }
+        if (reservation.createdBy && reservation.type !== 'partido') {
+          slot.appendChild(document.createElement('span')).textContent = `Reserva de ${getPlayerDisplayName(
+            reservation.createdBy
+          )}`;
+        }
+        item.appendChild(slot);
+      });
+    }
+
+    courtAvailabilityList.appendChild(item);
+  });
+}
+
+function renderCourtAdminSchedule() {
+  if (courtAdminDateInput) {
+    courtAdminDateInput.value = formatDateInput(state.courtAdminDate);
+  }
+  if (!courtAdminSchedule) {
+    return;
+  }
+
+  courtAdminSchedule.innerHTML = '';
+  const availability = Array.isArray(state.courtAdminSchedule) ? state.courtAdminSchedule : [];
+
+  if (!availability.length) {
+    if (courtAdminEmpty) {
+      courtAdminEmpty.hidden = false;
+    }
+    return;
+  }
+
+  if (courtAdminEmpty) {
+    courtAdminEmpty.hidden = true;
+  }
+
+  availability.forEach((entry) => {
+    const block = document.createElement('div');
+    block.className = 'court-schedule';
+    const heading = document.createElement('h4');
+    heading.textContent = entry.court || 'Pista';
+    block.appendChild(heading);
+
+    const reservations = Array.isArray(entry.reservations) ? entry.reservations : [];
+    if (!reservations.length) {
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = 'Sin reservas registradas para este día.';
+      block.appendChild(meta);
+    } else {
+      reservations.forEach((reservation) => {
+        const row = document.createElement('div');
+        row.className = 'court-schedule-row';
+
+        const info = document.createElement('div');
+        info.className = 'court-schedule-info';
+        info.appendChild(document.createElement('span')).textContent = formatTimeRangeLabel(
+          reservation.startsAt,
+          reservation.endsAt
+        );
+        const participants = getReservationParticipants(reservation);
+        if (participants.length) {
+          info.appendChild(document.createElement('span')).textContent = participants
+            .map((participant) => getPlayerDisplayName(participant))
+            .join(' · ');
+        }
+        const matchTypeBadge = document.createElement('span');
+        matchTypeBadge.className = 'tag match-type-tag';
+        matchTypeBadge.textContent = getReservationMatchTypeLabel(reservation);
+        info.appendChild(matchTypeBadge);
+        if (reservation.type === 'partido' || reservation.match) {
+          info.appendChild(document.createElement('span')).textContent = 'Partido de liga';
+        } else if (reservation.createdBy) {
+          info.appendChild(document.createElement('span')).textContent = `Reserva de ${getPlayerDisplayName(
+            reservation.createdBy
+          )}`;
+        }
+        if (reservation.notes && reservation.type !== 'partido') {
+          info.appendChild(document.createElement('span')).textContent = reservation.notes;
+        }
+        row.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'court-schedule-actions';
+        const reservationId = reservation._id || reservation.id;
+        if (reservationId && reservation.status === 'reservada' && (!reservation.match || reservation.type !== 'partido')) {
+          const cancelButton = document.createElement('button');
+          cancelButton.type = 'button';
+          cancelButton.className = 'ghost';
+          cancelButton.dataset.action = 'cancel-reservation';
+          cancelButton.dataset.reservationId = reservationId;
+          cancelButton.textContent = 'Cancelar';
+          actions.appendChild(cancelButton);
+        }
+        if (actions.childElementCount) {
+          row.appendChild(actions);
+        }
+
+        block.appendChild(row);
+      });
+    }
+
+    courtAdminSchedule.appendChild(block);
+  });
+}
+
+async function cancelCourtReservation(reservationId, { button } = {}) {
+  if (!reservationId) {
+    return false;
+  }
+
+  const confirmed = window.confirm('¿Seguro que deseas cancelar la reserva?');
+  if (!confirmed) {
+    return false;
+  }
+
+  if (button) {
+    button.disabled = true;
+  }
+
+  try {
+    await request(`/courts/reservations/${reservationId}`, { method: 'DELETE' });
+    showGlobalMessage('Reserva cancelada correctamente.', 'success');
+    await loadPlayerCourtData();
+    if (isAdmin()) {
+      await loadAdminCourtData();
+    }
+    return true;
+  } catch (error) {
+    showGlobalMessage(error.message, 'error');
+    return false;
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
 }
 
 function filterMatchesByCategory(matches = []) {
@@ -4906,6 +5693,7 @@ function renderClubProfile(club = {}) {
     clubFacilitiesEmpty.hidden = Boolean(facilities.length);
   }
 
+  populateCourtReservationCourts();
   populateAdminMatchCourtOptions();
 
   renderRules();
@@ -8573,6 +9361,11 @@ async function loadAllData() {
       throw new Error('No fue posible identificar al usuario autenticado.');
     }
 
+    state.courtAvailabilityDate = new Date(state.courtAvailabilityDate || Date.now());
+    state.courtAvailabilityDate.setHours(0, 0, 0, 0);
+    state.courtAdminDate = new Date(state.courtAdminDate || Date.now());
+    state.courtAdminDate.setHours(0, 0, 0, 0);
+
     state.enrollments.clear();
     state.enrollmentRequests.clear();
     const [leagues, categories] = await Promise.all([
@@ -8643,11 +9436,28 @@ async function loadAllData() {
     renderNotifications(notifications);
     if (clubProfile) {
       renderClubProfile(clubProfile);
+      if (!courtReservationDateInput?.value) {
+        resetCourtReservationForm();
+      }
     }
     state.seasons = Array.isArray(seasons) ? seasons : [];
     state.calendarMatches = Array.isArray(calendarMatches) ? calendarMatches : [];
     renderAdminMatchList(state.calendarMatches);
     renderAllCalendars();
+
+    await loadPlayerCourtData();
+    try {
+      await loadReservationPlayers({ force: true });
+    } catch (error) {
+      console.warn('No fue posible cargar la lista de jugadores para reservas', error);
+    }
+    renderCourtReservationParticipants();
+    if (isAdmin()) {
+      await loadAdminCourtData();
+    } else {
+      state.courtAdminSchedule = [];
+      renderCourtAdminSchedule();
+    }
 
     if (isAdmin()) {
       await hydrateEnrollmentCache(categoryList);
@@ -8685,13 +9495,13 @@ async function loadAllData() {
       rankingSelect.value = defaultCategory;
       state.selectedCategoryId = defaultCategory;
     } else {
-    await loadRanking('');
-  }
+      await loadRanking('');
+    }
 
-  await loadGeneralChat();
-  await syncPushSubscriptionState();
-} catch (error) {
-  showGlobalMessage(error.message, 'error');
+    await loadGeneralChat();
+    await syncPushSubscriptionState();
+  } catch (error) {
+    showGlobalMessage(error.message, 'error');
 }
 }
 
@@ -8789,6 +9599,161 @@ profileEditButton?.addEventListener('click', () => {
 
 profileCancelButton?.addEventListener('click', () => {
   toggleProfileForm(false);
+});
+
+courtReservationForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!state.token) {
+    setStatusMessage(courtReservationStatus, 'error', 'Debes iniciar sesión para reservar una pista.');
+    return;
+  }
+
+  const dateValue = courtReservationDateInput?.value || '';
+  const timeValue = courtReservationTimeInput?.value || '';
+  const startsAt = combineDateAndTime(dateValue, timeValue);
+  if (!startsAt) {
+    setStatusMessage(courtReservationStatus, 'error', 'Selecciona una fecha y hora válidas.');
+    return;
+  }
+
+  const courtValue = courtReservationCourtSelect?.value || '';
+  if (!courtValue) {
+    setStatusMessage(courtReservationStatus, 'error', 'Selecciona una pista disponible.');
+    return;
+  }
+
+  const durationValue = Number(courtReservationDurationSelect?.value || COURT_RESERVATION_DEFAULT_DURATION);
+  const duration = Number.isFinite(durationValue) && durationValue > 0 ? durationValue : COURT_RESERVATION_DEFAULT_DURATION;
+  const notes = courtReservationNotesInput?.value?.trim();
+
+  const payload = {
+    court: courtValue,
+    startsAt: startsAt.toISOString(),
+    durationMinutes: duration,
+  };
+
+  const matchType = getCourtReservationMatchType();
+  payload.matchType = matchType;
+
+  if (state.reservationPlayersLoading) {
+    setStatusMessage(
+      courtReservationStatus,
+      'error',
+      'Espera a que se cargue la lista de jugadores antes de crear la reserva.'
+    );
+    return;
+  }
+
+  const additionalRequired = getAdditionalReservationPlayerCount(matchType);
+  if (additionalRequired > 0) {
+    const participantsInfo = collectReservationParticipantIds();
+    if (participantsInfo.hasDuplicates) {
+      setStatusMessage(courtReservationStatus, 'error', 'Cada jugador seleccionado debe ser diferente.');
+      return;
+    }
+    if (participantsInfo.missing || participantsInfo.unique.length !== additionalRequired) {
+      const message =
+        matchType === COURT_MATCH_TYPES.DOUBLES
+          ? 'Selecciona tres jugadores adicionales para completar el partido de dobles.'
+          : 'Selecciona al rival para completar el partido individual.';
+      setStatusMessage(courtReservationStatus, 'error', message);
+      return;
+    }
+    payload.participants = participantsInfo.unique;
+  }
+
+  if (notes) {
+    payload.notes = notes;
+  }
+
+  setStatusMessage(courtReservationStatus, 'info', 'Creando reserva...');
+  if (courtReservationSubmit) {
+    courtReservationSubmit.disabled = true;
+  }
+
+  try {
+    await request('/courts/reservations', { method: 'POST', body: payload });
+    setStatusMessage(courtReservationStatus, 'success', 'Reserva creada correctamente.');
+    resetCourtReservationForm();
+    await loadPlayerCourtData();
+    if (isAdmin()) {
+      await loadAdminCourtData();
+    }
+  } catch (error) {
+    setStatusMessage(courtReservationStatus, 'error', error.message);
+  } finally {
+    if (courtReservationSubmit) {
+      courtReservationSubmit.disabled = false;
+    }
+  }
+});
+
+courtReservationMatchTypeSelect?.addEventListener('change', () => {
+  renderCourtReservationParticipants();
+});
+
+courtReservationParticipantsContainer?.addEventListener('change', (event) => {
+  if (event.target && event.target.matches('select[data-participant-select]')) {
+    updateReservationParticipantOptionState();
+  }
+});
+
+courtReservationList?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action="cancel-reservation"]');
+  if (!button) {
+    return;
+  }
+
+  const { reservationId } = button.dataset;
+  if (!reservationId) {
+    return;
+  }
+
+  await cancelCourtReservation(reservationId, { button });
+});
+
+courtAvailabilityDateInput?.addEventListener('change', async (event) => {
+  const value = event.target.value;
+  if (!value) {
+    state.courtAvailabilityDate = new Date();
+    state.courtAvailabilityDate.setHours(0, 0, 0, 0);
+  } else {
+    const nextDate = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(nextDate.getTime())) {
+      return;
+    }
+    state.courtAvailabilityDate = nextDate;
+  }
+  await refreshCourtAvailability('player');
+});
+
+courtAdminDateInput?.addEventListener('change', async (event) => {
+  const value = event.target.value;
+  if (!value) {
+    state.courtAdminDate = new Date();
+    state.courtAdminDate.setHours(0, 0, 0, 0);
+  } else {
+    const nextDate = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(nextDate.getTime())) {
+      return;
+    }
+    state.courtAdminDate = nextDate;
+  }
+  await refreshCourtAvailability('admin');
+});
+
+courtAdminSchedule?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action="cancel-reservation"]');
+  if (!button) {
+    return;
+  }
+
+  const { reservationId } = button.dataset;
+  if (!reservationId) {
+    return;
+  }
+
+  await cancelCourtReservation(reservationId, { button });
 });
 
 profileForm?.addEventListener('submit', async (event) => {

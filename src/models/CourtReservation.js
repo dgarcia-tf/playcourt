@@ -5,6 +5,16 @@ const RESERVATION_STATUS = {
   CANCELLED: 'cancelada',
 };
 
+const RESERVATION_TYPES = {
+  MANUAL: 'manual',
+  MATCH: 'partido',
+};
+
+const MATCH_TYPES = {
+  SINGLES: 'singles',
+  DOUBLES: 'dobles',
+};
+
 const courtReservationSchema = new mongoose.Schema(
   {
     court: {
@@ -44,6 +54,26 @@ const courtReservationSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    participants: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
+    match: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Match',
+    },
+    type: {
+      type: String,
+      enum: Object.values(RESERVATION_TYPES),
+      default: RESERVATION_TYPES.MANUAL,
+    },
+    matchType: {
+      type: String,
+      enum: Object.values(MATCH_TYPES),
+      default: MATCH_TYPES.SINGLES,
+    },
     cancelledAt: {
       type: Date,
     },
@@ -59,8 +89,11 @@ const courtReservationSchema = new mongoose.Schema(
 
 courtReservationSchema.index({ court: 1, startsAt: 1 }, { background: true });
 courtReservationSchema.index({ createdBy: 1, startsAt: 1 }, { background: true });
+courtReservationSchema.index({ match: 1 }, { background: true });
 
 module.exports = {
   CourtReservation: mongoose.model('CourtReservation', courtReservationSchema),
   RESERVATION_STATUS,
+  RESERVATION_TYPES,
+  MATCH_TYPES,
 };
