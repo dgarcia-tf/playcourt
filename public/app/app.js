@@ -66,6 +66,22 @@ const CATEGORY_SKILL_LEVEL_OPTIONS = [
   { value: 'Avanzado', label: 'Avanzado' },
 ];
 
+const DEFAULT_CATEGORY_MATCH_FORMAT = 'two_sets_six_games_super_tb';
+const CATEGORY_MATCH_FORMAT_OPTIONS = [
+  {
+    value: 'two_sets_six_games_super_tb',
+    label: '2 sets a 6 juegos + super tie-break',
+  },
+  {
+    value: 'two_sets_four_games_super_tb',
+    label: '2 sets a 4 juegos + super tie-break',
+  },
+  {
+    value: 'single_set_ten_games_super_tb',
+    label: '1 set a 10 juegos + super tie-break',
+  },
+];
+
 const LEAGUE_STATUS_LABELS = {
   activa: 'Activa',
   cerrada: 'Cerrada',
@@ -11855,6 +11871,11 @@ function buildCategoryPayload(formData, isEditing = false) {
     payload.status = status;
   }
 
+  const matchFormat = (formData.get('matchFormat') || '').trim();
+  if (matchFormat) {
+    payload.matchFormat = matchFormat;
+  }
+
   const leagueId = (formData.get('leagueId') || '').trim();
   if (leagueId) {
     payload.leagueId = leagueId;
@@ -11905,6 +11926,14 @@ async function submitCategoryFormData({ form, categoryId, statusElement }) {
     !CATEGORY_SKILL_LEVEL_OPTIONS.some((option) => option.value === payload.skillLevel)
   ) {
     setStatusMessage(statusElement, 'error', 'Selecciona un nivel para la categoría.');
+    return false;
+  }
+
+  if (
+    !payload.matchFormat ||
+    !CATEGORY_MATCH_FORMAT_OPTIONS.some((option) => option.value === payload.matchFormat)
+  ) {
+    setStatusMessage(statusElement, 'error', 'Selecciona un formato de partido para la categoría.');
     return false;
   }
 
@@ -13419,6 +13448,15 @@ function openCategoryModal(categoryId = '') {
       <span class="form-hint">Cuando está en curso no se aceptan nuevas inscripciones.</span>
     </label>
     <label>
+      Formato de partido
+      <select name="matchFormat" required>
+        ${CATEGORY_MATCH_FORMAT_OPTIONS.map(
+          (option) => `<option value="${option.value}">${option.label}</option>`
+        ).join('')}
+      </select>
+      <span class="form-hint">Define cómo se registrarán los resultados de la categoría.</span>
+    </label>
+    <label>
       Color identificativo
       <input type="color" name="color" value="${DEFAULT_CATEGORY_COLOR}" />
       <span class="form-hint">Se utilizará para identificar la categoría en listas y calendarios.</span>
@@ -13446,6 +13484,9 @@ function openCategoryModal(categoryId = '') {
   }
   if (form.elements.status) {
     form.elements.status.value = category?.status || 'inscripcion';
+  }
+  if (form.elements.matchFormat) {
+    form.elements.matchFormat.value = category?.matchFormat || DEFAULT_CATEGORY_MATCH_FORMAT;
   }
   if (form.elements.color) {
     const colorValue = category ? getCategoryColor(category) : DEFAULT_CATEGORY_COLOR;
