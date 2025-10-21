@@ -33,9 +33,27 @@ function aggregateScoresFromSets(sets = []) {
   const totals = new Map();
   sets.forEach((set) => {
     if (!set || typeof set !== 'object') return;
-    const { scores } = set;
+    const { scores, tieBreak } = set;
     if (!scores) return;
     const source = scores instanceof Map ? scores : new Map(Object.entries(scores));
+    if (tieBreak) {
+      const entries = Array.from(source.entries()).filter(([, value]) =>
+        Number.isFinite(Number(value))
+      );
+      if (!entries.length) {
+        return;
+      }
+      const scoresByPlayer = entries.map(([playerId, value]) => [playerId, Number(value)]);
+      const highestScore = Math.max(...scoresByPlayer.map(([, value]) => value));
+      const winnerEntry = scoresByPlayer.find(([, value]) => value === highestScore);
+      const winnerId = winnerEntry ? winnerEntry[0] : null;
+      scoresByPlayer.forEach(([playerId]) => {
+        const current = totals.get(playerId) || 0;
+        totals.set(playerId, current + (winnerId && winnerId === playerId ? 1 : 0));
+      });
+      return;
+    }
+
     source.forEach((value, playerId) => {
       const numeric = Number(value);
       if (!Number.isFinite(numeric)) return;

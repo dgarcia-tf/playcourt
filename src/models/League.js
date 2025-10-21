@@ -31,6 +31,13 @@ const leagueSchema = new mongoose.Schema(
       enum: Object.values(LEAGUE_STATUS),
       default: LEAGUE_STATUS.ACTIVE,
     },
+    registrationCloseDate: {
+      type: Date,
+    },
+    enrollmentFee: {
+      type: Number,
+      min: 0,
+    },
     categories: [
       {
         type: mongoose.Schema.Types.ObjectId,

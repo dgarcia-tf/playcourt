@@ -16,6 +16,8 @@ async function createLeague(req, res) {
     description,
     startDate,
     endDate,
+    registrationCloseDate,
+    enrollmentFee,
     status,
     categories = [],
     newCategories = [],
@@ -23,6 +25,12 @@ async function createLeague(req, res) {
 
   if (startDate && endDate && endDate < startDate) {
     return res.status(400).json({ message: 'La fecha de finalización debe ser posterior a la fecha de inicio' });
+  }
+
+  if (startDate && registrationCloseDate && registrationCloseDate > startDate) {
+    return res.status(400).json({
+      message: 'La fecha máxima de inscripción debe ser anterior o igual al inicio de la liga',
+    });
   }
 
   const distinctCategories = [...new Set((categories || []).map((id) => id.toString()))];
@@ -115,6 +123,8 @@ async function createLeague(req, res) {
     description,
     startDate,
     endDate,
+    registrationCloseDate,
+    enrollmentFee: typeof enrollmentFee === 'number' ? enrollmentFee : undefined,
     categories: distinctCategories.map((id) => new mongoose.Types.ObjectId(id)),
     createdBy: req.user.id,
   };
@@ -220,7 +230,17 @@ async function updateLeague(req, res) {
   }
 
   const { leagueId } = req.params;
-  const { name, year, description, startDate, endDate, status, categories } = req.body;
+  const {
+    name,
+    year,
+    description,
+    startDate,
+    endDate,
+    registrationCloseDate,
+    enrollmentFee,
+    status,
+    categories,
+  } = req.body;
 
   const league = await League.findById(leagueId);
   if (!league) {
@@ -247,8 +267,26 @@ async function updateLeague(req, res) {
     league.endDate = endDate || undefined;
   }
 
+  if (typeof registrationCloseDate !== 'undefined') {
+    league.registrationCloseDate = registrationCloseDate || undefined;
+  }
+
   if (league.startDate && league.endDate && league.endDate < league.startDate) {
     return res.status(400).json({ message: 'La fecha de finalización debe ser posterior a la fecha de inicio' });
+  }
+
+  if (
+    league.startDate &&
+    league.registrationCloseDate &&
+    league.registrationCloseDate > league.startDate
+  ) {
+    return res.status(400).json({
+      message: 'La fecha máxima de inscripción debe ser anterior o igual al inicio de la liga',
+    });
+  }
+
+  if (typeof enrollmentFee !== 'undefined') {
+    league.enrollmentFee = enrollmentFee === null ? undefined : enrollmentFee;
   }
 
   if (typeof status !== 'undefined') {

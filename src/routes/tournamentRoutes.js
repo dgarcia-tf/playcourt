@@ -39,7 +39,7 @@ const {
   approveTournamentMatchResult,
   resetTournamentMatchResult,
 } = require('../controllers/tournamentMatchController');
-const { authenticate, authorizeRoles } = require('../middleware/auth');
+const { authenticate, authenticateOptional, authorizeRoles } = require('../middleware/auth');
 const { TOURNAMENT_STATUS } = require('../models/Tournament');
 const { GENDERS } = require('../models/User');
 const { CATEGORY_SKILL_LEVELS } = require('../models/Category');
@@ -49,26 +49,35 @@ const router = express.Router();
 
 router.get(
   '/',
+  authenticateOptional,
   [query('status').optional().isIn(Object.values(TOURNAMENT_STATUS))],
   listTournaments
 );
 
-router.get('/:tournamentId', [param('tournamentId').isMongoId()], getTournamentDetail);
+router.get(
+  '/:tournamentId',
+  authenticateOptional,
+  [param('tournamentId').isMongoId()],
+  getTournamentDetail
+);
 
 router.get(
   '/:tournamentId/categories',
+  authenticateOptional,
   [param('tournamentId').isMongoId()],
   listTournamentCategories
 );
 
 router.get(
   '/:tournamentId/categories/:categoryId',
+  authenticateOptional,
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
   getTournamentCategory
 );
 
 router.get(
   '/:tournamentId/categories/:categoryId/matches',
+  authenticateOptional,
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
   listTournamentMatches
 );

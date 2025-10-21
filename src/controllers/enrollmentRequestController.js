@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const { Enrollment } = require('../models/Enrollment');
 const { Category, CATEGORY_STATUSES } = require('../models/Category');
 const { EnrollmentRequest, ENROLLMENT_REQUEST_STATUSES } = require('../models/EnrollmentRequest');
+const { LEAGUE_STATUS } = require('../models/League');
 const { User } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
 
@@ -15,7 +16,7 @@ async function requestEnrollment(req, res) {
   const playerId = req.user.id;
 
   const [category, existingEnrollment, pendingRequest, user] = await Promise.all([
-    Category.findById(categoryId),
+    Category.findById(categoryId).populate('league', 'status registrationCloseDate'),
     Enrollment.findOne({ category: categoryId, user: playerId }),
     EnrollmentRequest.findOne({
       category: categoryId,
@@ -31,6 +32,21 @@ async function requestEnrollment(req, res) {
 
   if (!user) {
     return res.status(404).json({ message: 'Usuario no encontrado' });
+  }
+
+  const league = category.league;
+  if (league) {
+    if (league.status === LEAGUE_STATUS.CLOSED) {
+      return res
+        .status(400)
+        .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
+    }
+
+    if (league.registrationCloseDate && new Date() > league.registrationCloseDate) {
+      return res
+        .status(400)
+        .json({ message: 'La fecha máxima de inscripción de la liga ya ha pasado.' });
+    }
   }
 
   if (category.status !== CATEGORY_STATUSES.REGISTRATION) {
@@ -142,7 +158,7 @@ async function updateEnrollmentRequest(req, res) {
 
   if (action === 'approve') {
     const [category, existingEnrollment] = await Promise.all([
-      Category.findById(categoryId),
+      Category.findById(categoryId).populate('league', 'status registrationCloseDate'),
       Enrollment.findOne({ category: categoryId, user: enrollmentRequest.user.id }),
     ]);
 
@@ -154,6 +170,23 @@ async function updateEnrollmentRequest(req, res) {
       return res
         .status(400)
         .json({ message: 'La categoría ya no admite nuevas inscripciones.' });
+    }
+
+    if (category.league) {
+      if (category.league.status === LEAGUE_STATUS.CLOSED) {
+        return res
+          .status(400)
+          .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
+      }
+
+      if (
+        category.league.registrationCloseDate &&
+        new Date() > category.league.registrationCloseDate
+      ) {
+        return res
+          .status(400)
+          .json({ message: 'La fecha máxima de inscripción de la liga ya ha pasado.' });
+      }
     }
 
     if (category.gender !== enrollmentRequest.user.gender) {
