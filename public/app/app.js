@@ -866,8 +866,10 @@ const generalChatAttachments = document.getElementById('general-chat-attachments
 const generalChatAttachmentsList = generalChatAttachments
   ? generalChatAttachments.querySelector('.chat-attachments-list')
   : null;
-const rulesContent = document.getElementById('rules-content');
-const rulesEditButton = document.getElementById('rules-edit-button');
+const leagueRulesContent = document.getElementById('rules-content');
+const leagueRulesEditButton = document.getElementById('rules-edit-button');
+const tournamentRulesContent = document.getElementById('tournament-rules-content');
+const tournamentRulesEditButton = document.getElementById('tournament-rules-edit-button');
 const rankingSelect = document.getElementById('ranking-select');
 const rankingTable = document.getElementById('ranking-table');
 const rankingEmpty = document.getElementById('ranking-empty');
@@ -6615,7 +6617,10 @@ function createCourtsEditor(initialCourts = []) {
   };
 }
 
-function createRegulationEditor(initialContent = '') {
+function createRegulationEditor(
+  initialContent = '',
+  placeholder = 'Describe el reglamento del club con formato enriquecido'
+) {
   const container = document.createElement('div');
   container.className = 'chat-editor chat-editor--regulation';
 
@@ -6658,7 +6663,7 @@ function createRegulationEditor(initialContent = '') {
   editor.contentEditable = 'true';
   editor.setAttribute('role', 'textbox');
   editor.setAttribute('aria-multiline', 'true');
-  editor.dataset.placeholder = 'Describe el reglamento del club con formato enriquecido';
+  editor.dataset.placeholder = placeholder;
 
   const sanitizedInitial = sanitizeNoticeHtml(initialContent) || '';
   if (sanitizedInitial) {
@@ -7346,18 +7351,30 @@ function renderDirectChat() {}
 function populateChatParticipants() {}
 
 function renderRules() {
-  if (!rulesContent) return;
+  const renderSection = (element, regulation, emptyMessage) => {
+    if (!element) return;
 
-  const html = getRegulationHtml(state.club?.regulation);
-  const sanitized = typeof html === 'string' ? html.trim() : '';
+    const html = getRegulationHtml(regulation);
+    const sanitized = typeof html === 'string' ? html.trim() : '';
 
-  if (!sanitized) {
-    rulesContent.innerHTML =
-      '<p class="empty-state">Aún no se ha configurado el reglamento del club.</p>';
-    return;
-  }
+    if (!sanitized) {
+      element.innerHTML = `<p class="empty-state">${emptyMessage}</p>`;
+      return;
+    }
 
-  rulesContent.innerHTML = sanitized;
+    element.innerHTML = sanitized;
+  };
+
+  renderSection(
+    leagueRulesContent,
+    state.club?.regulation,
+    'Aún no se ha configurado el reglamento de la liga.'
+  );
+  renderSection(
+    tournamentRulesContent,
+    state.club?.tournamentRegulation,
+    'Aún no se ha configurado el reglamento de torneos.'
+  );
 }
 
 renderRules();
@@ -9578,17 +9595,27 @@ function openClubModal() {
   });
 }
 
-function openRulesEditorModal() {
+function openRulesEditorModal(scope = 'league') {
   if (!isAdmin()) return;
 
   const club = state.club || {};
-  const existingContent = getRegulationHtml(club.regulation);
+  const isTournament = scope === 'tournament';
+  const existingContent = getRegulationHtml(
+    isTournament ? club.tournamentRegulation : club.regulation
+  );
+
+  const description = isTournament
+    ? 'Redacta el reglamento de torneos con formato enriquecido (negritas, cursivas, encabezados y listas).'
+    : 'Redacta el reglamento de la liga con formato enriquecido (negritas, cursivas, encabezados y listas).';
+  const placeholder = isTournament
+    ? 'Describe el reglamento de torneos con formato enriquecido'
+    : 'Describe el reglamento del club con formato enriquecido';
 
   const form = document.createElement('form');
   form.className = 'form';
   form.innerHTML = `
     <p class="form-hint">
-      Redacta el reglamento con formato enriquecido (negritas, cursivas, encabezados y listas).
+      ${description}
       Los cambios estarán disponibles inmediatamente para todos los jugadores.
     </p>
     <div data-mount="regulation"></div>
@@ -9603,7 +9630,7 @@ function openRulesEditorModal() {
   status.style.display = 'none';
 
   const mount = form.querySelector('[data-mount="regulation"]');
-  const editor = createRegulationEditor(existingContent);
+  const editor = createRegulationEditor(existingContent, placeholder);
   mount?.appendChild(editor.element);
 
   form.addEventListener('submit', async (event) => {
@@ -9625,18 +9652,28 @@ function openRulesEditorModal() {
       return;
     }
 
-    const payload = {
-      regulation: content,
-    };
+    const payload = isTournament
+      ? { tournamentRegulation: content }
+      : { regulation: content };
 
-    setStatusMessage(status, 'info', 'Guardando reglamento...');
+    const savingMessage = isTournament
+      ? 'Guardando reglamento de torneos...'
+      : 'Guardando reglamento...';
+    const successMessage = isTournament
+      ? 'Reglamento de torneos actualizado correctamente.'
+      : 'Reglamento actualizado correctamente.';
+    const toastMessage = isTournament
+      ? 'Reglamento de torneos actualizado.'
+      : 'Reglamento del club actualizado.';
+
+    setStatusMessage(status, 'info', savingMessage);
 
     try {
       const updated = await request('/club', { method: 'PUT', body: payload });
       renderClubProfile(updated);
-      setStatusMessage(status, 'success', 'Reglamento actualizado correctamente.');
+      setStatusMessage(status, 'success', successMessage);
       closeModal();
-      showGlobalMessage('Reglamento del club actualizado.');
+      showGlobalMessage(toastMessage);
     } catch (error) {
       setStatusMessage(status, 'error', error.message);
     }
@@ -9648,7 +9685,7 @@ function openRulesEditorModal() {
   });
 
   openModal({
-    title: 'Editar reglamento del club',
+    title: isTournament ? 'Editar reglamento de torneos' : 'Editar reglamento del club',
     content: (body) => {
       body.appendChild(form);
       body.appendChild(status);
@@ -10940,9 +10977,14 @@ clubEditButton?.addEventListener('click', () => {
   openClubModal();
 });
 
-rulesEditButton?.addEventListener('click', () => {
+leagueRulesEditButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
-  openRulesEditorModal();
+  openRulesEditorModal('league');
+});
+
+tournamentRulesEditButton?.addEventListener('click', () => {
+  if (!isAdmin()) return;
+  openRulesEditorModal('tournament');
 });
 
 generalChatToolbar?.addEventListener('click', handleNoticeToolbarClick);

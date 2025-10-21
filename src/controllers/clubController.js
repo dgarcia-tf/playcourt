@@ -67,6 +67,7 @@ async function updateClubProfile(req, res) {
     contactPhone,
     website,
     regulation,
+    tournamentRegulation,
     logo,
     schedules,
     courts,
@@ -83,6 +84,8 @@ async function updateClubProfile(req, res) {
   if (contactPhone !== undefined) club.contactPhone = sanitizeString(contactPhone);
   if (website !== undefined) club.website = sanitizeString(website);
   if (regulation !== undefined) club.regulation = sanitizeString(regulation);
+  if (tournamentRegulation !== undefined)
+    club.tournamentRegulation = sanitizeString(tournamentRegulation);
   if (logo !== undefined) club.logo = sanitizeString(logo);
 
   if (schedules !== undefined) {

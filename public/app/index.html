@@ -188,6 +188,14 @@
                   >
                     Ranking
                   </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-rules"
+                    data-parent-target="section-leagues"
+                  >
+                    Reglamento de liga
+                  </button>
                 </div>
               </div>
               <div class="menu-group">
@@ -226,6 +234,14 @@
                     data-parent-target="section-tournaments"
                   >
                     Partidos
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-tournament-rules"
+                    data-parent-target="section-tournaments"
+                  >
+                    Reglamento de torneos
                   </button>
                 </div>
               </div>
@@ -266,7 +282,6 @@
                 <span class="menu-label">Panel de avisos</span>
                 <span class="menu-badge" id="menu-notices-badge" hidden>0</span>
               </button>
-              <button type="button" class="menu-button" data-target="section-rules">Reglamento</button>
               <button type="button" class="menu-button" data-target="section-notifications">
                 <span class="menu-label">Notificaciones</span>
                 <span class="menu-badge" id="menu-notifications-badge" hidden>0</span>
@@ -647,6 +662,26 @@
               </article>
             </section>
 
+            <section id="section-tournament-rules" class="app-section" hidden>
+              <article class="card" id="tournament-rules-card">
+                <div class="card-header">
+                  <h3>Reglamento de torneos</h3>
+                  <div class="card-actions">
+                    <button
+                      type="button"
+                      class="secondary"
+                      id="tournament-rules-edit-button"
+                      data-admin-visible="toggle"
+                      hidden
+                    >
+                      Editar reglamento
+                    </button>
+                  </div>
+                </div>
+                <div class="rules-content" id="tournament-rules-content"></div>
+              </article>
+            </section>
+
             <section id="section-matches" class="app-section" hidden>
               <div class="matches-grid">
                 <article class="card" id="upcoming-card">
@@ -1024,7 +1059,7 @@
             <section id="section-rules" class="app-section" hidden>
               <article class="card">
                 <div class="card-header">
-                  <h3>Reglamento y guía del club</h3>
+                  <h3>Reglamento de la liga</h3>
                   <div class="card-actions">
                     <button
                       type="button"
