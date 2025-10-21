@@ -1,7 +1,13 @@
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 const { League, LEAGUE_STATUS } = require('../models/League');
-const { Category, CATEGORY_STATUSES, CATEGORY_SKILL_LEVELS } = require('../models/Category');
+const {
+  Category,
+  CATEGORY_STATUSES,
+  CATEGORY_SKILL_LEVELS,
+  MATCH_FORMATS,
+  DEFAULT_CATEGORY_MATCH_FORMAT,
+} = require('../models/Category');
 const { GENDERS } = require('../models/User');
 
 async function createLeague(req, res) {
@@ -36,6 +42,7 @@ async function createLeague(req, res) {
   const distinctCategories = [...new Set((categories || []).map((id) => id.toString()))];
 
   const allowedSkillLevels = new Set(Object.values(CATEGORY_SKILL_LEVELS));
+  const allowedMatchFormats = new Set(Object.values(MATCH_FORMATS));
   const normalizedNewCategories = Array.isArray(newCategories)
     ? newCategories
         .filter((category) => category && typeof category === 'object')
@@ -47,6 +54,11 @@ async function createLeague(req, res) {
           const rawSkillLevel =
             typeof category.skillLevel === 'string' ? category.skillLevel.trim() : '';
           const skillLevel = rawSkillLevel || CATEGORY_SKILL_LEVELS.INTERMEDIATE;
+          const rawMatchFormat =
+            typeof category.matchFormat === 'string' ? category.matchFormat.trim() : '';
+          const matchFormat = allowedMatchFormats.has(rawMatchFormat)
+            ? rawMatchFormat
+            : DEFAULT_CATEGORY_MATCH_FORMAT;
 
           return {
             name,
@@ -54,7 +66,9 @@ async function createLeague(req, res) {
             gender,
             skillLevel,
             status: category.status,
+            matchFormat,
             _rawSkillLevel: rawSkillLevel,
+            _rawMatchFormat: rawMatchFormat,
           };
         })
     : [];
@@ -79,6 +93,14 @@ async function createLeague(req, res) {
     )
   ) {
     return res.status(400).json({ message: 'Alguna de las nuevas categorías tiene un nivel inválido.' });
+  }
+
+  if (
+    normalizedNewCategories.some(
+      (category) => category._rawMatchFormat && !allowedMatchFormats.has(category._rawMatchFormat)
+    )
+  ) {
+    return res.status(400).json({ message: 'Alguna de las nuevas categorías tiene un formato de partido inválido.' });
   }
 
   if (
@@ -155,7 +177,7 @@ async function createLeague(req, res) {
   if (normalizedNewCategories.length) {
     try {
       createdCategories = await Category.insertMany(
-        normalizedNewCategories.map(({ _rawSkillLevel, ...category }) => ({
+        normalizedNewCategories.map(({ _rawSkillLevel, _rawMatchFormat, ...category }) => ({
           ...category,
           status: category.status || CATEGORY_STATUSES.REGISTRATION,
           league: league._id,
@@ -178,7 +200,10 @@ async function createLeague(req, res) {
     await league.save();
   }
 
-  await league.populate('categories', 'name gender skillLevel startDate endDate status color');
+  await league.populate(
+    'categories',
+    'name gender skillLevel startDate endDate status color matchFormat'
+  );
 
   return res.status(201).json(league);
 }
@@ -202,7 +227,7 @@ async function listLeagues(req, res) {
 
   const leagues = await League.find(query)
     .sort({ createdAt: -1, startDate: 1 })
-    .populate('categories', 'name gender skillLevel color');
+    .populate('categories', 'name gender skillLevel color matchFormat');
 
   return res.json(leagues);
 }
@@ -216,7 +241,7 @@ async function getLeagueDetail(req, res) {
   const { leagueId } = req.params;
 
   const league = await League.findById(leagueId)
-    .populate('categories', 'name gender skillLevel color')
+    .populate('categories', 'name gender skillLevel color matchFormat')
     .populate('payments.user', 'fullName email phone photo preferredSchedule')
     .populate('payments.recordedBy', 'fullName email');
   if (!league) {
