@@ -233,6 +233,11 @@ textarea {
   color: var(--text-muted);
 }
 
+.form-hint.match-format-hint {
+  margin: 0 0 1rem;
+  display: block;
+}
+
 .court-reservation-participants {
   margin-top: 0.25rem;
 }

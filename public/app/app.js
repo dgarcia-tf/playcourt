@@ -82,6 +82,41 @@ const CATEGORY_MATCH_FORMAT_OPTIONS = [
   },
 ];
 
+const MATCH_FORMAT_METADATA = {
+  two_sets_six_games_super_tb: {
+    label: '2 sets a 6 juegos + super tie-break',
+    description:
+      'Formato de partido: 2 sets a 6 juegos + super tie-break (el super tie-break se juega a 10 puntos).',
+    minimumSets: 2,
+    setDefinitions: [
+      { number: 1, tieBreak: false, label: 'Set 1' },
+      { number: 2, tieBreak: false, label: 'Set 2' },
+      { number: 3, tieBreak: true, label: 'Super tie-break (10 puntos)' },
+    ],
+  },
+  two_sets_four_games_super_tb: {
+    label: '2 sets a 4 juegos + super tie-break',
+    description:
+      'Formato de partido: 2 sets a 4 juegos + super tie-break (el super tie-break se juega a 10 puntos).',
+    minimumSets: 2,
+    setDefinitions: [
+      { number: 1, tieBreak: false, label: 'Set 1' },
+      { number: 2, tieBreak: false, label: 'Set 2' },
+      { number: 3, tieBreak: true, label: 'Super tie-break (10 puntos)' },
+    ],
+  },
+  single_set_ten_games_super_tb: {
+    label: '1 set a 10 juegos + super tie-break',
+    description:
+      'Formato de partido: 1 set a 10 juegos + super tie-break (a 10 puntos).',
+    minimumSets: 1,
+    setDefinitions: [
+      { number: 1, tieBreak: false, label: 'Set 1' },
+      { number: 2, tieBreak: true, label: 'Super tie-break (10 puntos)' },
+    ],
+  },
+};
+
 const LEAGUE_STATUS_LABELS = {
   activa: 'Activa',
   cerrada: 'Cerrada',
@@ -6582,7 +6617,7 @@ function extractResultSets(match) {
   return rawSets
     .map((set, index) => {
       const number = Number.isFinite(Number(set?.number)) ? Number(set.number) : index + 1;
-      const tieBreak = Boolean(set?.tieBreak) && number === 3;
+      const tieBreak = Boolean(set?.tieBreak);
       const scoresMap = extractScoreMap(set?.scores);
       const scores = {};
       playerIds.forEach((playerId) => {
@@ -6633,7 +6668,7 @@ function getMatchSets(match) {
     });
     return {
       number: set.number,
-      tieBreak: Boolean(set.tieBreak) && set.number === 3,
+      tieBreak: Boolean(set.tieBreak),
       scores: normalizedScores,
     };
   });
@@ -14458,6 +14493,49 @@ function openResultModal(matchId) {
   }
   const currentWinnerId = normalizeId(match.result?.winner);
   const existingSets = getMatchSets(match);
+  const matchFormat = match?.category?.matchFormat || DEFAULT_CATEGORY_MATCH_FORMAT;
+  const fallbackFormat =
+    MATCH_FORMAT_METADATA[DEFAULT_CATEGORY_MATCH_FORMAT] ||
+    MATCH_FORMAT_METADATA.two_sets_six_games_super_tb || {
+      description: '',
+      minimumSets: 2,
+      setDefinitions: [
+        { number: 1, tieBreak: false, label: 'Set 1' },
+        { number: 2, tieBreak: false, label: 'Set 2' },
+        { number: 3, tieBreak: true, label: 'Super tie-break' },
+      ],
+    };
+  const formatDefinition = MATCH_FORMAT_METADATA[matchFormat] || fallbackFormat;
+  const baseSetDefinitions =
+    Array.isArray(formatDefinition.setDefinitions) && formatDefinition.setDefinitions.length
+      ? formatDefinition.setDefinitions
+      : fallbackFormat.setDefinitions;
+  const setDefinitionMap = new Map(
+    (baseSetDefinitions || []).map((definition) => [definition.number, { ...definition }])
+  );
+  existingSets.forEach((set) => {
+    if (!setDefinitionMap.has(set.number)) {
+      setDefinitionMap.set(set.number, {
+        number: set.number,
+        tieBreak: Boolean(set.tieBreak),
+        label: set.tieBreak ? `Super tie-break` : `Set ${set.number}`,
+      });
+    }
+  });
+  const orderedDefinitions = Array.from(setDefinitionMap.values()).sort((a, b) => a.number - b.number);
+  const setDefinitions = orderedDefinitions.length
+    ? orderedDefinitions
+    : [
+        { number: 1, tieBreak: false, label: 'Set 1' },
+        { number: 2, tieBreak: false, label: 'Set 2' },
+        { number: 3, tieBreak: true, label: 'Super tie-break' },
+      ];
+  const minimumSets = Number.isFinite(formatDefinition.minimumSets)
+    ? formatDefinition.minimumSets
+    : fallbackFormat.minimumSets;
+  const formatHintMarkup = formatDefinition.description
+    ? `<p class="form-hint match-format-hint">${formatDefinition.description}</p>`
+    : '';
 
   const form = document.createElement('form');
   form.className = 'form';
@@ -14474,11 +14552,11 @@ function openResultModal(matchId) {
     })
     .join('');
 
-  const setRows = [1, 2, 3]
-    .map((setNumber) => {
+  const setRows = setDefinitions
+    .map((definition) => {
+      const { number: setNumber, tieBreak: isTieBreak } = definition;
       const stored = existingSets.find((set) => set.number === setNumber);
-      const isTieBreak = setNumber === 3;
-      const legend = isTieBreak ? 'Super tie-break' : `Set ${setNumber}`;
+      const legend = definition.label || (isTieBreak ? 'Super tie-break' : `Set ${setNumber}`);
       const inputs = participants
         .map(({ id, player }) => {
           const currentValue = stored?.scores?.[id] ?? 0;
@@ -14504,6 +14582,7 @@ function openResultModal(matchId) {
     .join('');
 
   form.innerHTML = `
+    ${formatHintMarkup}
     <fieldset>
       <legend>Ganador del partido</legend>
       <div class="form-grid form-grid--columns-1">${playersMarkup}</div>
@@ -14535,8 +14614,8 @@ function openResultModal(matchId) {
       return;
     }
 
-    const setsPayload = [1, 2, 3]
-      .map((setNumber) => {
+    const setsPayload = setDefinitions
+      .map(({ number: setNumber, tieBreak }) => {
         const scores = participants.reduce((acc, { id }) => {
           const value = Number(formData.get(`set${setNumber}-${id}`));
           acc[id] = Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
@@ -14548,14 +14627,15 @@ function openResultModal(matchId) {
         }
         return {
           number: setNumber,
-          tieBreak: setNumber === 3,
+          tieBreak: Boolean(tieBreak),
           scores,
         };
       })
       .filter(Boolean);
 
-    if (setsPayload.length < 2) {
-      setStatusMessage(status, 'error', 'Introduce al menos dos sets para registrar el resultado.');
+    if (setsPayload.length < minimumSets) {
+      const setLabel = minimumSets === 1 ? 'un set' : `${minimumSets} sets`;
+      setStatusMessage(status, 'error', `Introduce al menos ${setLabel} para registrar el resultado.`);
       return;
     }
 
