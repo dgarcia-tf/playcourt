@@ -1,9 +1,15 @@
 const express = require('express');
 const { authenticate } = require('../middleware/auth');
-const { getSummary } = require('../controllers/dashboardController');
+const {
+  getGlobalOverview,
+  getLeagueDashboard,
+  getTournamentDashboard,
+} = require('../controllers/dashboardController');
 
 const router = express.Router();
 
-router.get('/summary', authenticate, getSummary);
+router.get('/overview', authenticate, getGlobalOverview);
+router.get('/leagues', authenticate, getLeagueDashboard);
+router.get('/tournaments', authenticate, getTournamentDashboard);
 
 module.exports = router;
