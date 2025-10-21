@@ -35,7 +35,7 @@ self.addEventListener('push', (event) => {
     icon: payload.icon || './assets/club-logo.png',
     badge: payload.badge || './assets/club-logo.png',
     data: payload.data || {},
-    tag: payload.tag || 'liga-tennis-notification',
+    tag: payload.tag || 'cn-sanmarcos-notification',
     renotify: Boolean(payload.renotify),
   };
 

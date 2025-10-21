@@ -1,7 +1,7 @@
 const API_BASE = '/app/api';
-const STORAGE_KEY = 'liga-tennis-app-session';
-const REMEMBER_CREDENTIALS_KEY = 'liga-tennis-remember-credentials';
-const NOTICE_LAST_SEEN_PREFIX = 'liga-tennis-notices-last-seen:';
+const STORAGE_KEY = 'cn-sanmarcos-app-session';
+const REMEMBER_CREDENTIALS_KEY = 'cn-sanmarcos-remember-credentials';
+const NOTICE_LAST_SEEN_PREFIX = 'cn-sanmarcos-notices-last-seen:';
 const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENT_SIZE = 3 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENTS = 5;

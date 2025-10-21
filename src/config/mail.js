@@ -22,7 +22,7 @@ function parseBoolean(value, defaultValue = false) {
 
 function getDefaultSender() {
   const fallbackName = 'Liga Tennis';
-  const fallbackEmail = 'no-reply@liga-tennis.local';
+  const fallbackEmail = 'no-reply@cn-sanmarcos.local';
   const fromEnv = process.env.MAIL_FROM || process.env.SMTP_FROM;
 
   if (fromEnv && fromEnv.trim()) {
