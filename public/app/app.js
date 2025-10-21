@@ -713,9 +713,6 @@ function resolveMovement(entry) {
 
   let type = 'same';
   let positionDelta = null;
-  let summaryText = '';
-  let summaryDescription = '';
-  let summaryMetricType = 'neutral';
 
   if (entry.movement === 'nuevo' || previousPosition === null) {
     type = 'new';
@@ -786,9 +783,6 @@ function resolveMovement(entry) {
       delta: null,
     });
     ariaParts.push('Nuevo ingreso al ranking.');
-    summaryText = 'Nuevo';
-    summaryDescription = 'Nuevo ingreso al ranking.';
-    summaryMetricType = 'neutral';
   } else if (positionDelta !== null) {
     const absolute = Math.abs(positionDelta);
     let value;
@@ -797,19 +791,13 @@ function resolveMovement(entry) {
       value = `↑ ${absolute}`;
       metricType = 'positive';
       positionDescription = `Posición: sube ${absolute} ${absolute === 1 ? 'posición' : 'posiciones'}.`;
-      summaryText = value;
-      summaryMetricType = 'positive';
     } else if (positionDelta < 0) {
       value = `↓ ${absolute}`;
       metricType = 'negative';
       positionDescription = `Posición: baja ${absolute} ${absolute === 1 ? 'posición' : 'posiciones'}.`;
-      summaryText = value;
-      summaryMetricType = 'negative';
     } else {
       value = '= 0';
       positionDescription = 'Posición: se mantiene sin cambios.';
-      summaryText = 'Igual';
-      summaryMetricType = 'neutral';
     }
     metrics.push({
       key: 'position',
@@ -820,7 +808,6 @@ function resolveMovement(entry) {
       delta: positionDelta,
     });
     ariaParts.push(positionDescription);
-    summaryDescription = positionDescription;
   } else if (typeof entry.movement === 'string' && entry.movement.trim()) {
     const normalizedMovement = entry.movement.trim();
     const capitalized = `${normalizedMovement.charAt(0).toUpperCase()}${normalizedMovement.slice(1)}`;
@@ -834,23 +821,6 @@ function resolveMovement(entry) {
       delta: null,
     });
     ariaParts.push(descriptionText);
-    summaryText = capitalized;
-    summaryDescription = descriptionText;
-    summaryMetricType = 'neutral';
-  }
-
-  if (!metrics.length && summaryText) {
-    metrics.push({
-      key: 'summary',
-      label: 'Posición',
-      value: summaryText,
-      type: summaryMetricType,
-      description: summaryDescription,
-      delta: positionDelta,
-    });
-    if (summaryDescription) {
-      ariaParts.push(summaryDescription);
-    }
   }
 
   if (!metrics.length) {
@@ -861,7 +831,6 @@ function resolveMovement(entry) {
     type,
     metrics,
     ariaLabel: ariaParts.filter(Boolean).join(' '),
-    summaryText,
   };
 }
 
@@ -910,11 +879,6 @@ function createMovementBadge(entry) {
     if (metricsContainer.childElementCount > 0) {
       badge.appendChild(metricsContainer);
     }
-  } else if (movement.summaryText) {
-    const label = document.createElement('span');
-    label.className = 'movement-badge__label';
-    label.textContent = movement.summaryText;
-    badge.appendChild(label);
   }
 
   badge.setAttribute('aria-label', movement.ariaLabel || '');
@@ -999,18 +963,13 @@ function buildMovementBadgeMarkup(entry) {
       `;
     })
     .join('');
-  const summaryMarkup =
-    !metrics.length && movement.summaryText
-      ? `<span class="movement-badge__label">${escapeHtml(movement.summaryText)}</span>`
-      : '';
   const ariaAttr = movement.ariaLabel
     ? ` aria-label="${escapeHtml(movement.ariaLabel)}"`
     : '';
   return `
     <span class="movement-badge movement-badge--${movement.type}" style="--movement-badge-bg:${style.background};color:${style.color};"${ariaAttr}>
       ${iconMarkup}
-      ${metrics.length ? `<span class="movement-badge__metrics">${metricsMarkup}</span>` : ''}
-      ${summaryMarkup}
+      <span class="movement-badge__metrics">${metricsMarkup}</span>
     </span>
   `.trim();
 }

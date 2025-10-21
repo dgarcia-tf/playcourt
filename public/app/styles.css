@@ -2761,13 +2761,6 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   min-width: 0;
 }
 
-.movement-badge__label {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 600;
-  color: inherit;
-}
-
 .movement-badge__metric {
   display: flex;
   align-items: baseline;
