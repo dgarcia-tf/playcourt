@@ -820,6 +820,7 @@ const notificationsList = document.getElementById('notifications-list');
 const matchesMenuBadge = document.getElementById('menu-matches-badge');
 const notificationsMenuBadge = document.getElementById('menu-notifications-badge');
 const noticesMenuBadge = document.getElementById('menu-notices-badge');
+const metricNotifications = document.getElementById('metric-notifications');
 const tournamentsList = document.getElementById('tournaments-list');
 const tournamentDetailCard = document.getElementById('tournament-detail-card');
 const tournamentDetailTitle = document.getElementById('tournament-detail-title');
@@ -1183,6 +1184,7 @@ function updateNotificationCounts(value = 0) {
 
   if (metricNotifications) {
     metricNotifications.textContent = String(count);
+    metricNotifications.hidden = count <= 0;
   }
   updateNotificationsMenuBadge(count);
   return count;

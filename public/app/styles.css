@@ -906,6 +906,19 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-bottom: 1.25rem;
 }
 
+.card-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent-strong);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
 .card-toggle {
   border: none;
   background: none;
