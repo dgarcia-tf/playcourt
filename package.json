@@ -1,0 +1,31 @@
+{
+  "name": "liga-tennis",
+  "version": "1.0.0",
+  "description": "Liga Social Club Náutico San Marcos",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "tennis",
+    "league",
+    "express",
+    "mongoose"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-validator": "^7.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.5",
+    "morgan": "^1.10.0",
+    "nodemailer": "^7.0.9",
+    "sanitize-html": "^2.17.0",
+    "web-push": "^3.6.7"
+  }
+}

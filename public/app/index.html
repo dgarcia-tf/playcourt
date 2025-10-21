@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Liga Tennis · Panel web</title>
+    <link rel="icon" type="image/png" href="assets/club-logo.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section id="auth-view" class="auth-view">
+        <div class="auth-card">
+          <div class="auth-header">
+            <h1>Liga Tennis</h1>
+            <p id="auth-description">
+              Inicia sesión o crea la cuenta inicial de administrador para empezar a gestionar la liga.
+            </p>
+          </div>
+
+          <div class="tabs" role="tablist">
+            <button class="tab-button active" type="button" data-target="login" role="tab" aria-selected="true">
+              Iniciar sesión
+            </button>
+            <button class="tab-button" type="button" data-target="register" role="tab" aria-selected="false">
+              Registrarse
+            </button>
+          </div>
+
+          <div class="tab-pane" data-pane="login">
+            <form id="login-form" class="form">
+              <label>
+                Correo electrónico
+                <input type="email" name="email" autocomplete="email" required />
+              </label>
+              <label>
+                Contraseña
+                <input type="password" name="password" autocomplete="current-password" required />
+              </label>
+              <label class="checkbox-option remember-option">
+                <input type="checkbox" id="login-remember" name="remember" />
+                Recordar mis datos de acceso
+              </label>
+              <button type="submit" class="primary">Entrar</button>
+              <p class="status-message" id="login-status"></p>
+            </form>
+          </div>
+
+          <div class="tab-pane" data-pane="register" hidden>
+            <form id="register-form" class="form">
+              <label>
+                Nombre completo
+                <input type="text" name="fullName" autocomplete="name" required />
+              </label>
+              <label>
+                Correo electrónico
+                <input type="email" name="email" autocomplete="email" required />
+              </label>
+              <label>
+                Contraseña
+                <input type="password" name="password" autocomplete="new-password" minlength="8" required />
+              </label>
+              <div class="form-grid">
+                <label>
+                  Género
+                  <select name="gender" required>
+                    <option value="">Selecciona</option>
+                    <option value="masculino">Masculino</option>
+                    <option value="femenino">Femenino</option>
+                  </select>
+                </label>
+                <fieldset id="register-role-wrapper" class="checkbox-group">
+                  <legend>Roles</legend>
+                  <label class="checkbox-option">
+                    <input type="checkbox" name="roles" value="player" checked />
+                    Jugador
+                  </label>
+                  <label class="checkbox-option">
+                    <input type="checkbox" name="roles" value="admin" />
+                    Administrador
+                  </label>
+                  <p class="form-hint">Activa ambos si también gestionarás la liga.</p>
+                </fieldset>
+              </div>
+              <label>
+                Fecha de nacimiento
+                <input type="date" name="birthDate" required />
+              </label>
+              <label>
+                Teléfono de contacto
+                <input type="tel" name="phone" autocomplete="tel" required />
+              </label>
+              <label>
+                Fotografía de perfil
+                <input type="file" name="photo" accept="image/*" />
+                <span class="form-hint">La imagen se almacenará en la base de datos en formato Base64 (máx. 2&nbsp;MB).</span>
+              </label>
+              <div class="form-grid">
+                <label>
+                  Horario preferido
+                  <select name="preferredSchedule" required>
+                    <option value="manana">Mañana</option>
+                    <option value="tarde">Tarde</option>
+                    <option value="noche">Noche</option>
+                    <option value="fin_de_semana">Fin de semana</option>
+                    <option value="flexible" selected>Flexible</option>
+                  </select>
+                </label>
+                <label>
+                  Notas adicionales
+                  <textarea name="notes" rows="3" maxlength="500" placeholder="Háblanos de tu disponibilidad, club habitual, etc."></textarea>
+                </label>
+              </div>
+              <button type="submit" class="primary">Crear cuenta</button>
+              <p class="status-message" id="register-status"></p>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="app-view" class="app-view" hidden>
+        <div class="app-shell">
+          <aside id="app-sidebar" class="sidebar" tabindex="-1">
+            <div class="sidebar-brand">
+              <div class="topbar-logo-wrapper">
+                <img
+                  id="topbar-logo"
+                  class="topbar-logo"
+                  src="assets/club-logo.svg"
+                  alt="Logotipo del club"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              class="mobile-menu-close"
+              id="mobile-menu-close"
+              aria-label="Cerrar menú"
+            >
+              <span class="mobile-menu-close__icon" aria-hidden="true"></span>
+            </button>
+            <nav class="main-menu" id="app-menu" hidden>
+              <button type="button" class="menu-button" data-target="section-dashboard">Dashboard</button>
+              <button type="button" class="menu-button" data-target="section-club">Club</button>
+              <div class="menu-group">
+                <button type="button" class="menu-button menu-button--parent" data-target="section-leagues">
+                  Ligas
+                </button>
+                <div class="menu-submenu" role="group" aria-label="Secciones de ligas">
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-categories"
+                    data-parent-target="section-leagues"
+                  >
+                    Categorías
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-player-directory"
+                    data-parent-target="section-leagues"
+                    data-requires-admin="true"
+                  >
+                    Jugadores
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-matches"
+                    data-parent-target="section-leagues"
+                  >
+                    <span class="menu-label">Partidos</span>
+                    <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-calendar"
+                    data-parent-target="section-leagues"
+                  >
+                    Calendario
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-ranking"
+                    data-parent-target="section-leagues"
+                  >
+                    Ranking
+                  </button>
+                </div>
+              </div>
+              <button type="button" class="menu-button" data-target="section-chat">
+                <span class="menu-label">Panel de avisos</span>
+                <span class="menu-badge" id="menu-notices-badge" hidden>0</span>
+              </button>
+              <button type="button" class="menu-button" data-target="section-rules">Reglamento</button>
+              <button type="button" class="menu-button" data-target="section-notifications">
+                <span class="menu-label">Notificaciones</span>
+                <span class="menu-badge" id="menu-notifications-badge" hidden>0</span>
+              </button>
+              <button type="button" class="menu-button" data-target="section-account">Mi cuenta</button>
+              <button type="button" class="menu-button menu-button--logout" data-action="logout">
+                Cerrar sesión
+              </button>
+            </nav>
+            <div class="sidebar-account">
+              <div class="sidebar-user">
+                <div class="profile-avatar" id="profile-avatar" aria-hidden="true"></div>
+                <div class="sidebar-user__info">
+                  <h2 id="profile-name" class="profile-name"></h2>
+                  <p class="profile-meta">
+                    <span id="profile-role" class="tag"></span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <div class="mobile-menu-backdrop" id="mobile-menu-backdrop" hidden></div>
+
+          <div class="app-main" id="app-content">
+            <header class="mobile-topbar" id="mobile-topbar">
+              <div class="mobile-topbar__brand">
+                <img
+                  id="mobile-topbar-logo"
+                  class="mobile-topbar__logo"
+                  src="assets/club-logo.svg"
+                  alt="Logotipo del club"
+                />
+                <span id="mobile-topbar-title" class="mobile-topbar__title">Liga Tennis</span>
+              </div>
+              <button
+                type="button"
+                class="mobile-menu-toggle"
+                id="mobile-menu-toggle"
+                aria-expanded="false"
+                aria-controls="app-sidebar"
+              >
+                <span class="mobile-menu-toggle__icon" aria-hidden="true"></span>
+                <span class="mobile-menu-toggle__label">Menú</span>
+              </button>
+            </header>
+            <p id="global-message" class="banner" role="status"></p>
+
+            <section id="section-dashboard" class="app-section" hidden>
+              <article class="card">
+                <div class="card-header">
+                  <h3>Resumen</h3>
+                  <label class="inline-field">
+                    Categoría
+                    <select id="dashboard-category"></select>
+                  </label>
+                </div>
+                <div class="dashboard-metrics">
+                  <div class="metric-card">
+                    <span class="metric-label">Jugadores inscritos</span>
+                    <strong id="metric-players">0</strong>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Próximos partidos</span>
+                    <strong id="metric-upcoming">0</strong>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Notificaciones pendientes</span>
+                    <strong id="metric-notifications">0</strong>
+                  </div>
+                  <div class="metric-card" id="metric-categories-wrapper">
+                    <span class="metric-label">Categorías activas</span>
+                    <strong id="metric-categories">0</strong>
+                  </div>
+                </div>
+              </article>
+
+              <div class="dashboard-grid" id="dashboard-grid">
+                <article class="card">
+                  <div class="card-header">
+                    <h3>Ranking destacado</h3>
+                    <button
+                      type="button"
+                      class="card-toggle"
+                      data-card-toggle
+                      data-expand-label="Expandir"
+                      data-collapse-label="Contraer"
+                      aria-expanded="true"
+                    >
+                      Contraer
+                    </button>
+                  </div>
+                  <ul class="list" id="dashboard-ranking"></ul>
+                </article>
+                <article class="card">
+                  <div class="card-header">
+                    <h3>Próximos partidos</h3>
+                    <button
+                      type="button"
+                      class="card-toggle"
+                      data-card-toggle
+                      data-expand-label="Expandir"
+                      data-collapse-label="Contraer"
+                      aria-expanded="true"
+                    >
+                      Contraer
+                    </button>
+                  </div>
+                  <ul class="list" id="dashboard-upcoming"></ul>
+                </article>
+                <article class="card">
+                  <div class="card-header">
+                    <h3>Notificaciones pendientes</h3>
+                    <button
+                      type="button"
+                      class="card-toggle"
+                      data-card-toggle
+                      data-expand-label="Expandir"
+                      data-collapse-label="Contraer"
+                      aria-expanded="true"
+                    >
+                      Contraer
+                    </button>
+                  </div>
+                  <ul class="list" id="dashboard-notifications"></ul>
+                </article>
+              </div>
+            </section>
+
+            <section id="section-club" class="app-section" hidden>
+              <article class="card" id="club-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Información del club</h3>
+                    <p class="card-subtitle">Horarios, instalaciones y datos de contacto.</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="secondary"
+                    id="club-edit-button"
+                    data-admin-visible="toggle"
+                    hidden
+                  >
+                    Editar
+                  </button>
+                </div>
+                <div class="club-layout">
+                  <aside class="club-summary">
+                    <div class="club-identity">
+                      <div class="club-logo" id="club-logo-display" aria-hidden="true"></div>
+                      <div>
+                        <h4 id="club-name-display">Liga Tennis</h4>
+                        <p id="club-slogan-display" class="club-slogan-text">Liga social de tenis</p>
+                      </div>
+                    </div>
+                    <p id="club-description" class="club-description"></p>
+                    <dl class="club-info-list">
+                      <div>
+                        <dt>Dirección</dt>
+                        <dd id="club-address">—</dd>
+                      </div>
+                      <div>
+                        <dt>Contacto</dt>
+                        <dd id="club-contact">—</dd>
+                      </div>
+                      <div>
+                        <dt>Sitio web</dt>
+                        <dd id="club-website">—</dd>
+                      </div>
+                    </dl>
+                  </aside>
+                  <div class="club-details">
+                    <section>
+                      <h4>Horarios preferentes</h4>
+                      <ul id="club-schedule-list" class="bullet-list"></ul>
+                      <p class="empty-state" id="club-schedule-empty" hidden>
+                        Aún no hay horarios publicados.
+                      </p>
+                    </section>
+                    <section>
+                      <h4>Pistas disponibles</h4>
+                      <ul id="club-courts-list" class="bullet-list"></ul>
+                      <p class="empty-state" id="club-courts-empty" hidden>
+                        Añade las pistas disponibles para planificar partidos.
+                      </p>
+                    </section>
+                    <section>
+                      <h4>Servicios del club</h4>
+                      <ul id="club-facilities-list" class="bullet-list"></ul>
+                      <p class="empty-state" id="club-facilities-empty" hidden>
+                        Describe los servicios destacados del club.
+                      </p>
+                    </section>
+                  </div>
+                </div>
+                <p class="status-message" id="club-status"></p>
+              </article>
+            </section>
+
+            <section id="section-leagues" class="app-section" hidden>
+              <article class="card" id="leagues-card">
+                <div class="card-header">
+                  <h3>Ligas registradas</h3>
+                  <button
+                    type="button"
+                    class="primary"
+                    id="league-create-button"
+                    data-admin-only="true"
+                    data-admin-visible="toggle"
+                    hidden
+                  >
+                    Nueva liga
+                  </button>
+                </div>
+                <ul class="list" id="leagues-list">
+                  <li class="empty-state">Crea una liga para iniciar una nueva temporada.</li>
+                </ul>
+              </article>
+            </section>
+
+            <section id="section-categories" class="app-section" hidden>
+          <article class="card" id="categories-card">
+            <div class="card-header">
+              <h3>Categorías activas</h3>
+              <button
+                type="button"
+                class="primary"
+                id="category-create-button"
+                data-admin-only="true"
+                data-admin-visible="toggle"
+                hidden
+              >
+                Nueva categoría
+              </button>
+            </div>
+            <ul class="list" id="categories-list"></ul>
+          </article>
+            </section>
+
+            <section id="section-matches" class="app-section" hidden>
+              <div class="matches-grid">
+                <article class="card" id="upcoming-card">
+                  <div class="card-header">
+                    <h3>Partidos programados</h3>
+                    <div class="card-actions">
+                      <label class="inline-field">
+                        Categoría
+                        <select id="matches-category"></select>
+                      </label>
+                      <button
+                        type="button"
+                        class="secondary"
+                        id="match-generate-button"
+                        data-admin-only="true"
+                        data-admin-visible="toggle"
+                        hidden
+                      >
+                        Generar pendientes
+                      </button>
+                      <button
+                        type="button"
+                        class="primary"
+                        id="match-create-button"
+                        data-admin-only="true"
+                        data-admin-visible="toggle"
+                        hidden
+                      >
+                        Nuevo partido
+                      </button>
+                    </div>
+                  </div>
+                  <ul class="list" id="upcoming-matches"></ul>
+                </article>
+
+                <article class="card" id="pending-approvals-card">
+                  <div class="card-header">
+                    <h3>Partidos pendientes por aprobar</h3>
+                    <p class="card-subtitle">Resultados que esperan confirmación de los jugadores.</p>
+                  </div>
+                  <ul class="list" id="pending-approvals"></ul>
+                </article>
+
+                <article class="card" id="my-matches-card">
+                  <div class="card-header">
+                    <div>
+                      <h3>Mis partidos</h3>
+                      <p class="card-subtitle">Propón fecha y hora cuando veas un enfrentamiento pendiente.</p>
+                    </div>
+                  </div>
+                  <ul class="list" id="my-matches"></ul>
+                </article>
+
+                <article class="card" id="completed-card">
+                  <div class="card-header">
+                    <h3>Partidos disputados</h3>
+                    <p class="card-subtitle">Consulta resultados confirmados y sets jugados.</p>
+                  </div>
+                  <ul class="list" id="completed-matches"></ul>
+                </article>
+
+                <article
+                  class="card"
+                  id="admin-matches-card"
+                  data-admin-only="true"
+                  data-admin-visible="toggle"
+                  hidden
+                >
+                  <div class="card-header">
+                    <div>
+                      <h3>Gestión de partidos</h3>
+                      <p class="card-subtitle">
+                        Selecciona un enfrentamiento pendiente o programado para actualizarlo o eliminarlo.
+                      </p>
+                    </div>
+                    <div class="card-actions">
+                      <label class="inline-field">
+                        Partido
+                        <select id="admin-match-select">
+                          <option value="">Elige un partido pendiente o programado</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+
+                  <form id="admin-match-form" class="form">
+                    <div class="form-grid">
+                      <label>
+                        Categoría
+                        <select id="admin-match-category" name="categoryId">
+                          <option value="">Selecciona una categoría</option>
+                        </select>
+                      </label>
+                      <label>
+                        Estado
+                        <select id="admin-match-status-select" name="status">
+                          <option value="pendiente">Pendiente</option>
+                          <option value="propuesto">Propuesto</option>
+                          <option value="programado">Programado</option>
+                          <option value="revision">En revisión</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div class="form-grid">
+                      <label>
+                        Jugador 1
+                        <select id="admin-match-player1" name="player1">
+                          <option value="">Selecciona un jugador</option>
+                        </select>
+                      </label>
+                      <label>
+                        Jugador 2
+                        <select id="admin-match-player2" name="player2">
+                          <option value="">Selecciona un jugador</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div class="form-grid">
+                      <label>
+                        Fecha y hora
+                        <input id="admin-match-date" type="datetime-local" name="scheduledAt" />
+                        <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
+                      </label>
+                      <label>
+                        Pista
+                        <select id="admin-match-court" name="court">
+                          <option value="">Sin pista asignada</option>
+                        </select>
+                        <span class="form-hint">Las pistas disponibles se gestionan en el perfil del club.</span>
+                      </label>
+                    </div>
+
+                    <label>
+                      Notas internas
+                      <textarea
+                        id="admin-match-notes"
+                        name="notes"
+                        rows="3"
+                        maxlength="500"
+                        placeholder="Comentarios visibles solo para administradores"
+                      ></textarea>
+                    </label>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary">Guardar cambios</button>
+                      <button type="button" id="admin-match-cancel" class="ghost" hidden>Cancelar</button>
+                      <button type="button" id="admin-match-delete" class="danger" hidden>
+                        Eliminar partido
+                      </button>
+                    </div>
+                  </form>
+
+                  <p class="status-message" id="admin-match-status-message"></p>
+
+                  <h4>Partidos activos</h4>
+                  <ul class="list" id="admin-match-list">
+                    <li class="empty-state">No hay partidos activos.</li>
+                  </ul>
+                </article>
+              </div>
+            </section>
+
+            <section id="section-calendar" class="app-section" hidden>
+              <article class="card calendar-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Calendario general</h3>
+                    <p class="card-subtitle">Partidos confirmados de todas las categorías.</p>
+                  </div>
+                  <div class="calendar-nav">
+                    <button type="button" id="global-calendar-prev" aria-label="Ver mes anterior">‹</button>
+                    <span id="global-calendar-label" class="calendar-label"></span>
+                    <button type="button" id="global-calendar-next" aria-label="Ver mes siguiente">›</button>
+                  </div>
+                </div>
+                <div id="global-calendar" class="calendar-container"></div>
+              </article>
+            </section>
+
+            <section id="section-ranking" class="app-section" hidden>
+              <article class="card" id="ranking-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Ranking por categoría</h3>
+                  </div>
+                  <div class="card-actions">
+                    <label class="inline-field">
+                      Categoría
+                      <select id="ranking-select"></select>
+                    </label>
+                    <button id="ranking-print-button" type="button" class="secondary">
+                      Imprimir ranking
+                    </button>
+                  </div>
+                </div>
+                <div class="table-scroll">
+                  <table class="table" id="ranking-table">
+                    <thead>
+                      <tr>
+                        <th>Nº Ranking</th>
+                        <th>Jugador</th>
+                        <th>Puntos</th>
+                        <th>Jugados</th>
+                        <th>Victorias</th>
+                        <th>Derrotas</th>
+                        <th>Juegos ganados</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+                <div class="empty-state" id="ranking-empty" hidden>Selecciona una categoría.</div>
+              </article>
+            </section>
+
+            <section id="section-chat" class="app-section" hidden>
+                <div class="chat-grid">
+                  <article class="card chat-card">
+                    <div class="card-header">
+                      <h3>Panel de avisos</h3>
+                      <p class="card-subtitle">
+                        Los administradores publican novedades y recordatorios para toda la liga.
+                      </p>
+                    </div>
+                    <ul class="chat-messages" id="general-chat-messages"></ul>
+                    <form id="general-chat-form" class="chat-form" data-admin-visible="toggle">
+                      <div class="chat-editor">
+                        <div class="chat-toolbar" id="general-chat-toolbar" role="toolbar" aria-label="Formato del aviso">
+                          <button type="button" class="chat-toolbar-button" data-command="bold" aria-label="Negrita">
+                            <span aria-hidden="true">B</span>
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="italic" aria-label="Cursiva">
+                            <span aria-hidden="true">I</span>
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="underline" aria-label="Subrayado">
+                            <span aria-hidden="true">U</span>
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="heading" data-level="1" aria-label="Encabezado nivel 1">
+                            H1
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="heading" data-level="2" aria-label="Encabezado nivel 2">
+                            H2
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="list" data-list="unordered" aria-label="Lista con viñetas">
+                            •
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="list" data-list="ordered" aria-label="Lista numerada">
+                            1.
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="quote" aria-label="Cita">
+                            “ ”
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="link" aria-label="Insertar enlace">
+                            🔗
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="clear" aria-label="Limpiar formato">
+                            ⌫
+                          </button>
+                          <button type="button" class="chat-toolbar-button" data-command="attachment" aria-label="Adjuntar archivo">
+                            📎
+                          </button>
+                        </div>
+                        <div
+                          id="general-chat-editor"
+                          class="chat-editor-content"
+                          contenteditable="true"
+                          role="textbox"
+                          aria-multiline="true"
+                          data-placeholder="Comparte un aviso para todos los jugadores"
+                        ></div>
+                        <textarea id="general-chat-input" name="message" hidden></textarea>
+                        <div id="general-chat-attachments" class="chat-attachments" hidden>
+                          <p class="chat-attachments-title">Adjuntos</p>
+                          <ul class="chat-attachments-list" aria-live="polite"></ul>
+                        </div>
+                        <input
+                          type="file"
+                          id="general-chat-attachment-input"
+                          class="sr-only"
+                          multiple
+                          accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        />
+                      </div>
+                      <button type="submit" class="primary">Publicar aviso</button>
+                    </form>
+                  </article>
+                </div>
+            </section>
+
+            <section id="section-rules" class="app-section" hidden>
+              <article class="card">
+                <div class="card-header">
+                  <h3>Reglamento y guía del club</h3>
+                  <div class="card-actions">
+                    <button
+                      type="button"
+                      class="secondary"
+                      id="rules-edit-button"
+                      data-admin-visible="toggle"
+                      hidden
+                    >
+                      Editar reglamento
+                    </button>
+                  </div>
+                </div>
+                <div class="rules-content" id="rules-content"></div>
+              </article>
+            </section>
+
+            <section id="section-notifications" class="app-section" hidden>
+              <article class="card" id="notifications-card">
+                <div class="card-header">
+                  <h3>Notificaciones</h3>
+                </div>
+                <ul class="list" id="notifications-list"></ul>
+              </article>
+            </section>
+
+            <section
+              id="section-player-directory"
+              class="app-section"
+              data-admin-only="true"
+              hidden
+            >
+              <article class="card" id="player-directory-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Directorio de jugadores</h3>
+                    <p class="card-subtitle">
+                      Filtra la lista para localizar, revisar y actualizar los perfiles inscritos.
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <button
+                      type="button"
+                      class="secondary"
+                      id="player-create-button"
+                      data-admin-only="true"
+                      data-admin-visible="toggle"
+                      hidden
+                    >
+                      Nuevo jugador
+                    </button>
+                    <span class="tag admin">Admin</span>
+                  </div>
+                </div>
+                <div class="player-directory-summary">
+                  Resultados: <strong id="player-directory-count">0</strong>
+                </div>
+                <div class="player-directory-controls">
+                  <label class="inline-field">
+                    Búsqueda
+                    <input
+                      type="search"
+                      id="player-directory-search"
+                      placeholder="Nombre, correo o teléfono"
+                    />
+                  </label>
+                  <label class="inline-field">
+                    Género
+                    <select id="player-directory-gender">
+                      <option value="">Todos</option>
+                      <option value="masculino">Masculino</option>
+                      <option value="femenino">Femenino</option>
+                    </select>
+                  </label>
+                  <label class="inline-field">
+                    Rol
+                    <select id="player-directory-role">
+                      <option value="">Todos</option>
+                      <option value="player">Jugador</option>
+                      <option value="admin">Administrador</option>
+                    </select>
+                  </label>
+                  <label class="inline-field">
+                    Categoría
+                    <select id="player-directory-category">
+                      <option value="">Todas</option>
+                    </select>
+                  </label>
+                </div>
+                <ul class="list" id="player-directory-list"></ul>
+                <div class="empty-state" id="player-directory-empty" hidden>
+                  Aún no hay jugadores que coincidan con el filtro seleccionado.
+                </div>
+              </article>
+            </section>
+            <section id="section-account" class="app-section" hidden>
+              <article class="card">
+                <div class="card-header">
+                  <div>
+                    <h3>Mi cuenta</h3>
+                    <p class="card-subtitle">Consulta tus datos y edítalos cuando lo necesites.</p>
+                  </div>
+                  <button id="profile-edit" type="button" class="secondary">Editar datos</button>
+                </div>
+                <div class="account-wrapper">
+                  <div class="account-overview" id="account-overview">
+                    <div class="account-photo" id="account-photo" aria-hidden="true"></div>
+                    <dl class="account-list">
+                      <div>
+                        <dt>Correo electrónico</dt>
+                        <dd id="account-email"></dd>
+                      </div>
+                      <div>
+                        <dt>Teléfono</dt>
+                        <dd id="account-phone"></dd>
+                      </div>
+                      <div>
+                        <dt>Fecha de nacimiento</dt>
+                        <dd id="account-birth-date"></dd>
+                      </div>
+                      <div>
+                        <dt>Horario preferido</dt>
+                        <dd id="account-schedule"></dd>
+                      </div>
+                      <div>
+                        <dt>Notas</dt>
+                        <dd id="account-notes"></dd>
+                      </div>
+                      <div>
+                        <dt>Notificaciones push</dt>
+                        <dd id="account-push-status">Sin configurar</dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <form id="profile-form" class="form profile-form" hidden>
+                    <div class="form-grid">
+                      <label>
+                        Nombre completo
+                        <input type="text" name="fullName" minlength="3" required />
+                      </label>
+                      <label>
+                        Correo electrónico
+                        <input type="email" name="email" required />
+                      </label>
+                    </div>
+                    <div class="form-grid">
+                      <label>
+                        Teléfono de contacto
+                        <input type="tel" name="phone" minlength="7" required />
+                      </label>
+                      <label>
+                        Horario preferido
+                        <select name="preferredSchedule" required>
+                          <option value="manana">Mañana</option>
+                          <option value="tarde">Tarde</option>
+                          <option value="noche">Noche</option>
+                          <option value="fin_de_semana">Fin de semana</option>
+                          <option value="flexible">Flexible</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div class="form-grid">
+                      <label>
+                        Género
+                        <select name="gender" required>
+                          <option value="masculino">Masculino</option>
+                          <option value="femenino">Femenino</option>
+                        </select>
+                      </label>
+                      <label>
+                        Fecha de nacimiento
+                        <input type="date" name="birthDate" required />
+                      </label>
+                    </div>
+                    <label>
+                      Fotografía
+                      <input type="file" name="photo" accept="image/*" />
+                      <span class="form-hint">La imagen se guarda en Base64 con un límite de 2&nbsp;MB.</span>
+                    </label>
+                    <label>
+                      Notas
+                      <textarea name="notes" rows="2" maxlength="500" placeholder="Preferencias adicionales"></textarea>
+                    </label>
+                    <div class="form-grid form-grid--stacked">
+                      <label class="checkbox-option">
+                        <input type="checkbox" name="notifyMatchRequests" value="true" />
+                        Avisarme cuando reciba solicitudes de partido
+                      </label>
+                      <label class="checkbox-option">
+                        <input type="checkbox" name="notifyMatchResults" value="true" />
+                        Notificarme cuando se confirme un resultado
+                      </label>
+                    </div>
+                    <label>
+                      Actualizar contraseña (opcional)
+                      <input type="password" name="password" minlength="8" placeholder="Deja vacío para mantener la actual" />
+                    </label>
+                    <div class="form-actions">
+                      <button type="submit" class="primary">Guardar cambios</button>
+                      <button type="button" id="profile-cancel" class="ghost">Cancelar</button>
+                    </div>
+                  </form>
+                </div>
+                <p class="status-message" id="profile-status"></p>
+              </article>
+              <article class="card" id="push-settings-card">
+                <div class="card-header">
+                  <h3>Notificaciones push</h3>
+                </div>
+                <p class="card-subtitle" id="push-status-text">
+                  Activa las notificaciones push para recibir avisos inmediatos en este dispositivo.
+                </p>
+                <div class="card-actions">
+                  <button type="button" class="primary" id="push-enable-button">Activar notificaciones</button>
+                  <button type="button" class="ghost" id="push-disable-button" hidden>
+                    Desactivar notificaciones
+                  </button>
+                </div>
+                <p class="form-hint" id="push-permission-warning" hidden>
+                  Has bloqueado las notificaciones en el navegador. Reactívalas desde la configuración del sitio
+                  para volver a habilitarlas.
+                </p>
+                <p class="form-hint" id="push-unsupported-warning" hidden>
+                  Tu navegador no es compatible con las notificaciones push. Prueba en un dispositivo o navegador
+                  actualizado.
+                </p>
+              </article>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="modal-overlay" class="modal-overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h2 id="modal-title"></h2>
+          <button type="button" class="ghost icon-only" id="modal-close" aria-label="Cerrar diálogo">
+            ×
+          </button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
