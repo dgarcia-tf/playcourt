@@ -173,6 +173,15 @@
                   <button
                     type="button"
                     class="menu-button menu-button--nested"
+                    data-target="section-league-payments"
+                    data-parent-target="section-leagues"
+                    data-requires-admin="true"
+                  >
+                    Pagos
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
                     data-target="section-matches"
                     data-parent-target="section-leagues"
                   >
@@ -616,6 +625,53 @@
                 <div class="empty-state" id="league-players-empty" hidden>
                   Selecciona una liga para ver los jugadores inscritos.
                 </div>
+              </article>
+            </section>
+
+            <section id="section-league-payments" class="app-section" data-admin-only="true" hidden>
+              <article class="card" id="league-payments-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Pagos de inscripción</h3>
+                    <p class="card-subtitle">
+                      Supervisa el estado de los pagos de los jugadores inscritos en ligas con cuota.
+                    </p>
+                  </div>
+                </div>
+                <div class="league-payments-controls">
+                  <label class="inline-field">
+                    Liga con cuota
+                    <select id="league-payments-league" disabled></select>
+                  </label>
+                  <label class="inline-field">
+                    Estado
+                    <select id="league-payments-status" disabled>
+                      <option value="">Todos</option>
+                      <option value="pendiente">Pendiente</option>
+                      <option value="pagado">Pagado</option>
+                      <option value="exento">Exento</option>
+                      <option value="fallido">Fallido</option>
+                    </select>
+                  </label>
+                  <label class="inline-field">
+                    Búsqueda
+                    <input
+                      type="search"
+                      id="league-payments-search"
+                      placeholder="Nombre o correo"
+                      disabled
+                    />
+                  </label>
+                </div>
+                <div class="league-payments-summary">
+                  Registros: <strong id="league-payments-count">0</strong>
+                  <span class="tag" id="league-payments-fee" hidden></span>
+                </div>
+                <ul class="list" id="league-payments-list"></ul>
+                <div class="empty-state" id="league-payments-empty" hidden>
+                  Configura una liga con cuota de inscripción para gestionar pagos.
+                </div>
+                <p class="status-message" id="league-payments-status"></p>
               </article>
             </section>
 
