@@ -41,7 +41,14 @@ const STATUS_LABELS = {
   caducado: 'Caducado',
 };
 
-const CALENDAR_MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision'];
+const CALENDAR_MATCH_STATUSES = [
+  'pendiente',
+  'propuesto',
+  'programado',
+  'revision',
+  'completado',
+  'finalizado',
+];
 
 const MATCH_EXPIRATION_DAYS = 15;
 const MATCHES_PER_PAGE = 10;
@@ -882,6 +889,7 @@ const state = {
   calendarMatches: [],
   calendarDate: new Date(),
   globalCalendarDate: new Date(),
+  globalCalendarViewMode: 'day',
   matchPagination: {
     upcoming: {},
     pending: {},
@@ -1289,6 +1297,7 @@ const globalCalendarContainer = document.getElementById('global-calendar');
 const globalCalendarLabel = document.getElementById('global-calendar-label');
 const globalCalendarPrev = document.getElementById('global-calendar-prev');
 const globalCalendarNext = document.getElementById('global-calendar-next');
+const globalCalendarViewButtons = document.querySelectorAll('[data-global-calendar-view]');
 const leaguePlayersList = document.getElementById('league-players-list');
 const leaguePlayersCount = document.getElementById('league-players-count');
 const leaguePlayersLeagueSelect = document.getElementById('league-players-league');
@@ -4436,6 +4445,19 @@ function formatMonthLabel(date) {
   }
 }
 
+function formatDayLabel(date) {
+  try {
+    return new Intl.DateTimeFormat('es-ES', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(date);
+  } catch (error) {
+    return formatDateOnly(date);
+  }
+}
+
 function startOfDay(date) {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
@@ -7378,72 +7400,92 @@ function renderUnscheduledMatches(matches = [], container = calendarContainer) {
   container.appendChild(block);
 }
 
+function createCalendarDayBlock(date, events = [], { weekdayLength = 'short' } = {}) {
+  const dayBlock = document.createElement('div');
+  dayBlock.className = 'calendar-day';
+
+  const header = document.createElement('div');
+  header.className = 'calendar-day-header';
+  const normalizedLength = weekdayLength === 'long' ? 'long' : 'short';
+  header.innerHTML = `<strong>${date.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
+    weekday: normalizedLength,
+  }).format(date)}</span>`;
+  dayBlock.appendChild(header);
+
+  if (!events.length) {
+    const empty = document.createElement('div');
+    empty.className = 'calendar-empty';
+    empty.textContent = '—';
+    dayBlock.appendChild(empty);
+    return dayBlock;
+  }
+
+  events.forEach((match) => {
+    dayBlock.appendChild(createCalendarEvent(match));
+  });
+
+  return dayBlock;
+}
+
 function renderCalendarView({
   container,
   labelElement,
   referenceDate,
   matches,
   includeUnscheduled = false,
+  viewMode = 'month',
 }) {
   if (!container) return;
 
-  const reference = referenceDate instanceof Date ? new Date(referenceDate) : new Date();
+  const reference =
+    referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())
+      ? new Date(referenceDate)
+      : new Date();
   const list = Array.isArray(matches) ? matches : [];
   const { grouped, unscheduled } = buildCalendarDataset(list);
   container.innerHTML = '';
 
-  const monthReference = new Date(reference.getFullYear(), reference.getMonth(), 1);
+  const mode = viewMode === 'day' ? 'day' : 'month';
 
-  if (labelElement) {
-    labelElement.textContent = formatMonthLabel(monthReference);
-  }
-
-  let cursor = startOfWeek(monthReference);
-  for (let weekIndex = 0; weekIndex < 6; weekIndex += 1) {
-    const weekRow = document.createElement('div');
-    weekRow.className = 'calendar-week';
-
-    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
-      const day = addDays(cursor, dayIndex);
-      const key = startOfDay(day).getTime();
+  if (mode === 'day') {
+    const dayReference = startOfDay(reference);
+    if (labelElement) {
+      labelElement.textContent = formatDayLabel(dayReference);
+    }
+    const dayList = document.createElement('div');
+    dayList.className = 'calendar-day-list';
+    const key = dayReference.getTime();
+    const events = grouped.get(key) || [];
+    dayList.appendChild(createCalendarDayBlock(dayReference, events, { weekdayLength: 'long' }));
+    container.appendChild(dayList);
+  } else {
+    const monthStart = startOfMonth(reference);
+    if (labelElement) {
+      labelElement.textContent = formatMonthLabel(monthStart);
+    }
+    const dayList = document.createElement('div');
+    dayList.className = 'calendar-day-list';
+    for (let cursor = new Date(monthStart); cursor < endOfMonth(monthStart); cursor = addDays(cursor, 1)) {
+      const key = startOfDay(cursor).getTime();
       const events = grouped.get(key) || [];
-      const column = document.createElement('div');
-      column.className = 'calendar-day';
-      if (day.getMonth() !== monthReference.getMonth()) {
-        column.classList.add('calendar-day--muted');
-      }
-
-      const header = document.createElement('div');
-      header.className = 'calendar-day-header';
-      header.innerHTML = `<strong>${day.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
-        weekday: 'short',
-      }).format(day)}</span>`;
-      column.appendChild(header);
-
-      if (!events.length) {
-        const empty = document.createElement('div');
-        empty.className = 'calendar-empty';
-        empty.textContent = '—';
-        column.appendChild(empty);
-      } else {
-        events.forEach((match) => {
-          column.appendChild(createCalendarEvent(match));
-        });
-      }
-
-      weekRow.appendChild(column);
+      dayList.appendChild(createCalendarDayBlock(cursor, events));
     }
-
-    container.appendChild(weekRow);
-    cursor = addDays(cursor, 7);
-    if (cursor.getMonth() > monthReference.getMonth() && cursor.getDate() >= 7) {
-      break;
-    }
+    container.appendChild(dayList);
   }
 
   if (includeUnscheduled) {
     renderUnscheduledMatches(unscheduled, container);
   }
+}
+
+function setCalendarViewButtonState(buttons, activeView) {
+  if (!buttons) return;
+  buttons.forEach((button) => {
+    const view = button.dataset.globalCalendarView || button.dataset.calendarView || '';
+    const isActive = view === activeView;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
 }
 
 function renderCalendar() {
@@ -7457,6 +7499,7 @@ function renderCalendar() {
     referenceDate: state.calendarDate,
     matches,
     includeUnscheduled: true,
+    viewMode: 'month',
   });
 }
 
@@ -7464,11 +7507,13 @@ function renderGlobalCalendar() {
   if (!globalCalendarContainer) return;
 
   const confirmedMatches = getScheduledCalendarMatches();
+  const viewMode = state.globalCalendarViewMode === 'day' ? 'day' : 'month';
   renderCalendarView({
     container: globalCalendarContainer,
     labelElement: globalCalendarLabel,
     referenceDate: state.globalCalendarDate,
     matches: confirmedMatches,
+    viewMode,
   });
 }
 
@@ -7485,7 +7530,12 @@ function shiftCalendar(step) {
 
 function shiftGlobalCalendar(step) {
   const reference = new Date(state.globalCalendarDate);
-  state.globalCalendarDate = new Date(reference.getFullYear(), reference.getMonth() + step, 1);
+  if (state.globalCalendarViewMode === 'day') {
+    const base = startOfDay(reference);
+    state.globalCalendarDate = addDays(base, step);
+  } else {
+    state.globalCalendarDate = new Date(reference.getFullYear(), reference.getMonth() + step, 1);
+  }
   renderGlobalCalendar();
 }
 
@@ -15851,6 +15901,26 @@ globalCalendarNext?.addEventListener('click', () => {
   shiftGlobalCalendar(1);
 });
 
+if (globalCalendarViewButtons.length) {
+  setCalendarViewButtonState(globalCalendarViewButtons, state.globalCalendarViewMode);
+  globalCalendarViewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const { globalCalendarView } = button.dataset;
+      if (!globalCalendarView || state.globalCalendarViewMode === globalCalendarView) {
+        return;
+      }
+      state.globalCalendarViewMode = globalCalendarView;
+      if (globalCalendarView === 'day') {
+        state.globalCalendarDate = startOfDay(new Date());
+      } else {
+        state.globalCalendarDate = startOfMonth(new Date(state.globalCalendarDate));
+      }
+      setCalendarViewButtonState(globalCalendarViewButtons, state.globalCalendarViewMode);
+      renderGlobalCalendar();
+    });
+  });
+}
+
 clubEditButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
   openClubModal();
@@ -15953,6 +16023,7 @@ logoutButtons.forEach((button) => {
     state.pendingEnrollmentRequestCount = 0;
     state.calendarDate = new Date();
     state.globalCalendarDate = new Date();
+    state.globalCalendarViewMode = 'day';
     state.matchPagination = { upcoming: {}, pending: {}, completed: {} };
     clearSession();
     updateNotificationCounts([]);

@@ -1081,10 +1081,34 @@
                     <h3>Calendario general</h3>
                     <p class="card-subtitle">Partidos confirmados de todas las categorías.</p>
                   </div>
-                  <div class="calendar-nav">
-                    <button type="button" id="global-calendar-prev" aria-label="Ver mes anterior">‹</button>
-                    <span id="global-calendar-label" class="calendar-label"></span>
-                    <button type="button" id="global-calendar-next" aria-label="Ver mes siguiente">›</button>
+                  <div class="calendar-actions">
+                    <div
+                      class="calendar-view-toggle"
+                      role="group"
+                      aria-label="Cambiar vista del calendario"
+                    >
+                      <button
+                        type="button"
+                        class="calendar-view-button is-active"
+                        data-global-calendar-view="day"
+                        aria-pressed="true"
+                      >
+                        Día
+                      </button>
+                      <button
+                        type="button"
+                        class="calendar-view-button"
+                        data-global-calendar-view="month"
+                        aria-pressed="false"
+                      >
+                        Mes
+                      </button>
+                    </div>
+                    <div class="calendar-nav">
+                      <button type="button" id="global-calendar-prev" aria-label="Ver periodo anterior">‹</button>
+                      <span id="global-calendar-label" class="calendar-label"></span>
+                      <button type="button" id="global-calendar-next" aria-label="Ver periodo siguiente">›</button>
+                    </div>
                   </div>
                 </div>
                 <div id="global-calendar" class="calendar-container"></div>
