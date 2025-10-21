@@ -158,9 +158,8 @@
                   <button
                     type="button"
                     class="menu-button menu-button--nested"
-                    data-target="section-player-directory"
+                    data-target="section-league-players"
                     data-parent-target="section-leagues"
-                    data-requires-admin="true"
                   >
                     Jugadores
                   </button>
@@ -233,14 +232,36 @@
               <button type="button" class="menu-button" data-target="section-court-reservations">
                 Reservar pistas
               </button>
-              <button
-                type="button"
-                class="menu-button"
-                data-target="section-court-admin"
-                data-requires-admin="true"
-              >
-                Administración de pistas
-              </button>
+              <div class="menu-group" data-requires-admin="true" data-admin-visible="toggle" hidden>
+                <button
+                  type="button"
+                  class="menu-button menu-button--parent"
+                  data-target="section-admin"
+                  data-requires-admin="true"
+                >
+                  Administración
+                </button>
+                <div class="menu-submenu" role="group" aria-label="Secciones de administración">
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-user-directory"
+                    data-parent-target="section-admin"
+                    data-requires-admin="true"
+                  >
+                    Usuarios
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-court-admin"
+                    data-parent-target="section-admin"
+                    data-requires-admin="true"
+                  >
+                    Administración de pistas
+                  </button>
+                </div>
+              </div>
               <button type="button" class="menu-button" data-target="section-chat">
                 <span class="menu-label">Panel de avisos</span>
                 <span class="menu-badge" id="menu-notices-badge" hidden>0</span>
@@ -482,6 +503,53 @@
                   </button>
                 </div>
                 <ul class="list" id="categories-list"></ul>
+              </article>
+            </section>
+
+            <section id="section-league-players" class="app-section" hidden>
+              <article class="card" id="league-players-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Jugadores inscritos</h3>
+                    <p class="card-subtitle">
+                      Consulta y filtra a los participantes inscritos en cada liga y categoría.
+                    </p>
+                  </div>
+                </div>
+                <div class="player-directory-summary">
+                  Resultados: <strong id="league-players-count">0</strong>
+                </div>
+                <div class="player-directory-controls">
+                  <label class="inline-field">
+                    Liga
+                    <select id="league-players-league" disabled></select>
+                  </label>
+                  <label class="inline-field">
+                    Categoría
+                    <select id="league-players-category" disabled></select>
+                  </label>
+                  <label class="inline-field">
+                    Búsqueda
+                    <input
+                      type="search"
+                      id="league-players-search"
+                      placeholder="Nombre, correo o teléfono"
+                      disabled
+                    />
+                  </label>
+                  <label class="inline-field">
+                    Género
+                    <select id="league-players-gender" disabled>
+                      <option value="">Todos</option>
+                      <option value="masculino">Masculino</option>
+                      <option value="femenino">Femenino</option>
+                    </select>
+                  </label>
+                </div>
+                <ul class="list" id="league-players-list"></ul>
+                <div class="empty-state" id="league-players-empty" hidden>
+                  Selecciona una liga para ver los jugadores inscritos.
+                </div>
               </article>
             </section>
 
@@ -983,17 +1051,39 @@
             </section>
 
             <section
-              id="section-player-directory"
+              id="section-admin"
               class="app-section"
               data-admin-only="true"
               hidden
             >
-              <article class="card" id="player-directory-card">
+              <article class="card" id="admin-overview-card">
                 <div class="card-header">
                   <div>
-                    <h3>Directorio de jugadores</h3>
+                    <h3>Panel de administración</h3>
                     <p class="card-subtitle">
-                      Filtra la lista para localizar, revisar y actualizar los perfiles inscritos.
+                      Accede a las herramientas de gestión para mantener la liga al día.
+                    </p>
+                  </div>
+                  <span class="tag admin">Admin</span>
+                </div>
+                <div class="meta">
+                  Selecciona una opción del menú de administración para comenzar.
+                </div>
+              </article>
+            </section>
+
+            <section
+              id="section-user-directory"
+              class="app-section"
+              data-admin-only="true"
+              hidden
+            >
+              <article class="card" id="user-directory-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Gestión de usuarios</h3>
+                    <p class="card-subtitle">
+                      Filtra y edita los perfiles de los miembros con acceso a la plataforma.
                     </p>
                   </div>
                   <div class="card-actions">
@@ -1005,26 +1095,26 @@
                       data-admin-visible="toggle"
                       hidden
                     >
-                      Nuevo jugador
+                      Nuevo usuario
                     </button>
                     <span class="tag admin">Admin</span>
                   </div>
                 </div>
                 <div class="player-directory-summary">
-                  Resultados: <strong id="player-directory-count">0</strong>
+                  Resultados: <strong id="user-directory-count">0</strong>
                 </div>
                 <div class="player-directory-controls">
                   <label class="inline-field">
                     Búsqueda
                     <input
                       type="search"
-                      id="player-directory-search"
+                      id="user-directory-search"
                       placeholder="Nombre, correo o teléfono"
                     />
                   </label>
                   <label class="inline-field">
                     Género
-                    <select id="player-directory-gender">
+                    <select id="user-directory-gender">
                       <option value="">Todos</option>
                       <option value="masculino">Masculino</option>
                       <option value="femenino">Femenino</option>
@@ -1032,7 +1122,7 @@
                   </label>
                   <label class="inline-field">
                     Rol
-                    <select id="player-directory-role">
+                    <select id="user-directory-role">
                       <option value="">Todos</option>
                       <option value="player">Jugador</option>
                       <option value="admin">Administrador</option>
@@ -1040,14 +1130,14 @@
                   </label>
                   <label class="inline-field">
                     Categoría
-                    <select id="player-directory-category">
+                    <select id="user-directory-category">
                       <option value="">Todas</option>
                     </select>
                   </label>
                 </div>
-                <ul class="list" id="player-directory-list"></ul>
-                <div class="empty-state" id="player-directory-empty" hidden>
-                  Aún no hay jugadores que coincidan con el filtro seleccionado.
+                <ul class="list" id="user-directory-list"></ul>
+                <div class="empty-state" id="user-directory-empty" hidden>
+                  Aún no hay usuarios que coincidan con el filtro seleccionado.
                 </div>
               </article>
             </section>

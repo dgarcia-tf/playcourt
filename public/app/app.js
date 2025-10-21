@@ -698,6 +698,13 @@ const state = {
     role: '',
     category: '',
   },
+  leaguePlayersFilters: {
+    league: '',
+    category: '',
+    search: '',
+    gender: '',
+  },
+  leaguePlayersLoading: false,
   courtReservations: [],
   courtAvailability: [],
   courtAvailabilityDate: new Date(),
@@ -984,13 +991,20 @@ const globalCalendarContainer = document.getElementById('global-calendar');
 const globalCalendarLabel = document.getElementById('global-calendar-label');
 const globalCalendarPrev = document.getElementById('global-calendar-prev');
 const globalCalendarNext = document.getElementById('global-calendar-next');
-const playerDirectoryList = document.getElementById('player-directory-list');
-const playerDirectoryCount = document.getElementById('player-directory-count');
-const playerDirectorySearch = document.getElementById('player-directory-search');
-const playerDirectoryGender = document.getElementById('player-directory-gender');
-const playerDirectoryRole = document.getElementById('player-directory-role');
-const playerDirectoryCategory = document.getElementById('player-directory-category');
-const playerDirectoryEmpty = document.getElementById('player-directory-empty');
+const leaguePlayersList = document.getElementById('league-players-list');
+const leaguePlayersCount = document.getElementById('league-players-count');
+const leaguePlayersLeagueSelect = document.getElementById('league-players-league');
+const leaguePlayersCategorySelect = document.getElementById('league-players-category');
+const leaguePlayersSearch = document.getElementById('league-players-search');
+const leaguePlayersGender = document.getElementById('league-players-gender');
+const leaguePlayersEmpty = document.getElementById('league-players-empty');
+const playerDirectoryList = document.getElementById('user-directory-list');
+const playerDirectoryCount = document.getElementById('user-directory-count');
+const playerDirectorySearch = document.getElementById('user-directory-search');
+const playerDirectoryGender = document.getElementById('user-directory-gender');
+const playerDirectoryRole = document.getElementById('user-directory-role');
+const playerDirectoryCategory = document.getElementById('user-directory-category');
+const playerDirectoryEmpty = document.getElementById('user-directory-empty');
 const categoryCreateButton = document.getElementById('category-create-button');
 const leagueCreateButton = document.getElementById('league-create-button');
 const matchCreateButton = document.getElementById('match-create-button');
@@ -1196,6 +1210,357 @@ function updateNotificationCounts(value = 0) {
   }
   updateNotificationsMenuBadge(count);
   return count;
+}
+
+function ensureLeaguePlayerFilters() {
+  if (!state.leaguePlayersFilters) {
+    state.leaguePlayersFilters = {
+      league: '',
+      category: '',
+      search: '',
+      gender: '',
+    };
+  }
+  return state.leaguePlayersFilters;
+}
+
+function getLeagueCategories(leagueId) {
+  if (!leagueId) return [];
+  const categories = Array.isArray(state.categories) ? state.categories : [];
+  return categories.filter((category) => normalizeId(category?.league) === leagueId);
+}
+
+function formatLeagueOptionLabel(league) {
+  if (!league) return 'Liga';
+  const name = league.name || 'Liga';
+  const year = league.year ? ` · ${league.year}` : '';
+  return `${name}${year}`;
+}
+
+function updateLeaguePlayersCategoryOptions() {
+  if (!leaguePlayersCategorySelect) return [];
+  const filters = ensureLeaguePlayerFilters();
+  const leagueId = filters.league;
+  const categories = getLeagueCategories(leagueId);
+  const previousCategory = filters.category;
+  const options = categories
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+
+  leaguePlayersCategorySelect.innerHTML = '<option value="">Todas las categorías</option>';
+  const availableIds = new Set();
+
+  options.forEach((category) => {
+    const id = normalizeId(category);
+    if (!id || availableIds.has(id)) {
+      return;
+    }
+    availableIds.add(id);
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = `${category.name} (${translateGender(category.gender)})`;
+    leaguePlayersCategorySelect.appendChild(option);
+  });
+
+  let nextCategory = '';
+  if (previousCategory && availableIds.has(previousCategory)) {
+    nextCategory = previousCategory;
+  }
+  filters.category = nextCategory;
+  leaguePlayersCategorySelect.value = nextCategory;
+  leaguePlayersCategorySelect.disabled = !options.length;
+  return options;
+}
+
+function updateLeaguePlayersControls({ resetSelection = false } = {}) {
+  if (!leaguePlayersLeagueSelect) return;
+
+  const filters = ensureLeaguePlayerFilters();
+  const categories = Array.isArray(state.categories) ? state.categories : [];
+  const leagues = Array.isArray(state.leagues) ? state.leagues : [];
+  const previousLeague = !resetSelection ? filters.league : '';
+
+  const leaguesWithCategories = leagues.filter((league) => {
+    const leagueId = normalizeId(league);
+    return categories.some((category) => normalizeId(category.league) === leagueId);
+  });
+
+  const sortedLeagues = leaguesWithCategories
+    .slice()
+    .sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status === 'activa' ? -1 : 1;
+      }
+      const yearA = Number(a.year) || 0;
+      const yearB = Number(b.year) || 0;
+      if (yearA !== yearB) {
+        return yearB - yearA;
+      }
+      return (a.name || '').localeCompare(b.name || '', 'es');
+    });
+
+  leaguePlayersLeagueSelect.innerHTML = '<option value="">Selecciona una liga</option>';
+  const availableLeagueIds = new Set();
+
+  sortedLeagues.forEach((league) => {
+    const id = normalizeId(league);
+    if (!id || availableLeagueIds.has(id)) {
+      return;
+    }
+    availableLeagueIds.add(id);
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = formatLeagueOptionLabel(league);
+    leaguePlayersLeagueSelect.appendChild(option);
+  });
+
+  let nextLeague = '';
+  if (previousLeague && availableLeagueIds.has(previousLeague)) {
+    nextLeague = previousLeague;
+  } else if (availableLeagueIds.size) {
+    const firstOption = leaguePlayersLeagueSelect.options[1];
+    nextLeague = firstOption?.value || '';
+  }
+
+  filters.league = nextLeague;
+  leaguePlayersLeagueSelect.value = nextLeague;
+  leaguePlayersLeagueSelect.disabled = !availableLeagueIds.size;
+
+  const leagueCategories = updateLeaguePlayersCategoryOptions();
+  const hasActiveSelection = Boolean(nextLeague) && leagueCategories.length > 0;
+
+  if (leaguePlayersSearch) {
+    if (!hasActiveSelection) {
+      leaguePlayersSearch.value = '';
+    } else {
+      leaguePlayersSearch.value = filters.search || '';
+    }
+    leaguePlayersSearch.disabled = !hasActiveSelection;
+  }
+
+  if (leaguePlayersGender) {
+    if (!hasActiveSelection) {
+      leaguePlayersGender.value = '';
+    } else {
+      leaguePlayersGender.value = filters.gender || '';
+    }
+    leaguePlayersGender.disabled = !hasActiveSelection;
+  }
+
+  if (!hasActiveSelection && leaguePlayersList) {
+    leaguePlayersList.innerHTML = '';
+  }
+
+  if (!hasActiveSelection && leaguePlayersCount) {
+    leaguePlayersCount.textContent = '0';
+  }
+
+  if (!hasActiveSelection && leaguePlayersEmpty) {
+    leaguePlayersEmpty.hidden = false;
+    leaguePlayersEmpty.textContent = availableLeagueIds.size
+      ? 'Selecciona una liga para ver los jugadores inscritos.'
+      : 'Aún no hay ligas con categorías registradas.';
+  }
+}
+
+let leaguePlayersRequestToken = 0;
+
+async function refreshLeaguePlayers({ force = false } = {}) {
+  if (!leaguePlayersList) return;
+
+  const filters = ensureLeaguePlayerFilters();
+  const leagueId = filters.league;
+
+  leaguePlayersList.innerHTML = '';
+
+  if (leaguePlayersCount) {
+    leaguePlayersCount.textContent = '0';
+  }
+
+  if (!leagueId) {
+    if (leaguePlayersEmpty) {
+      leaguePlayersEmpty.hidden = false;
+      leaguePlayersEmpty.textContent = leaguePlayersLeagueSelect?.disabled
+        ? 'Aún no hay ligas con categorías registradas.'
+        : 'Selecciona una liga para ver los jugadores inscritos.';
+    }
+    return;
+  }
+
+  const categories = getLeagueCategories(leagueId);
+  if (!categories.length) {
+    if (leaguePlayersEmpty) {
+      leaguePlayersEmpty.hidden = false;
+      leaguePlayersEmpty.textContent = 'La liga seleccionada todavía no tiene categorías registradas.';
+    }
+    return;
+  }
+
+  const categoryFilter = filters.category;
+  const targetCategories = categoryFilter
+    ? categories.filter((category) => normalizeId(category) === categoryFilter)
+    : categories;
+
+  if (!targetCategories.length) {
+    filters.category = '';
+    return refreshLeaguePlayers({ force });
+  }
+
+  const categoryIds = targetCategories
+    .map((category) => normalizeId(category))
+    .filter(Boolean);
+
+  if (!categoryIds.length) {
+    if (leaguePlayersEmpty) {
+      leaguePlayersEmpty.hidden = false;
+      leaguePlayersEmpty.textContent = 'No hay categorías disponibles para la liga seleccionada.';
+    }
+    return;
+  }
+
+  const requestToken = ++leaguePlayersRequestToken;
+  state.leaguePlayersLoading = true;
+
+  if (leaguePlayersEmpty) {
+    leaguePlayersEmpty.hidden = false;
+    leaguePlayersEmpty.textContent = 'Cargando jugadores inscritos...';
+  }
+
+  try {
+    await Promise.all(
+      categoryIds.map((categoryId) => loadEnrollments(categoryId, { force }).catch((error) => {
+        console.warn('No fue posible cargar las inscripciones de la categoría', categoryId, error);
+        throw error;
+      }))
+    );
+  } catch (error) {
+    if (requestToken === leaguePlayersRequestToken) {
+      leaguePlayersList.innerHTML = '';
+      if (leaguePlayersEmpty) {
+        leaguePlayersEmpty.hidden = false;
+        leaguePlayersEmpty.textContent = 'No fue posible cargar los jugadores inscritos.';
+      }
+      if (leaguePlayersCount) {
+        leaguePlayersCount.textContent = '0';
+      }
+    }
+    state.leaguePlayersLoading = false;
+    return;
+  }
+
+  if (requestToken !== leaguePlayersRequestToken) {
+    state.leaguePlayersLoading = false;
+    return;
+  }
+
+  const categoriesById = new Map();
+  targetCategories.forEach((category) => {
+    const id = normalizeId(category);
+    if (id) {
+      categoriesById.set(id, category);
+    }
+  });
+
+  const playerMap = new Map();
+
+  categoryIds.forEach((categoryId) => {
+    const enrollments = state.enrollments.get(categoryId) || [];
+    enrollments.forEach((enrollment) => {
+      const player = enrollment?.user || {};
+      const playerId = normalizeId(player);
+      if (!playerId) return;
+
+      if (!playerMap.has(playerId)) {
+        playerMap.set(playerId, {
+          player,
+          categories: new Set(),
+        });
+      }
+      playerMap.get(playerId).categories.add(categoryId);
+    });
+  });
+
+  const searchTerm = (filters.search || '').toLowerCase();
+  const genderFilter = filters.gender || '';
+
+  const entries = Array.from(playerMap.values())
+    .filter(({ player }) => {
+      if (genderFilter && player.gender !== genderFilter) {
+        return false;
+      }
+      if (searchTerm) {
+        const haystack = `${player.fullName || ''} ${player.email || ''} ${player.phone || ''}`.toLowerCase();
+        if (!haystack.includes(searchTerm)) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const nameA = (a.player.fullName || '').toLocaleLowerCase('es');
+      const nameB = (b.player.fullName || '').toLocaleLowerCase('es');
+      return nameA.localeCompare(nameB, 'es');
+    });
+
+  if (leaguePlayersCount) {
+    leaguePlayersCount.textContent = String(entries.length);
+  }
+
+  if (!entries.length) {
+    leaguePlayersList.innerHTML = '';
+    if (leaguePlayersEmpty) {
+      leaguePlayersEmpty.hidden = false;
+      leaguePlayersEmpty.textContent =
+        filters.search || filters.gender
+          ? 'Aún no hay jugadores inscritos que coincidan con el filtro seleccionado.'
+          : 'Aún no hay jugadores inscritos en la selección actual.';
+    }
+    state.leaguePlayersLoading = false;
+    return;
+  }
+
+  if (leaguePlayersEmpty) {
+    leaguePlayersEmpty.hidden = true;
+  }
+
+  leaguePlayersList.innerHTML = '';
+
+  entries.forEach(({ player, categories: playerCategories }) => {
+    const item = document.createElement('li');
+    item.appendChild(buildPlayerCell(player, { includeSchedule: true }));
+
+    const contact = document.createElement('div');
+    contact.className = 'meta';
+    if (player.email) {
+      contact.appendChild(document.createElement('span')).textContent = player.email;
+    }
+    if (player.phone) {
+      contact.appendChild(document.createElement('span')).textContent = player.phone;
+    }
+    if (contact.childNodes.length) {
+      item.appendChild(contact);
+    }
+
+    const details = document.createElement('div');
+    details.className = 'meta';
+    const genderLabel = translateGender(player.gender) || 'Sin definir';
+    details.appendChild(document.createElement('span')).textContent = `Género: ${genderLabel}`;
+
+    const categoryNames = Array.from(playerCategories)
+      .map((categoryId) => categoriesById.get(categoryId)?.name)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es'));
+
+    details.appendChild(document.createElement('span')).textContent = `Categorías: ${
+      categoryNames.length ? categoryNames.join(', ') : 'Sin asignar'
+    }`;
+
+    item.appendChild(details);
+
+    leaguePlayersList.appendChild(item);
+  });
+
+  state.leaguePlayersLoading = false;
 }
 
 function collectEnrollmentRequestAlerts() {
@@ -2257,12 +2622,46 @@ function resetData() {
   if (globalCalendarLabel) {
     globalCalendarLabel.textContent = '';
   }
+  if (leaguePlayersList) {
+    leaguePlayersList.innerHTML = '';
+  }
+  if (leaguePlayersEmpty) {
+    leaguePlayersEmpty.hidden = false;
+    leaguePlayersEmpty.textContent = 'Inicia sesión para consultar los jugadores inscritos.';
+  }
+  if (leaguePlayersCount) {
+    leaguePlayersCount.textContent = '0';
+  }
+  if (leaguePlayersLeagueSelect) {
+    leaguePlayersLeagueSelect.innerHTML = '<option value="">Selecciona una liga</option>';
+    leaguePlayersLeagueSelect.disabled = true;
+  }
+  if (leaguePlayersCategorySelect) {
+    leaguePlayersCategorySelect.innerHTML = '<option value="">Todas las categorías</option>';
+    leaguePlayersCategorySelect.disabled = true;
+  }
+  if (leaguePlayersSearch) {
+    leaguePlayersSearch.value = '';
+    leaguePlayersSearch.disabled = true;
+  }
+  if (leaguePlayersGender) {
+    leaguePlayersGender.value = '';
+    leaguePlayersGender.disabled = true;
+  }
+  state.leaguePlayersFilters = {
+    league: '',
+    category: '',
+    search: '',
+    gender: '',
+  };
+  leaguePlayersRequestToken = 0;
+  state.leaguePlayersLoading = false;
   if (playerDirectoryList) {
     playerDirectoryList.innerHTML = '';
   }
   if (playerDirectoryEmpty) {
     playerDirectoryEmpty.hidden = false;
-    playerDirectoryEmpty.textContent = 'Inicia sesión para ver el directorio de jugadores.';
+    playerDirectoryEmpty.textContent = 'Inicia sesión para ver el directorio de usuarios.';
   }
   if (playerDirectoryCount) {
     playerDirectoryCount.textContent = '0';
@@ -7555,7 +7954,7 @@ function renderPlayerDirectory() {
   if (!sorted.length) {
     if (playerDirectoryEmpty) {
       playerDirectoryEmpty.hidden = false;
-      playerDirectoryEmpty.textContent = 'Aún no hay jugadores que coincidan con el filtro seleccionado.';
+      playerDirectoryEmpty.textContent = 'Aún no hay usuarios que coincidan con el filtro seleccionado.';
     }
     return;
   }
@@ -7836,9 +8235,13 @@ function setAdminMatchEditing(matchId) {
   adminMatchForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-async function loadEnrollments(categoryId) {
+async function loadEnrollments(categoryId, { force = false } = {}) {
   if (!categoryId) {
     return [];
+  }
+
+  if (force) {
+    state.enrollments.delete(categoryId);
   }
 
   if (state.enrollments.has(categoryId)) {
@@ -8816,7 +9219,7 @@ function openPlayerModal(playerId = '') {
   });
 
   openModal({
-    title: player ? 'Editar jugador' : 'Nuevo jugador',
+    title: player ? 'Editar usuario' : 'Nuevo usuario',
     content: (body) => {
       body.appendChild(form);
       body.appendChild(status);
@@ -10095,6 +10498,8 @@ async function reloadCategories() {
   updateRankingOptions(list);
   updateDashboardCategoryOptions(list);
   updateMatchesCategoryOptions(list);
+  updateLeaguePlayersControls();
+  await refreshLeaguePlayers();
   if (isAdmin()) {
     renderAdminCategoryList();
     renderPlayerDirectory();
@@ -10131,6 +10536,8 @@ async function loadAllData() {
     updateRankingOptions(categoryList);
     updateDashboardCategoryOptions(categoryList);
     updateMatchesCategoryOptions(categoryList);
+    updateLeaguePlayersControls();
+    await refreshLeaguePlayers();
 
     state.tournaments = Array.isArray(tournaments) ? tournaments : [];
     updateTournamentSelectors();
@@ -10960,6 +11367,40 @@ playerDirectoryCategory?.addEventListener('change', async (event) => {
     }
   }
   renderPlayerDirectory();
+});
+
+leaguePlayersLeagueSelect?.addEventListener('change', async (event) => {
+  const value = event.target.value || '';
+  const filters = ensureLeaguePlayerFilters();
+  filters.league = value;
+  filters.category = '';
+  filters.search = '';
+  filters.gender = '';
+  updateLeaguePlayersControls();
+  await refreshLeaguePlayers();
+});
+
+leaguePlayersCategorySelect?.addEventListener('change', async (event) => {
+  const value = event.target.value || '';
+  const filters = ensureLeaguePlayerFilters();
+  filters.category = value;
+  await refreshLeaguePlayers();
+});
+
+leaguePlayersSearch?.addEventListener('input', (event) => {
+  const filters = ensureLeaguePlayerFilters();
+  filters.search = (event.target.value || '').trim();
+  refreshLeaguePlayers().catch((error) => {
+    console.warn('No se pudo actualizar el listado de jugadores de liga', error);
+  });
+});
+
+leaguePlayersGender?.addEventListener('change', (event) => {
+  const filters = ensureLeaguePlayerFilters();
+  filters.gender = event.target.value || '';
+  refreshLeaguePlayers().catch((error) => {
+    console.warn('No se pudo actualizar el listado de jugadores de liga', error);
+  });
 });
 
 playerDirectoryList?.addEventListener('click', (event) => {
