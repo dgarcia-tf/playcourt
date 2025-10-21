@@ -2732,7 +2732,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 
 .movement-badge {
   --movement-badge-width: 160px;
-  display: inline-flex;
+  display: none;
   align-items: stretch;
   gap: 0.6rem;
   padding: 0.55rem 0.75rem;
