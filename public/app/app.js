@@ -816,7 +816,6 @@ const state = {
   calendarMatches: [],
   calendarDate: new Date(),
   globalCalendarDate: new Date(),
-  matchesCategoryId: '',
   matchPagination: {
     upcoming: {},
     pending: {},
@@ -1016,7 +1015,6 @@ let activeProposalForm = null;
 let activeProposalMatchId = null;
 let pushServiceWorkerRegistration = null;
 let pushServiceWorkerRegistrationPromise = null;
-const matchesCategorySelect = document.getElementById('matches-category');
 const pendingApprovalsList = document.getElementById('pending-approvals');
 const completedMatchesList = document.getElementById('completed-matches');
 let pendingTournamentDetailId = null;
@@ -2726,7 +2724,6 @@ function resetData() {
   state.globalOverview = null;
   state.leagueDashboard = null;
   state.tournamentDashboard = null;
-  state.matchesCategoryId = '';
   state.tournaments = [];
   state.tournamentDetails = new Map();
   state.selectedTournamentId = '';
@@ -3920,35 +3917,6 @@ function renderCategories(categories = []) {
   } else {
     state.pendingEnrollmentRequestCount = 0;
   }
-}
-
-function updateMatchesCategoryOptions(categories = []) {
-  if (!matchesCategorySelect) return;
-
-  const previous = state.matchesCategoryId || '';
-  const availableIds = new Set(categories.map((category) => category._id || category.id));
-
-  matchesCategorySelect.innerHTML = '';
-
-  const allOption = document.createElement('option');
-  allOption.value = '';
-  allOption.textContent = 'Todas las categorías';
-  matchesCategorySelect.appendChild(allOption);
-
-  categories.forEach((category) => {
-    const option = document.createElement('option');
-    option.value = category._id || category.id;
-    option.textContent = category.name;
-    matchesCategorySelect.appendChild(option);
-  });
-
-  let nextValue = previous && availableIds.has(previous) ? previous : '';
-  if (!nextValue) {
-    nextValue = state.selectedCategoryId || categories[0]?._id || categories[0]?.id || '';
-  }
-
-  matchesCategorySelect.value = nextValue;
-  state.matchesCategoryId = nextValue;
 }
 
 function getPodiumEmoji(positionIndex) {
@@ -7808,11 +7776,7 @@ async function cancelCourtReservation(reservationId, { button } = {}) {
 }
 
 function filterMatchesByCategory(matches = []) {
-  const categoryId = state.matchesCategoryId;
-  if (!categoryId) {
-    return matches;
-  }
-  return matches.filter((match) => normalizeId(match.category) === categoryId);
+  return Array.isArray(matches) ? matches : [];
 }
 
 function getMatchCategoryKey(match) {
@@ -14171,7 +14135,6 @@ async function reloadCategories() {
   const list = Array.isArray(categories) ? categories : [];
   state.categories = list;
   renderCategories(list);
-  updateMatchesCategoryOptions(list);
   updateLeaguePlayersControls();
   await refreshLeaguePlayers();
   await refreshAllRankings({ forceReload: true });
@@ -14208,7 +14171,6 @@ async function loadAllData() {
     const categoryList = Array.isArray(categories) ? categories : [];
     state.categories = categoryList;
     renderCategories(categoryList);
-    updateMatchesCategoryOptions(categoryList);
     updateLeaguePlayersControls();
     await refreshLeaguePlayers();
     await refreshAllRankings({ forceReload: true });
@@ -14870,31 +14832,6 @@ logoutButtons.forEach((button) => {
   });
 });
 
-matchesCategorySelect?.addEventListener('change', (event) => {
-  state.matchesCategoryId = event.target.value || '';
-  resetAllMatchPagination();
-  renderMatches(
-    state.upcomingMatches,
-    upcomingList,
-    'No hay partidos programados.',
-    { listKey: 'upcoming' }
-  );
-  renderMatches(
-    state.pendingApprovalMatches,
-    pendingApprovalsList,
-    'No hay resultados pendientes por aprobar.',
-    { listKey: 'pending' }
-  );
-  renderMatches(
-    state.completedMatches,
-    completedMatchesList,
-    'Aún no hay partidos confirmados para mostrar.',
-    { listKey: 'completed' }
-  );
-  renderCalendar();
-  renderGlobalCalendar();
-});
-
 tournamentsList?.addEventListener('click', async (event) => {
   const button = event.target.closest('.list-item-button[data-tournament-id]');
   if (!button) return;
@@ -15453,7 +15390,8 @@ playerCreateButton?.addEventListener('click', () => {
 
 matchGenerateButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
-  const defaultCategory = state.matchesCategoryId || state.selectedCategoryId || '';
+  const defaultCategory =
+    state.selectedCategoryId || normalizeId(state.categories[0]) || '';
   openGenerateMatchesModal(defaultCategory);
 });
 
