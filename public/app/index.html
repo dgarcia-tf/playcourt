@@ -667,7 +667,36 @@
                   Registros: <strong id="league-payments-count">0</strong>
                   <span class="tag" id="league-payments-fee" hidden></span>
                 </div>
-                <ul class="list" id="league-payments-list"></ul>
+                <div class="league-payments-groups" id="league-payments-groups">
+                  <section
+                    class="league-payments-group"
+                    data-status="pending"
+                    aria-labelledby="league-payments-pending-title"
+                  >
+                    <div class="league-payments-group-header">
+                      <h4 id="league-payments-pending-title">Pagos pendientes</h4>
+                      <span class="tag" id="league-payments-pending-count">0</span>
+                    </div>
+                    <ul class="list league-payments-list" id="league-payments-pending"></ul>
+                    <p class="empty-state" id="league-payments-pending-empty" hidden>
+                      No hay pagos pendientes.
+                    </p>
+                  </section>
+                  <section
+                    class="league-payments-group"
+                    data-status="paid"
+                    aria-labelledby="league-payments-paid-title"
+                  >
+                    <div class="league-payments-group-header">
+                      <h4 id="league-payments-paid-title">Pagos registrados</h4>
+                      <span class="tag" id="league-payments-paid-count">0</span>
+                    </div>
+                    <ul class="list league-payments-list" id="league-payments-paid"></ul>
+                    <p class="empty-state" id="league-payments-paid-empty" hidden>
+                      No hay pagos registrados.
+                    </p>
+                  </section>
+                </div>
                 <div class="empty-state" id="league-payments-empty" hidden>
                   Configura una liga con cuota de inscripción para gestionar pagos.
                 </div>

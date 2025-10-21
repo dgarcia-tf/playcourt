@@ -163,6 +163,8 @@ const PAYMENT_STATUS_LABELS = {
   exento: 'Exento',
   fallido: 'Fallido',
 };
+
+const LEAGUE_PAYMENT_METHOD_OPTIONS = ['Transferencia', 'Tarjeta', 'Efectivo'];
 const PAYMENT_STATUS_ORDER = {
   pendiente: 0,
   pagado: 1,
@@ -1244,7 +1246,13 @@ const leaguePlayersCategorySelect = document.getElementById('league-players-cate
 const leaguePlayersSearch = document.getElementById('league-players-search');
 const leaguePlayersGender = document.getElementById('league-players-gender');
 const leaguePlayersEmpty = document.getElementById('league-players-empty');
-const leaguePaymentsList = document.getElementById('league-payments-list');
+const leaguePaymentsGroups = document.getElementById('league-payments-groups');
+const leaguePaymentsPendingList = document.getElementById('league-payments-pending');
+const leaguePaymentsPendingEmpty = document.getElementById('league-payments-pending-empty');
+const leaguePaymentsPendingCount = document.getElementById('league-payments-pending-count');
+const leaguePaymentsPaidList = document.getElementById('league-payments-paid');
+const leaguePaymentsPaidEmpty = document.getElementById('league-payments-paid-empty');
+const leaguePaymentsPaidCount = document.getElementById('league-payments-paid-count');
 const leaguePaymentsCount = document.getElementById('league-payments-count');
 const leaguePaymentsLeagueSelect = document.getElementById('league-payments-league');
 const leaguePaymentsStatusSelect = document.getElementById('league-payments-status');
@@ -1707,6 +1715,27 @@ function updateLeaguePaymentFeeIndicator(feeValue) {
   }
 }
 
+function resetLeaguePaymentGroups() {
+  if (leaguePaymentsPendingList) {
+    leaguePaymentsPendingList.innerHTML = '';
+  }
+  if (leaguePaymentsPaidList) {
+    leaguePaymentsPaidList.innerHTML = '';
+  }
+  if (leaguePaymentsPendingCount) {
+    leaguePaymentsPendingCount.textContent = '0';
+  }
+  if (leaguePaymentsPaidCount) {
+    leaguePaymentsPaidCount.textContent = '0';
+  }
+  if (leaguePaymentsPendingEmpty) {
+    leaguePaymentsPendingEmpty.hidden = true;
+  }
+  if (leaguePaymentsPaidEmpty) {
+    leaguePaymentsPaidEmpty.hidden = true;
+  }
+}
+
 function updateLeaguePaymentControls({ resetSelection = false } = {}) {
   if (!leaguePaymentsLeagueSelect) return;
 
@@ -1772,8 +1801,8 @@ function updateLeaguePaymentControls({ resetSelection = false } = {}) {
     leaguePaymentsSearchInput.disabled = !hasSelection;
   }
 
-  if (!hasSelection && leaguePaymentsList) {
-    leaguePaymentsList.innerHTML = '';
+  if (!hasSelection) {
+    resetLeaguePaymentGroups();
   }
 
   if (!hasSelection && leaguePaymentsCount) {
@@ -2182,8 +2211,238 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
   return result;
 }
 
+function createLeaguePaymentItem(entry, { fee = null } = {}) {
+  const listItem = document.createElement('li');
+  listItem.className = 'league-payment-entry';
+
+  const item = document.createElement('details');
+  item.className = 'league-payment-item';
+  const statusValue = entry.status || 'pendiente';
+  item.dataset.paymentStatus = statusValue;
+  if (statusValue !== 'pagado') {
+    item.open = true;
+  }
+
+  const summary = document.createElement('summary');
+
+  const header = document.createElement('div');
+  header.className = 'league-payment-header';
+
+  const playerCell = buildPlayerCell(entry.player || {}, { includeSchedule: false, size: 'sm' });
+  header.appendChild(playerCell);
+  summary.appendChild(header);
+
+  const headerMeta = document.createElement('div');
+  headerMeta.className = 'league-payment-header-meta';
+
+  const statusBadge = document.createElement('span');
+  statusBadge.className = `tag payment-status payment-status--${statusValue}`;
+  statusBadge.textContent = PAYMENT_STATUS_LABELS[statusValue] || statusValue || 'Pendiente';
+  headerMeta.appendChild(statusBadge);
+
+  if (Number.isFinite(entry.amount)) {
+    const amountSpan = document.createElement('span');
+    amountSpan.className = 'league-payment-amount';
+    amountSpan.textContent =
+      formatCurrencyValue(entry.amount, DEFAULT_LEAGUE_CURRENCY) ||
+      `${entry.amount.toFixed(2)} ${DEFAULT_LEAGUE_CURRENCY}`;
+    headerMeta.appendChild(amountSpan);
+  }
+
+  if (entry.paidAt) {
+    const paidAtSpan = document.createElement('span');
+    paidAtSpan.textContent = `Pago: ${formatShortDate(entry.paidAt)}`;
+    headerMeta.appendChild(paidAtSpan);
+  }
+
+  if (!entry.hasEnrollment) {
+    const noteSpan = document.createElement('span');
+    noteSpan.textContent = 'Sin inscripción activa';
+    headerMeta.appendChild(noteSpan);
+  }
+
+  summary.appendChild(headerMeta);
+  item.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'league-payment-body';
+
+  const categoryNames = Array.isArray(entry.categories)
+    ? entry.categories.map((category) => category?.name || '').filter(Boolean)
+    : [];
+  const categoriesMeta = document.createElement('div');
+  categoriesMeta.className = 'league-payment-meta';
+  categoriesMeta.textContent = categoryNames.length
+    ? `Categorías: ${categoryNames.join(', ')}`
+    : 'Categorías: Sin asignar';
+  body.appendChild(categoriesMeta);
+
+  if (entry.player?.email || entry.player?.phone) {
+    const contactMeta = document.createElement('div');
+    contactMeta.className = 'league-payment-meta';
+    if (entry.player.email) {
+      contactMeta.appendChild(document.createElement('span')).textContent = entry.player.email;
+    }
+    if (entry.player.phone) {
+      contactMeta.appendChild(document.createElement('span')).textContent = entry.player.phone;
+    }
+    body.appendChild(contactMeta);
+  }
+
+  if (entry.reference) {
+    const referenceMeta = document.createElement('div');
+    referenceMeta.className = 'league-payment-meta';
+    referenceMeta.textContent = `Referencia: ${entry.reference}`;
+    body.appendChild(referenceMeta);
+  }
+
+  if (entry.recordedBy?.fullName) {
+    const recordedMeta = document.createElement('div');
+    recordedMeta.className = 'league-payment-meta';
+    recordedMeta.textContent = `Actualizado por ${entry.recordedBy.fullName}`;
+    body.appendChild(recordedMeta);
+  }
+
+  const form = document.createElement('form');
+  form.className = 'league-payment-form';
+  form.dataset.leaguePaymentForm = 'true';
+  if (entry.playerId) {
+    form.dataset.userId = entry.playerId;
+  }
+  if (entry.paymentId) {
+    form.dataset.paymentId = entry.paymentId;
+  }
+
+  const statusRow = document.createElement('div');
+  statusRow.className = 'form-row';
+
+  const statusLabel = document.createElement('label');
+  statusLabel.textContent = 'Estado';
+  const statusSelect = document.createElement('select');
+  statusSelect.name = 'status';
+  Object.entries(PAYMENT_STATUS_LABELS).forEach(([value, label]) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    if (value === statusValue) {
+      option.selected = true;
+    }
+    statusSelect.appendChild(option);
+  });
+  statusLabel.appendChild(statusSelect);
+  statusRow.appendChild(statusLabel);
+
+  const amountLabel = document.createElement('label');
+  amountLabel.textContent = 'Importe';
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.name = 'amount';
+  amountInput.min = '0';
+  amountInput.step = '0.01';
+  if (Number.isFinite(entry.amount)) {
+    amountInput.value = entry.amount.toFixed(2);
+  } else if (Number.isFinite(fee) && fee > 0) {
+    const formattedFee =
+      formatCurrencyValue(fee, DEFAULT_LEAGUE_CURRENCY) || `${fee.toFixed(2)} ${DEFAULT_LEAGUE_CURRENCY}`;
+    amountInput.placeholder = formattedFee;
+  }
+  amountLabel.appendChild(amountInput);
+  statusRow.appendChild(amountLabel);
+  form.appendChild(statusRow);
+
+  const detailsRow = document.createElement('div');
+  detailsRow.className = 'form-row';
+
+  const methodLabel = document.createElement('label');
+  methodLabel.textContent = 'Método';
+  const methodSelect = document.createElement('select');
+  methodSelect.name = 'method';
+  const methodValue = (entry.method || '').toString().trim();
+  const methodValueLower = methodValue.toLowerCase();
+  const placeholderOption = document.createElement('option');
+  placeholderOption.value = '';
+  placeholderOption.textContent = 'Sin especificar';
+  if (!methodValue) {
+    placeholderOption.selected = true;
+  }
+  methodSelect.appendChild(placeholderOption);
+
+  let matchedMethod = false;
+  LEAGUE_PAYMENT_METHOD_OPTIONS.forEach((label) => {
+    const option = document.createElement('option');
+    option.value = label;
+    option.textContent = label;
+    if (methodValueLower && methodValueLower === label.toLowerCase()) {
+      option.selected = true;
+      matchedMethod = true;
+    }
+    methodSelect.appendChild(option);
+  });
+
+  if (!matchedMethod && methodValue) {
+    const customOption = document.createElement('option');
+    customOption.value = methodValue;
+    customOption.textContent = methodValue;
+    customOption.selected = true;
+    methodSelect.appendChild(customOption);
+  }
+
+  methodLabel.appendChild(methodSelect);
+  detailsRow.appendChild(methodLabel);
+
+  const referenceLabel = document.createElement('label');
+  referenceLabel.textContent = 'Referencia';
+  const referenceInput = document.createElement('input');
+  referenceInput.type = 'text';
+  referenceInput.name = 'reference';
+  referenceInput.placeholder = 'Identificador o concepto';
+  referenceInput.value = entry.reference || '';
+  referenceLabel.appendChild(referenceInput);
+  detailsRow.appendChild(referenceLabel);
+  form.appendChild(detailsRow);
+
+  const notesRow = document.createElement('div');
+  notesRow.className = 'form-row';
+
+  const paidAtLabel = document.createElement('label');
+  paidAtLabel.textContent = 'Fecha de pago';
+  const paidAtInput = document.createElement('input');
+  paidAtInput.type = 'date';
+  paidAtInput.name = 'paidAt';
+  paidAtInput.value = entry.paidAt ? formatDateInput(entry.paidAt) : '';
+  paidAtLabel.appendChild(paidAtInput);
+  notesRow.appendChild(paidAtLabel);
+
+  const notesLabel = document.createElement('label');
+  notesLabel.textContent = 'Notas';
+  const notesInput = document.createElement('input');
+  notesInput.type = 'text';
+  notesInput.name = 'notes';
+  notesInput.placeholder = 'Añade una nota interna';
+  notesInput.value = entry.notes || '';
+  notesLabel.appendChild(notesInput);
+  notesRow.appendChild(notesLabel);
+  form.appendChild(notesRow);
+
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'form-actions';
+  const submitButton = document.createElement('button');
+  submitButton.type = 'submit';
+  submitButton.className = 'primary';
+  submitButton.textContent = entry.paymentId ? 'Actualizar pago' : 'Registrar pago';
+  actionsRow.appendChild(submitButton);
+  form.appendChild(actionsRow);
+
+  body.appendChild(form);
+  item.appendChild(body);
+
+  listItem.appendChild(item);
+
+  return listItem;
+}
+
 function renderLeaguePayments(entries = [], { fee = null } = {}) {
-  if (!leaguePaymentsList) return;
+  if (!leaguePaymentsGroups) return;
 
   if (leaguePaymentsCount) {
     leaguePaymentsCount.textContent = String(entries.length);
@@ -2191,9 +2450,23 @@ function renderLeaguePayments(entries = [], { fee = null } = {}) {
 
   updateLeaguePaymentFeeIndicator(fee);
 
-  leaguePaymentsList.innerHTML = '';
+  resetLeaguePaymentGroups();
 
   if (!entries.length) {
+    if (leaguePaymentsPendingCount) {
+      leaguePaymentsPendingCount.textContent = '0';
+    }
+    if (leaguePaymentsPaidCount) {
+      leaguePaymentsPaidCount.textContent = '0';
+    }
+    if (leaguePaymentsPendingEmpty) {
+      leaguePaymentsPendingEmpty.hidden = false;
+      leaguePaymentsPendingEmpty.textContent = 'No hay pagos pendientes.';
+    }
+    if (leaguePaymentsPaidEmpty) {
+      leaguePaymentsPaidEmpty.hidden = false;
+      leaguePaymentsPaidEmpty.textContent = 'No hay pagos registrados.';
+    }
     if (leaguePaymentsEmpty) {
       leaguePaymentsEmpty.hidden = false;
       leaguePaymentsEmpty.textContent = 'No hay registros de pago para la selección actual.';
@@ -2205,197 +2478,63 @@ function renderLeaguePayments(entries = [], { fee = null } = {}) {
     leaguePaymentsEmpty.hidden = true;
   }
 
-  entries.forEach((entry) => {
-    const item = document.createElement('li');
-    item.className = 'league-payment-item';
+  const pendingEntries = entries.filter((entry) => (entry.status || 'pendiente') !== 'pagado');
+  const paidEntries = entries.filter((entry) => (entry.status || 'pendiente') === 'pagado');
 
-    const header = document.createElement('div');
-    header.className = 'league-payment-header';
+  const groups = [
+    {
+      entries: pendingEntries,
+      list: leaguePaymentsPendingList,
+      emptyElement: leaguePaymentsPendingEmpty,
+      countElement: leaguePaymentsPendingCount,
+      emptyText: 'No hay pagos pendientes.',
+    },
+    {
+      entries: paidEntries,
+      list: leaguePaymentsPaidList,
+      emptyElement: leaguePaymentsPaidEmpty,
+      countElement: leaguePaymentsPaidCount,
+      emptyText: 'No hay pagos registrados.',
+    },
+  ];
 
-    const playerWrapper = document.createElement('div');
-    playerWrapper.innerHTML = buildPlayerCell(entry.player || {}, { includeSchedule: false });
-    const playerCell = playerWrapper.firstElementChild;
-    if (playerCell) {
-      header.appendChild(playerCell);
+  groups.forEach(({ entries: groupEntries, list, emptyElement, countElement, emptyText }) => {
+    if (countElement) {
+      countElement.textContent = String(groupEntries.length);
     }
 
-    const statusMeta = document.createElement('div');
-    statusMeta.className = 'league-payment-meta';
-
-    const statusBadge = document.createElement('span');
-    statusBadge.className = `tag payment-status payment-status--${entry.status}`;
-    statusBadge.textContent = PAYMENT_STATUS_LABELS[entry.status] || entry.status || 'Pendiente';
-    statusMeta.appendChild(statusBadge);
-
-    if (Number.isFinite(entry.amount)) {
-      const amountSpan = document.createElement('span');
-      amountSpan.textContent =
-        formatCurrencyValue(entry.amount, DEFAULT_LEAGUE_CURRENCY) ||
-        `${entry.amount.toFixed(2)} ${DEFAULT_LEAGUE_CURRENCY}`;
-      statusMeta.appendChild(amountSpan);
+    if (!list) {
+      return;
     }
 
-    if (entry.paidAt) {
-      const paidAtSpan = document.createElement('span');
-      paidAtSpan.textContent = `Pago: ${formatShortDate(entry.paidAt)}`;
-      statusMeta.appendChild(paidAtSpan);
-    }
+    list.innerHTML = '';
 
-    if (!entry.hasEnrollment) {
-      const noteSpan = document.createElement('span');
-      noteSpan.textContent = 'Sin inscripción activa';
-      statusMeta.appendChild(noteSpan);
-    }
-
-    header.appendChild(statusMeta);
-
-    const categoryNames = entry.categories.map((category) => category?.name || '').filter(Boolean);
-    const categoriesMeta = document.createElement('div');
-    categoriesMeta.className = 'league-payment-meta';
-    categoriesMeta.textContent = categoryNames.length
-      ? `Categorías: ${categoryNames.join(', ')}`
-      : 'Categorías: Sin asignar';
-    header.appendChild(categoriesMeta);
-
-    if (entry.player?.email || entry.player?.phone) {
-      const contactMeta = document.createElement('div');
-      contactMeta.className = 'league-payment-meta';
-      if (entry.player.email) {
-        contactMeta.appendChild(document.createElement('span')).textContent = entry.player.email;
+    if (!groupEntries.length) {
+      if (emptyElement) {
+        emptyElement.hidden = false;
+        emptyElement.textContent = emptyText;
       }
-      if (entry.player.phone) {
-        contactMeta.appendChild(document.createElement('span')).textContent = entry.player.phone;
-      }
-      header.appendChild(contactMeta);
+      return;
     }
 
-    if (entry.recordedBy?.fullName) {
-      const recordedMeta = document.createElement('div');
-      recordedMeta.className = 'league-payment-meta';
-      recordedMeta.textContent = `Actualizado por ${entry.recordedBy.fullName}`;
-      header.appendChild(recordedMeta);
+    if (emptyElement) {
+      emptyElement.hidden = true;
     }
 
-    item.appendChild(header);
-
-    const form = document.createElement('form');
-    form.className = 'league-payment-form';
-    form.dataset.leaguePaymentForm = 'true';
-    if (entry.playerId) {
-      form.dataset.userId = entry.playerId;
-    }
-    if (entry.paymentId) {
-      form.dataset.paymentId = entry.paymentId;
-    }
-
-    const statusRow = document.createElement('div');
-    statusRow.className = 'form-row';
-
-    const statusLabel = document.createElement('label');
-    statusLabel.textContent = 'Estado';
-    const statusSelect = document.createElement('select');
-    statusSelect.name = 'status';
-    Object.entries(PAYMENT_STATUS_LABELS).forEach(([value, label]) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = label;
-      if (value === entry.status) {
-        option.selected = true;
-      }
-      statusSelect.appendChild(option);
+    groupEntries.forEach((entry) => {
+      list.appendChild(createLeaguePaymentItem(entry, { fee }));
     });
-    statusLabel.appendChild(statusSelect);
-    statusRow.appendChild(statusLabel);
-
-    const amountLabel = document.createElement('label');
-    amountLabel.textContent = 'Importe';
-    const amountInput = document.createElement('input');
-    amountInput.type = 'number';
-    amountInput.name = 'amount';
-    amountInput.min = '0';
-    amountInput.step = '0.01';
-    if (Number.isFinite(entry.amount)) {
-      amountInput.value = entry.amount.toFixed(2);
-    } else if (Number.isFinite(fee) && fee > 0) {
-      const formattedFee =
-        formatCurrencyValue(fee, DEFAULT_LEAGUE_CURRENCY) || `${fee.toFixed(2)} ${DEFAULT_LEAGUE_CURRENCY}`;
-      amountInput.placeholder = formattedFee;
-    }
-    amountLabel.appendChild(amountInput);
-    statusRow.appendChild(amountLabel);
-    form.appendChild(statusRow);
-
-    const detailsRow = document.createElement('div');
-    detailsRow.className = 'form-row';
-
-    const methodLabel = document.createElement('label');
-    methodLabel.textContent = 'Método';
-    const methodInput = document.createElement('input');
-    methodInput.type = 'text';
-    methodInput.name = 'method';
-    methodInput.placeholder = 'Transferencia, efectivo, etc.';
-    methodInput.value = entry.method || '';
-    methodLabel.appendChild(methodInput);
-    detailsRow.appendChild(methodLabel);
-
-    const referenceLabel = document.createElement('label');
-    referenceLabel.textContent = 'Referencia';
-    const referenceInput = document.createElement('input');
-    referenceInput.type = 'text';
-    referenceInput.name = 'reference';
-    referenceInput.placeholder = 'Identificador o concepto';
-    referenceInput.value = entry.reference || '';
-    referenceLabel.appendChild(referenceInput);
-    detailsRow.appendChild(referenceLabel);
-    form.appendChild(detailsRow);
-
-    const notesRow = document.createElement('div');
-    notesRow.className = 'form-row';
-
-    const paidAtLabel = document.createElement('label');
-    paidAtLabel.textContent = 'Fecha de pago';
-    const paidAtInput = document.createElement('input');
-    paidAtInput.type = 'date';
-    paidAtInput.name = 'paidAt';
-    paidAtInput.value = entry.paidAt ? formatDateInput(entry.paidAt) : '';
-    paidAtLabel.appendChild(paidAtInput);
-    notesRow.appendChild(paidAtLabel);
-
-    const notesLabel = document.createElement('label');
-    notesLabel.textContent = 'Notas';
-    const notesInput = document.createElement('input');
-    notesInput.type = 'text';
-    notesInput.name = 'notes';
-    notesInput.placeholder = 'Añade una nota interna';
-    notesInput.value = entry.notes || '';
-    notesLabel.appendChild(notesInput);
-    notesRow.appendChild(notesLabel);
-    form.appendChild(notesRow);
-
-    const actionsRow = document.createElement('div');
-    actionsRow.className = 'form-actions';
-    const submitButton = document.createElement('button');
-    submitButton.type = 'submit';
-    submitButton.className = 'primary';
-    submitButton.textContent = entry.paymentId ? 'Actualizar pago' : 'Registrar pago';
-    actionsRow.appendChild(submitButton);
-    form.appendChild(actionsRow);
-
-    item.appendChild(form);
-    leaguePaymentsList.appendChild(item);
   });
 }
 
 async function refreshLeaguePayments({ force = false } = {}) {
-  if (!leaguePaymentsList) return;
+  if (!leaguePaymentsGroups) return;
 
   const filters = ensureLeaguePaymentFilters();
   const leagueId = filters.league;
 
   if (!leagueId) {
-    if (leaguePaymentsList) {
-      leaguePaymentsList.innerHTML = '';
-    }
+    resetLeaguePaymentGroups();
     if (leaguePaymentsCount) {
       leaguePaymentsCount.textContent = '0';
     }
@@ -2414,6 +2553,7 @@ async function refreshLeaguePayments({ force = false } = {}) {
   const usingCachedData = !force && state.leaguePayments instanceof Map && state.leaguePayments.has(leagueId);
 
   if (!usingCachedData) {
+    resetLeaguePaymentGroups();
     if (leaguePaymentsStatusMessage) {
       setStatusMessage(leaguePaymentsStatusMessage, 'info', 'Cargando registros de pago...');
     }
@@ -2467,9 +2607,7 @@ async function refreshLeaguePayments({ force = false } = {}) {
     if (leaguePaymentsStatusMessage) {
       setStatusMessage(leaguePaymentsStatusMessage, 'error', error.message);
     }
-    if (leaguePaymentsList) {
-      leaguePaymentsList.innerHTML = '';
-    }
+    resetLeaguePaymentGroups();
     if (leaguePaymentsCount) {
       leaguePaymentsCount.textContent = '0';
     }
@@ -3879,9 +4017,7 @@ function resetData() {
   leaguePlayersRequestToken = 0;
   state.leaguePlayersLoading = false;
   updateLeaguePaymentControls({ resetSelection: true });
-  if (leaguePaymentsList) {
-    leaguePaymentsList.innerHTML = '';
-  }
+  resetLeaguePaymentGroups();
   if (leaguePaymentsCount) {
     leaguePaymentsCount.textContent = '0';
   }
@@ -16099,7 +16235,7 @@ leaguePaymentsSearchInput?.addEventListener('input', (event) => {
   });
 });
 
-leaguePaymentsList?.addEventListener('submit', (event) => {
+leaguePaymentsGroups?.addEventListener('submit', (event) => {
   const form = event.target.closest('form[data-league-payment-form="true"]');
   if (!form) {
     return;

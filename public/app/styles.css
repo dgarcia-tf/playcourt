@@ -1515,24 +1515,138 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-secondary);
 }
 
-.league-payment-item {
+
+.league-payments-groups {
   display: grid;
-  gap: 0.75rem;
-  padding: 0.9rem 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  gap: 1.5rem;
 }
 
-.league-payment-item:last-child {
-  border-bottom: none;
+@media (min-width: 920px) {
+  .league-payments-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.league-payments-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.league-payments-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.league-payments-group-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.league-payments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.league-payment-entry {
+  list-style: none;
+}
+
+.league-payment-item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, rgba(241, 245, 249, 0.6), rgba(248, 250, 252, 0.9));
+  overflow: hidden;
+}
+
+.league-payment-item summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.league-payment-item summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.league-payment-item summary::-webkit-details-marker,
+.league-payment-item summary::marker {
+  display: none;
+}
+
+.league-payment-item summary::after {
+  content: '';
+  width: 0.65rem;
+  height: 0.65rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  opacity: 0.5;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  margin-left: auto;
+}
+
+.league-payment-item[open] summary::after {
+  transform: rotate(45deg);
+  opacity: 0.8;
 }
 
 .league-payment-header {
-  display: grid;
-  gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .league-payment-header .player-cell {
   align-items: center;
+  gap: 0.55rem;
+}
+
+.league-payment-header .player-cell__name {
+  font-size: 0.95rem;
+}
+
+.league-payment-header-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.league-payment-header-meta .tag {
+  margin-left: 0;
+}
+
+.league-payment-header-meta .league-payment-amount {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.league-payment-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .league-payment-meta {
@@ -1540,7 +1654,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   flex-wrap: wrap;
   gap: 0.6rem;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .league-payment-meta .tag {
@@ -1562,6 +1676,10 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+.league-payment-form select[name='method'] {
+  text-transform: capitalize;
 }
 
 .tag.payment-status {
