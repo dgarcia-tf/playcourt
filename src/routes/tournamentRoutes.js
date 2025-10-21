@@ -41,13 +41,33 @@ const { CATEGORY_SKILL_LEVELS } = require('../models/Category');
 
 const router = express.Router();
 
-router.use(authenticate);
-
 router.get(
   '/',
   [query('status').optional().isIn(Object.values(TOURNAMENT_STATUS))],
   listTournaments
 );
+
+router.get('/:tournamentId', [param('tournamentId').isMongoId()], getTournamentDetail);
+
+router.get(
+  '/:tournamentId/categories',
+  [param('tournamentId').isMongoId()],
+  listTournamentCategories
+);
+
+router.get(
+  '/:tournamentId/categories/:categoryId',
+  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
+  getTournamentCategory
+);
+
+router.get(
+  '/:tournamentId/categories/:categoryId/matches',
+  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
+  listTournamentMatches
+);
+
+router.use(authenticate);
 
 router.post(
   '/',
@@ -66,8 +86,6 @@ router.post(
   ],
   createTournament
 );
-
-router.get('/:tournamentId', [param('tournamentId').isMongoId()], getTournamentDetail);
 
 router.patch(
   '/:tournamentId',
@@ -98,12 +116,6 @@ router.patch(
 router.delete('/:tournamentId', authorizeRoles('admin'), [param('tournamentId').isMongoId()], deleteTournament);
 
 // Tournament categories
-router.get(
-  '/:tournamentId/categories',
-  [param('tournamentId').isMongoId()],
-  listTournamentCategories
-);
-
 router.post(
   '/:tournamentId/categories',
   authorizeRoles('admin'),
@@ -118,12 +130,6 @@ router.post(
     body('drawSize').optional({ nullable: true }).isInt({ min: 0 }),
   ],
   createTournamentCategory
-);
-
-router.get(
-  '/:tournamentId/categories/:categoryId',
-  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
-  getTournamentCategory
 );
 
 router.patch(
@@ -210,12 +216,6 @@ router.delete(
 );
 
 // Matches
-router.get(
-  '/:tournamentId/categories/:categoryId/matches',
-  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
-  listTournamentMatches
-);
-
 router.post(
   '/:tournamentId/categories/:categoryId/matches/generate',
   authorizeRoles('admin'),
