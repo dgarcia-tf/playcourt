@@ -1249,20 +1249,18 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 }
 
 .list .meta .movement-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.65rem;
-  border-radius: 999px;
-  background: var(--movement-badge-bg, rgba(148, 163, 184, 0.18));
-  font-weight: 600;
-  font-size: 0.8rem;
-  color: inherit;
+  --movement-badge-width: 150px;
+  font-size: 0.75rem;
+  padding: 0.45rem 0.65rem;
 }
 
 .list .meta .movement-badge .movement-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
+}
+
+.list .meta .movement-badge .movement-badge__metric {
+  font-size: 0.7rem;
 }
 
 .list .meta.warning {
@@ -2731,26 +2729,85 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-secondary);
 }
 
+
 .movement-badge {
+  --movement-badge-width: 160px;
   display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: 999px;
+  align-items: stretch;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 16px;
   background: var(--movement-badge-bg, rgba(148, 163, 184, 0.2));
-  font-weight: 600;
-  font-size: 0.85rem;
   color: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  width: var(--movement-badge-width);
+  min-height: 72px;
+  box-sizing: border-box;
 }
 
 .movement-badge .movement-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.movement-badge__metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.movement-badge__metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  line-height: 1.2;
+}
+
+.movement-badge__metric-label {
+  color: rgba(15, 23, 42, 0.7);
+  font-weight: 500;
+}
+
+.movement-badge__metric-value {
+  font-weight: 700;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.movement-badge__metric--positive .movement-badge__metric-value {
+  color: #15803d;
+}
+
+.movement-badge__metric--negative .movement-badge__metric-value {
+  color: #dc2626;
+}
+
+.movement-badge__metric--neutral .movement-badge__metric-value {
+  color: inherit;
 }
 
 .movement-badge--none {
-  background: rgba(148, 163, 184, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--movement-badge-width, 160px);
+  min-height: 72px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 16px;
+  background: rgba(148, 163, 184, 0.18);
   color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.movement-badge--inline {
+  flex: 0 0 var(--movement-badge-width, 160px);
+  margin-top: 0.35rem;
 }
 
 .movement-indicator-cell {
