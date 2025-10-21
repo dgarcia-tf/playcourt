@@ -141,7 +141,6 @@
             </button>
             <nav class="main-menu" id="app-menu" hidden>
               <button type="button" class="menu-button" data-target="section-dashboard">Dashboard</button>
-              <button type="button" class="menu-button" data-target="section-club">Club</button>
               <div class="menu-group">
                 <button type="button" class="menu-button menu-button--parent" data-target="section-leagues">
                   Ligas
@@ -202,7 +201,7 @@
                     data-target="section-rules"
                     data-parent-target="section-leagues"
                   >
-                    Reglamento de liga
+                    Reglamento
                   </button>
                 </div>
               </div>
@@ -257,23 +256,49 @@
                     data-target="section-tournament-rules"
                     data-parent-target="section-tournaments"
                   >
-                    Reglamento de torneos
+                    Reglamento
                   </button>
                 </div>
               </div>
               <button type="button" class="menu-button" data-target="section-court-reservations">
                 Reservar pistas
               </button>
-              <div class="menu-group" data-requires-admin="true" data-admin-visible="toggle" hidden>
+              <div
+                class="menu-group"
+                data-requires-admin="true"
+                data-admin-visible="toggle"
+                data-collapsible="true"
+                hidden
+              >
                 <button
                   type="button"
                   class="menu-button menu-button--parent"
                   data-target="section-admin"
                   data-requires-admin="true"
+                  data-submenu-toggle="true"
+                  aria-expanded="false"
                 >
                   Administración
                 </button>
-                <div class="menu-submenu" role="group" aria-label="Secciones de administración">
+                <div class="menu-submenu" role="group" aria-label="Secciones de administración" hidden>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-admin"
+                    data-parent-target="section-admin"
+                    data-requires-admin="true"
+                  >
+                    Panel de administración
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested"
+                    data-target="section-club"
+                    data-parent-target="section-admin"
+                    data-requires-admin="true"
+                  >
+                    Club
+                  </button>
                   <button
                     type="button"
                     class="menu-button menu-button--nested"
@@ -290,7 +315,7 @@
                     data-parent-target="section-admin"
                     data-requires-admin="true"
                   >
-                    Administración de pistas
+                    Gestión Pistas
                   </button>
                 </div>
               </div>

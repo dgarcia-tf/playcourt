@@ -885,6 +885,47 @@ const menuButtons = appMenu ? Array.from(appMenu.querySelectorAll('.menu-button'
 const adminMenuButtons = menuButtons.filter((button) => button.dataset.requiresAdmin === 'true');
 const adminSectionIds = new Set(adminMenuButtons.map((button) => button.dataset.target));
 const adminToggleElements = document.querySelectorAll('[data-admin-visible="toggle"]');
+
+function setMenuGroupExpanded(menuGroup, expanded) {
+  if (!menuGroup) return;
+  const { parentButton, submenu, group } = menuGroup;
+  if (parentButton) {
+    parentButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+  if (group) {
+    group.classList.toggle('menu-group--expanded', expanded);
+  }
+  if (submenu) {
+    submenu.hidden = !expanded;
+  }
+}
+
+const collapsibleMenuGroups = appMenu
+  ? Array.from(appMenu.querySelectorAll('[data-collapsible="true"]'))
+      .map((group) => {
+        const parentButton = group.querySelector('.menu-button--parent');
+        const submenu = group.querySelector('.menu-submenu');
+        if (!parentButton || !submenu) {
+          return null;
+        }
+        const menuGroup = {
+          group,
+          parentButton,
+          submenu,
+          target: parentButton.dataset.target || null,
+        };
+        setMenuGroupExpanded(menuGroup, false);
+        return menuGroup;
+      })
+      .filter(Boolean)
+  : [];
+
+const collapsibleMenuGroupsByTarget = new Map();
+collapsibleMenuGroups.forEach((menuGroup) => {
+  if (menuGroup.target) {
+    collapsibleMenuGroupsByTarget.set(menuGroup.target, menuGroup);
+  }
+});
 const desktopMediaQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(min-width: 1025px)') : null;
 
 function isMobileMenuSupported() {
@@ -1715,7 +1756,9 @@ function setActiveMenu(targetId = null) {
 
   if (targetId) {
     activeTargets.add(targetId);
-    const targetButton = menuButtons.find((button) => button.dataset.target === targetId);
+    const matchingButtons = menuButtons.filter((button) => button.dataset.target === targetId);
+    const targetButton =
+      matchingButtons.find((button) => button.dataset.submenuToggle !== 'true') || matchingButtons[0];
     const parentTarget = targetButton?.dataset.parentTarget;
     if (parentTarget) {
       activeTargets.add(parentTarget);
@@ -1726,6 +1769,13 @@ function setActiveMenu(targetId = null) {
     const target = button.dataset.target;
     button.classList.toggle('active', target ? activeTargets.has(target) : false);
   });
+
+  if (collapsibleMenuGroups.length) {
+    collapsibleMenuGroups.forEach((menuGroup) => {
+      const shouldExpand = menuGroup.target ? activeTargets.has(menuGroup.target) : false;
+      setMenuGroupExpanded(menuGroup, shouldExpand);
+    });
+  }
 }
 
 function updateAdminMenuVisibility() {
@@ -2262,7 +2312,21 @@ if (appMenu) {
   appMenu.addEventListener('click', (event) => {
     const button = event.target.closest('.menu-button');
     if (!button || button.hidden || button.disabled) return;
-    showSection(button.dataset.target);
+    const targetId = button.dataset.target;
+    if (button.dataset.submenuToggle === 'true') {
+      const menuGroup = collapsibleMenuGroupsByTarget.get(targetId || '');
+      const expanded = button.getAttribute('aria-expanded') === 'true';
+      if (expanded) {
+        const isActiveTarget = state.activeSection === targetId;
+        const activeNestedButton = menuGroup?.submenu?.querySelector('.menu-button.active');
+        if (isActiveTarget || activeNestedButton) {
+          return;
+        }
+      }
+      setMenuGroupExpanded(menuGroup, !expanded);
+      return;
+    }
+    showSection(targetId);
   });
 }
 
