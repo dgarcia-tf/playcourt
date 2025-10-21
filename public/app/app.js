@@ -9,21 +9,6 @@ const CALENDAR_TIME_SLOT_MINUTES = 15;
 const CALENDAR_TIME_SLOT_STEP_SECONDS = CALENDAR_TIME_SLOT_MINUTES * 60;
 const COURT_RESERVATION_DEFAULT_DURATION = 90;
 
-const COURT_MATCH_TYPES = {
-  SINGLES: 'singles',
-  DOUBLES: 'dobles',
-};
-
-const COURT_MATCH_TYPE_LABELS = {
-  [COURT_MATCH_TYPES.SINGLES]: 'Individual',
-  [COURT_MATCH_TYPES.DOUBLES]: 'Dobles',
-};
-
-const COURT_MATCH_TYPE_PLAYER_COUNT = {
-  [COURT_MATCH_TYPES.SINGLES]: 2,
-  [COURT_MATCH_TYPES.DOUBLES]: 4,
-};
-
 const SCHEDULE_LABELS = {
   manana: 'Mañana',
   tarde: 'Tarde',
@@ -413,213 +398,6 @@ function populateCourtReservationCourts() {
   courtReservationCourtSelect.value = resolvedValue;
 }
 
-async function loadReservationPlayers({ force = false } = {}) {
-  if (!state.token) {
-    return;
-  }
-
-  if (!force && state.reservationPlayersLoaded && state.reservationPlayers.length) {
-    return;
-  }
-
-  state.reservationPlayersLoading = true;
-  renderCourtReservationParticipants();
-
-  try {
-    const players = await request('/courts/reservations/players');
-    state.reservationPlayers = Array.isArray(players) ? players : [];
-    state.reservationPlayersLoaded = true;
-  } catch (error) {
-    state.reservationPlayers = [];
-    state.reservationPlayersLoaded = false;
-    throw error;
-  } finally {
-    state.reservationPlayersLoading = false;
-    renderCourtReservationParticipants();
-  }
-}
-
-function getCourtReservationMatchType() {
-  const value = courtReservationMatchTypeSelect?.value;
-  if (value === COURT_MATCH_TYPES.DOUBLES) {
-    return COURT_MATCH_TYPES.DOUBLES;
-  }
-  return COURT_MATCH_TYPES.SINGLES;
-}
-
-function getAdditionalReservationPlayerCount(matchType = getCourtReservationMatchType()) {
-  const requiredPlayers = COURT_MATCH_TYPE_PLAYER_COUNT[matchType];
-  const normalized = Number.isFinite(requiredPlayers)
-    ? requiredPlayers
-    : COURT_MATCH_TYPE_PLAYER_COUNT[COURT_MATCH_TYPES.SINGLES];
-  return Math.max((normalized || 0) - 1, 0);
-}
-
-function getReservationPlayerOptions() {
-  const players = Array.isArray(state.reservationPlayers) ? state.reservationPlayers : [];
-  const currentUserId = normalizeId(state.user);
-  return players
-    .map((player) => ({
-      id: normalizeId(player),
-      fullName: player?.fullName || '',
-      email: player?.email || '',
-    }))
-    .filter((player) => player.id && player.id !== currentUserId)
-    .sort((a, b) => {
-      const labelA = (a.fullName || a.email || '').toLocaleLowerCase('es');
-      const labelB = (b.fullName || b.email || '').toLocaleLowerCase('es');
-      return labelA.localeCompare(labelB, 'es');
-    });
-}
-
-function updateReservationParticipantOptionState() {
-  if (!courtReservationParticipantsContainer) {
-    return;
-  }
-
-  const selects = Array.from(
-    courtReservationParticipantsContainer.querySelectorAll('select[data-participant-select]')
-  );
-
-  if (!selects.length) {
-    return;
-  }
-
-  const selectedValues = selects.map((select) => select.value);
-  selects.forEach((select, index) => {
-    Array.from(select.options).forEach((option) => {
-      if (!option.value) return;
-      const isSelectedElsewhere = selectedValues.some(
-        (value, valueIndex) => value && value === option.value && valueIndex !== index
-      );
-      option.disabled = isSelectedElsewhere;
-    });
-  });
-}
-
-function renderCourtReservationParticipants() {
-  if (!courtReservationParticipantsContainer) {
-    return;
-  }
-
-  const matchType = getCourtReservationMatchType();
-  const additionalPlayers = getAdditionalReservationPlayerCount(matchType);
-  const previousSelections = Array.from(
-    courtReservationParticipantsContainer.querySelectorAll('select[data-participant-select]')
-  ).map((select) => select.value);
-
-  courtReservationParticipantsContainer.innerHTML = '';
-
-  if (courtReservationParticipantsHint) {
-    if (additionalPlayers <= 0) {
-      courtReservationParticipantsHint.hidden = true;
-    } else if (!state.reservationPlayersLoading) {
-      courtReservationParticipantsHint.hidden = false;
-      courtReservationParticipantsHint.textContent =
-        defaultCourtReservationParticipantsHint ||
-        'Selecciona a tu rival o al resto de jugadores para confirmar la reserva.';
-    }
-  }
-
-  if (additionalPlayers <= 0) {
-    courtReservationParticipantsContainer.hidden = true;
-    return;
-  }
-
-  courtReservationParticipantsContainer.hidden = false;
-
-  if (state.reservationPlayersLoading) {
-    const loading = document.createElement('p');
-    loading.className = 'meta';
-    loading.textContent = 'Cargando jugadores disponibles...';
-    courtReservationParticipantsContainer.appendChild(loading);
-    return;
-  }
-
-  const options = getReservationPlayerOptions();
-  if (!options.length) {
-    const empty = document.createElement('p');
-    empty.className = 'meta';
-    empty.textContent = 'No hay jugadores disponibles para seleccionar.';
-    courtReservationParticipantsContainer.appendChild(empty);
-    if (courtReservationParticipantsHint) {
-      courtReservationParticipantsHint.hidden = true;
-    }
-    return;
-  }
-
-  const labelsByMatchType = {
-    [COURT_MATCH_TYPES.SINGLES]: ['Rival'],
-    [COURT_MATCH_TYPES.DOUBLES]: ['Compañero/a', 'Rival 1', 'Rival 2'],
-  };
-  const labels = labelsByMatchType[matchType] || [];
-
-  for (let index = 0; index < additionalPlayers; index += 1) {
-    const wrapper = document.createElement('label');
-    wrapper.className = 'inline-field';
-
-    const title = document.createElement('span');
-    title.textContent = labels[index] || `Jugador ${index + 2}`;
-    wrapper.appendChild(title);
-
-    const select = document.createElement('select');
-    select.required = true;
-    select.dataset.participantSelect = 'true';
-
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Selecciona un jugador';
-    placeholder.disabled = true;
-    placeholder.selected = true;
-    select.appendChild(placeholder);
-
-    options.forEach((player) => {
-      const option = document.createElement('option');
-      option.value = player.id;
-      option.textContent = player.fullName || player.email || 'Jugador';
-      select.appendChild(option);
-    });
-
-    const previousValue = previousSelections[index];
-    if (previousValue && options.some((player) => player.id === previousValue)) {
-      select.value = previousValue;
-    }
-
-    wrapper.appendChild(select);
-    courtReservationParticipantsContainer.appendChild(wrapper);
-  }
-
-  updateReservationParticipantOptionState();
-}
-
-function collectReservationParticipantIds() {
-  if (!courtReservationParticipantsContainer) {
-    return { values: [], unique: [], missing: false, hasDuplicates: false };
-  }
-
-  const selects = Array.from(
-    courtReservationParticipantsContainer.querySelectorAll('select[data-participant-select]')
-  );
-  if (!selects.length) {
-    return { values: [], unique: [], missing: false, hasDuplicates: false };
-  }
-
-  const values = [];
-  let missing = false;
-  selects.forEach((select) => {
-    const value = select.value;
-    if (!value) {
-      missing = true;
-    } else {
-      values.push(value);
-    }
-  });
-
-  const unique = Array.from(new Set(values));
-  const hasDuplicates = unique.length !== values.length;
-  return { values, unique, missing, hasDuplicates };
-}
-
 function resetCourtReservationForm() {
   if (!courtReservationForm) {
     return;
@@ -637,19 +415,10 @@ function resetCourtReservationForm() {
   if (courtReservationDurationSelect) {
     courtReservationDurationSelect.value = String(COURT_RESERVATION_DEFAULT_DURATION);
   }
-  if (courtReservationMatchTypeSelect) {
-    courtReservationMatchTypeSelect.value = COURT_MATCH_TYPES.SINGLES;
-  }
   if (courtReservationNotesInput) {
     courtReservationNotesInput.value = '';
   }
   populateCourtReservationCourts();
-  renderCourtReservationParticipants();
-  if (state.token) {
-    loadReservationPlayers().catch(() => {
-      /* Silenciar errores iniciales */
-    });
-  }
   setStatusMessage(courtReservationStatus, '', '');
 }
 
@@ -897,9 +666,6 @@ const state = {
   courtAvailabilityDate: new Date(),
   courtAdminDate: new Date(),
   courtAdminSchedule: [],
-  reservationPlayers: [],
-  reservationPlayersLoaded: false,
-  reservationPlayersLoading: false,
   push: {
     supported: PUSH_SUPPORTED,
     permission: PUSH_SUPPORTED ? Notification.permission : 'default',
@@ -982,16 +748,11 @@ const courtReservationDateInput = document.getElementById('court-reservation-dat
 const courtReservationTimeInput = document.getElementById('court-reservation-time');
 const courtReservationDurationSelect = document.getElementById('court-reservation-duration');
 const courtReservationCourtSelect = document.getElementById('court-reservation-court');
-const courtReservationMatchTypeSelect = document.getElementById('court-reservation-match-type');
-const courtReservationParticipantsContainer = document.getElementById('court-reservation-participants');
-const courtReservationParticipantsHint = document.getElementById('court-reservation-participants-hint');
 const courtReservationNotesInput = document.getElementById('court-reservation-notes');
 const courtReservationStatus = document.getElementById('court-reservation-status');
 const courtReservationSubmit = document.getElementById('court-reservation-submit');
 const courtReservationList = document.getElementById('court-reservation-list');
 const courtReservationEmpty = document.getElementById('court-reservation-empty');
-const defaultCourtReservationParticipantsHint =
-  courtReservationParticipantsHint?.textContent?.trim() || '';
 const courtAvailabilityDateInput = document.getElementById('court-availability-date');
 const courtAvailabilityList = document.getElementById('court-availability-list');
 const courtAvailabilityEmpty = document.getElementById('court-availability-empty');
@@ -4188,29 +3949,6 @@ function getReservationParticipants(reservation) {
   return [];
 }
 
-function inferReservationMatchType(reservation) {
-  if (!reservation) {
-    return COURT_MATCH_TYPES.SINGLES;
-  }
-
-  const rawType = reservation.matchType;
-  if (rawType === COURT_MATCH_TYPES.DOUBLES || rawType === COURT_MATCH_TYPES.SINGLES) {
-    return rawType;
-  }
-
-  const participants = getReservationParticipants(reservation);
-  if (participants.length >= COURT_MATCH_TYPE_PLAYER_COUNT[COURT_MATCH_TYPES.DOUBLES]) {
-    return COURT_MATCH_TYPES.DOUBLES;
-  }
-
-  return COURT_MATCH_TYPES.SINGLES;
-}
-
-function getReservationMatchTypeLabel(reservation) {
-  const type = inferReservationMatchType(reservation);
-  return COURT_MATCH_TYPE_LABELS[type] || COURT_MATCH_TYPE_LABELS[COURT_MATCH_TYPES.SINGLES];
-}
-
 function renderCourtReservations() {
   if (!courtReservationList) {
     return;
@@ -4266,10 +4004,6 @@ function renderCourtReservations() {
       manualTag.textContent = 'Reserva';
       scheduleRow.appendChild(manualTag);
     }
-    const matchTypeTag = document.createElement('span');
-    matchTypeTag.className = 'tag match-type-tag';
-    matchTypeTag.textContent = getReservationMatchTypeLabel(reservation);
-    scheduleRow.appendChild(matchTypeTag);
     if (reservation.status === 'cancelada') {
       const cancelledTag = document.createElement('span');
       cancelledTag.className = 'tag danger';
@@ -4364,10 +4098,6 @@ function renderCourtAvailability() {
             .map((participant) => getPlayerDisplayName(participant))
             .join(' · ');
         }
-        const matchTypeTag = document.createElement('span');
-        matchTypeTag.className = 'tag match-type-tag';
-        matchTypeTag.textContent = getReservationMatchTypeLabel(reservation);
-        slot.appendChild(matchTypeTag);
         if (reservation.type === 'partido' || reservation.match) {
           const tag = document.createElement('span');
           tag.className = 'tag';
@@ -4439,10 +4169,6 @@ function renderCourtAdminSchedule() {
             .map((participant) => getPlayerDisplayName(participant))
             .join(' · ');
         }
-        const matchTypeBadge = document.createElement('span');
-        matchTypeBadge.className = 'tag match-type-tag';
-        matchTypeBadge.textContent = getReservationMatchTypeLabel(reservation);
-        info.appendChild(matchTypeBadge);
         if (reservation.type === 'partido' || reservation.match) {
           info.appendChild(document.createElement('span')).textContent = 'Partido de liga';
         } else if (reservation.createdBy) {
@@ -9446,12 +9172,6 @@ async function loadAllData() {
     renderAllCalendars();
 
     await loadPlayerCourtData();
-    try {
-      await loadReservationPlayers({ force: true });
-    } catch (error) {
-      console.warn('No fue posible cargar la lista de jugadores para reservas', error);
-    }
-    renderCourtReservationParticipants();
     if (isAdmin()) {
       await loadAdminCourtData();
     } else {
@@ -9632,36 +9352,6 @@ courtReservationForm?.addEventListener('submit', async (event) => {
     durationMinutes: duration,
   };
 
-  const matchType = getCourtReservationMatchType();
-  payload.matchType = matchType;
-
-  if (state.reservationPlayersLoading) {
-    setStatusMessage(
-      courtReservationStatus,
-      'error',
-      'Espera a que se cargue la lista de jugadores antes de crear la reserva.'
-    );
-    return;
-  }
-
-  const additionalRequired = getAdditionalReservationPlayerCount(matchType);
-  if (additionalRequired > 0) {
-    const participantsInfo = collectReservationParticipantIds();
-    if (participantsInfo.hasDuplicates) {
-      setStatusMessage(courtReservationStatus, 'error', 'Cada jugador seleccionado debe ser diferente.');
-      return;
-    }
-    if (participantsInfo.missing || participantsInfo.unique.length !== additionalRequired) {
-      const message =
-        matchType === COURT_MATCH_TYPES.DOUBLES
-          ? 'Selecciona tres jugadores adicionales para completar el partido de dobles.'
-          : 'Selecciona al rival para completar el partido individual.';
-      setStatusMessage(courtReservationStatus, 'error', message);
-      return;
-    }
-    payload.participants = participantsInfo.unique;
-  }
-
   if (notes) {
     payload.notes = notes;
   }
@@ -9685,16 +9375,6 @@ courtReservationForm?.addEventListener('submit', async (event) => {
     if (courtReservationSubmit) {
       courtReservationSubmit.disabled = false;
     }
-  }
-});
-
-courtReservationMatchTypeSelect?.addEventListener('change', () => {
-  renderCourtReservationParticipants();
-});
-
-courtReservationParticipantsContainer?.addEventListener('change', (event) => {
-  if (event.target && event.target.matches('select[data-participant-select]')) {
-    updateReservationParticipantOptionState();
   }
 });
 

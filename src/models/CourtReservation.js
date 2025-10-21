@@ -10,11 +10,6 @@ const RESERVATION_TYPES = {
   MATCH: 'partido',
 };
 
-const MATCH_TYPES = {
-  SINGLES: 'singles',
-  DOUBLES: 'dobles',
-};
-
 const courtReservationSchema = new mongoose.Schema(
   {
     court: {
@@ -69,11 +64,6 @@ const courtReservationSchema = new mongoose.Schema(
       enum: Object.values(RESERVATION_TYPES),
       default: RESERVATION_TYPES.MANUAL,
     },
-    matchType: {
-      type: String,
-      enum: Object.values(MATCH_TYPES),
-      default: MATCH_TYPES.SINGLES,
-    },
     cancelledAt: {
       type: Date,
     },
@@ -95,5 +85,4 @@ module.exports = {
   CourtReservation: mongoose.model('CourtReservation', courtReservationSchema),
   RESERVATION_STATUS,
   RESERVATION_TYPES,
-  MATCH_TYPES,
 };

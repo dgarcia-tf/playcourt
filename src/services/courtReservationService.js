@@ -1,4 +1,4 @@
-const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES, MATCH_TYPES } = require('../models/CourtReservation');
+const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 
 const DEFAULT_RESERVATION_DURATION_MINUTES = 90;
 
@@ -80,14 +80,6 @@ function normalizeParticipants(participants = []) {
   return normalized;
 }
 
-function resolveMatchTypeFromParticipants(participants = []) {
-  const count = Array.isArray(participants) ? participants.length : 0;
-  if (count >= 4) {
-    return MATCH_TYPES.DOUBLES;
-  }
-  return MATCH_TYPES.SINGLES;
-}
-
 async function upsertMatchReservation({ match, createdBy }) {
   if (!match || !match._id || !match.court || !match.scheduledAt) {
     return null;
@@ -99,7 +91,6 @@ async function upsertMatchReservation({ match, createdBy }) {
   }
 
   const participants = normalizeParticipants(match.players);
-  const matchType = resolveMatchTypeFromParticipants(participants);
   const existing = await CourtReservation.findOne({ match: match._id });
 
   await ensureReservationAvailability({
@@ -127,7 +118,6 @@ async function upsertMatchReservation({ match, createdBy }) {
     existing.cancelledBy = undefined;
     existing.match = match._id;
     existing.type = RESERVATION_TYPES.MATCH;
-    existing.matchType = matchType;
     existing.participants = participants;
     if (!existing.notes) {
       existing.notes = 'Reserva automática generada por partido de liga.';
@@ -144,7 +134,6 @@ async function upsertMatchReservation({ match, createdBy }) {
     status: RESERVATION_STATUS.RESERVED,
     match: match._id,
     type: RESERVATION_TYPES.MATCH,
-    matchType,
     participants,
     notes: 'Reserva automática generada por partido de liga.',
   });
@@ -179,5 +168,4 @@ module.exports = {
   cancelMatchReservation,
   resolveEndsAt,
   normalizeParticipants,
-  resolveMatchTypeFromParticipants,
 };

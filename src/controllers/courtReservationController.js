@@ -1,8 +1,8 @@
 const { validationResult, body, query } = require('express-validator');
 const mongoose = require('mongoose');
-const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES, MATCH_TYPES } = require('../models/CourtReservation');
+const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
-const { User, USER_ROLES, userHasRole } = require('../models/User');
+const { USER_ROLES, userHasRole } = require('../models/User');
 const {
   ensureReservationAvailability,
   DEFAULT_RESERVATION_DURATION_MINUTES,
@@ -87,9 +87,6 @@ const validateCreateReservation = [
     .isString()
     .isLength({ max: 500 })
     .withMessage('Las notas deben tener menos de 500 caracteres.'),
-  body('matchType')
-    .isIn(Object.values(MATCH_TYPES))
-    .withMessage('Selecciona un tipo de partido válido.'),
   body('participants')
     .optional()
     .isArray({ max: 3 })
@@ -151,26 +148,10 @@ async function createReservation(req, res) {
   const participantList = Array.isArray(req.body.participants) ? req.body.participants : [];
   const normalizedParticipants = normalizeParticipants(participantList);
   const requesterId = req.user.id.toString();
-  const matchType = Object.values(MATCH_TYPES).includes(rawMatchType) ? rawMatchType : MATCH_TYPES.SINGLES;
-  const requiredParticipants = matchType === MATCH_TYPES.DOUBLES ? 4 : 2;
-
-  const participants = [requesterId, ...normalizedParticipants.filter((participantId) => participantId !== requesterId)];
-
-  if (participants.length < requiredParticipants) {
-    const message =
-      matchType === MATCH_TYPES.DOUBLES
-        ? 'Debes seleccionar cuatro jugadores diferentes para un partido de dobles.'
-        : 'Debes seleccionar dos jugadores diferentes para un partido individual.';
-    return res.status(400).json({ message });
+  if (!normalizedParticipants.includes(requesterId)) {
+    normalizedParticipants.unshift(requesterId);
   }
-
-  const limitedParticipants = participants.slice(0, requiredParticipants);
-  const uniqueCount = new Set(limitedParticipants).size;
-  if (uniqueCount !== requiredParticipants) {
-    return res
-      .status(400)
-      .json({ message: 'Cada jugador debe ser diferente para confirmar la reserva.' });
-  }
+  const participants = normalizedParticipants.slice(0, 4);
 
   const reservation = await CourtReservation.create({
     court,
@@ -178,15 +159,13 @@ async function createReservation(req, res) {
     endsAt,
     notes: sanitizeNotes(notes),
     createdBy: req.user.id,
-    participants: limitedParticipants,
+    participants,
     type: RESERVATION_TYPES.MANUAL,
-    matchType,
   });
 
-  await reservation.populate([
-    { path: 'createdBy', select: 'fullName email roles' },
-    { path: 'participants', select: 'fullName email roles' },
-  ]);
+  await reservation
+    .populate('createdBy', 'fullName email roles')
+    .populate('participants', 'fullName email roles');
 
   return res.status(201).json(reservation);
 }
