@@ -10375,6 +10375,26 @@ function buildLeaguePayload(formData, isEditing = false) {
     payload.endDate = null;
   }
 
+  const registrationCloseDate = formData.get('registrationCloseDate');
+  if (registrationCloseDate) {
+    payload.registrationCloseDate = registrationCloseDate;
+  } else if (isEditing) {
+    payload.registrationCloseDate = null;
+  }
+
+  const enrollmentFeeRaw = formData.get('enrollmentFee');
+  if (enrollmentFeeRaw !== null && enrollmentFeeRaw !== undefined) {
+    const trimmed = String(enrollmentFeeRaw).trim();
+    if (trimmed) {
+      const fee = Number.parseFloat(trimmed);
+      if (!Number.isNaN(fee) && fee >= 0) {
+        payload.enrollmentFee = fee;
+      }
+    } else if (isEditing) {
+      payload.enrollmentFee = null;
+    }
+  }
+
   const categories = formData.getAll('categories').filter(Boolean);
   if (categories.length || isEditing) {
     payload.categories = categories;
@@ -11972,6 +11992,18 @@ function openLeagueModal(leagueId = '') {
         <input type="date" name="endDate" />
       </label>
     </div>
+    <div class="form-grid">
+      <label>
+        Cierre de inscripciones
+        <input type="date" name="registrationCloseDate" />
+        <span class="form-hint">Último día para que los jugadores envíen su inscripción.</span>
+      </label>
+      <label>
+        Tarifa de inscripción
+        <input type="number" name="enrollmentFee" min="0" step="0.01" placeholder="0.00" />
+        <span class="form-hint">Importe total en euros. Déjalo vacío si la inscripción es gratuita.</span>
+      </label>
+    </div>
     <label>
       Categorías asociadas
       <select name="categories" multiple size="6"></select>
@@ -11993,6 +12025,13 @@ function openLeagueModal(leagueId = '') {
   form.elements.description.value = league?.description || '';
   form.elements.startDate.value = formatDateInput(league?.startDate);
   form.elements.endDate.value = formatDateInput(league?.endDate);
+  if (form.elements.registrationCloseDate) {
+    form.elements.registrationCloseDate.value = formatDateInput(league?.registrationCloseDate);
+  }
+  if (form.elements.enrollmentFee) {
+    form.elements.enrollmentFee.value =
+      typeof league?.enrollmentFee === 'number' ? String(league.enrollmentFee) : '';
+  }
 
   const categoriesSelect = form.elements.categories;
   if (categoriesSelect) {
