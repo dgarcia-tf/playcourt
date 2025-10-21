@@ -1541,6 +1541,14 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   gap: 0.5rem;
 }
 
+.league-payments-group-stats {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .league-payments-group-header h4 {
   margin: 0;
   font-size: 1rem;
