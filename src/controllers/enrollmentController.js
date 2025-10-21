@@ -62,6 +62,24 @@ async function enrollPlayer(req, res) {
     }
   }
 
+  const league = category.league;
+  if (league) {
+    if (league.status === LEAGUE_STATUS.CLOSED) {
+      return res
+        .status(400)
+        .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
+    }
+
+    const registrationCloseDate =
+      league.registrationCloseDate && new Date(league.registrationCloseDate);
+
+    if (registrationCloseDate && new Date() > registrationCloseDate) {
+      return res
+        .status(400)
+        .json({ message: 'La fecha máxima de inscripción de la liga ya ha pasado.' });
+    }
+  }
+
   try {
     const enrollment = await Enrollment.create({
       category: category.id,
@@ -127,17 +145,3 @@ module.exports = {
   listEnrollments,
   removeEnrollment,
 };
-  const league = category.league;
-  if (league) {
-    if (league.status === LEAGUE_STATUS.CLOSED) {
-      return res
-        .status(400)
-        .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
-    }
-
-    if (league.registrationCloseDate && new Date() > league.registrationCloseDate) {
-      return res
-        .status(400)
-        .json({ message: 'La fecha máxima de inscripción de la liga ya ha pasado.' });
-    }
-  }
