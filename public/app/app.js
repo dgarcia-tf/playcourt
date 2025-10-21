@@ -6589,7 +6589,7 @@ function createMatchListItem(match, { isResultManagementList = false } = {}) {
       const winnerName = getPlayerDisplayName(winner);
       summary.appendChild(document.createElement('span')).textContent = `Ganador: ${winnerName}`;
     }
-    const scoreLabel = formatMatchScoreLabel(match);
+    const scoreLabel = formatMatchScore(match);
     if (scoreLabel) {
       summary.appendChild(document.createElement('span')).textContent = scoreLabel;
     }
