@@ -1020,6 +1020,15 @@ const leagueCreateButton = document.getElementById('league-create-button');
 const matchCreateButton = document.getElementById('match-create-button');
 const matchGenerateButton = document.getElementById('match-generate-button');
 const playerCreateButton = document.getElementById('player-create-button');
+const tournamentCreateButton = document.getElementById('tournament-create-button');
+const tournamentEditButton = document.getElementById('tournament-edit-button');
+const tournamentCategoryCreateButton = document.getElementById(
+  'tournament-category-create-button'
+);
+const tournamentEnrollmentAddButton = document.getElementById(
+  'tournament-enrollment-add-button'
+);
+const tournamentDrawGenerateButton = document.getElementById('tournament-draw-generate-button');
 const modalOverlay = document.getElementById('modal-overlay');
 const modalTitle = document.getElementById('modal-title');
 const modalBody = document.getElementById('modal-body');
@@ -1153,6 +1162,26 @@ function showGlobalMessage(message = '', type = 'info') {
     globalMessage.classList.add('error');
   }
   globalMessage.classList.add('show');
+}
+
+function updateTournamentActionAvailability() {
+  if (tournamentEditButton) {
+    tournamentEditButton.disabled = !state.selectedTournamentId;
+  }
+
+  const hasTournaments = Array.isArray(state.tournaments) && state.tournaments.length > 0;
+
+  if (tournamentCategoryCreateButton) {
+    tournamentCategoryCreateButton.disabled = !hasTournaments;
+  }
+
+  if (tournamentEnrollmentAddButton) {
+    tournamentEnrollmentAddButton.disabled = !hasTournaments;
+  }
+
+  if (tournamentDrawGenerateButton) {
+    tournamentDrawGenerateButton.disabled = !hasTournaments;
+  }
 }
 
 function updateMatchesMenuBadge(count = 0) {
@@ -2752,6 +2781,7 @@ function resetData() {
   state.push.configLoaded = false;
   state.push.permission = state.push.supported && typeof Notification !== 'undefined' ? Notification.permission : 'default';
   updatePushSettingsUI();
+  updateTournamentActionAvailability();
 }
 
 function applySetupState() {
@@ -4096,6 +4126,7 @@ function renderTournamentDetail() {
   if (!tournamentDetailBody) return;
 
   const tournamentId = state.selectedTournamentId;
+  updateTournamentActionAvailability();
   if (!tournamentId) {
     if (tournamentDetailTitle) {
       tournamentDetailTitle.textContent = 'Detalle del torneo';
@@ -4514,6 +4545,7 @@ function updateTournamentSelectors() {
   renderTournamentCategories();
   updateEnrollmentCategoryOptions();
   updateMatchCategoryOptions();
+  updateTournamentActionAvailability();
 }
 
 function updateEnrollmentCategoryOptions() {
@@ -4680,6 +4712,37 @@ function renderTournamentEnrollments(enrollments = [], { loading = false } = {})
   });
 }
 
+async function fetchTournamentEnrollments(tournamentId, categoryId, { forceReload = false } = {}) {
+  if (!tournamentId || !categoryId) {
+    return [];
+  }
+
+  const cacheKey = `${tournamentId}:${categoryId}`;
+  if (!forceReload && state.tournamentEnrollments.has(cacheKey)) {
+    return state.tournamentEnrollments.get(cacheKey) || [];
+  }
+
+  const response = await request(`/tournaments/${tournamentId}/categories/${categoryId}/enrollments`);
+  const list = Array.isArray(response) ? response : [];
+  state.tournamentEnrollments.set(cacheKey, list);
+  return list;
+}
+
+async function ensurePlayersLoaded() {
+  if (Array.isArray(state.players) && state.players.length) {
+    return state.players;
+  }
+
+  try {
+    const players = await request('/players');
+    state.players = Array.isArray(players) ? players : [];
+    return state.players;
+  } catch (error) {
+    showGlobalMessage('No fue posible cargar la lista de jugadores.', 'error');
+    throw error;
+  }
+}
+
 async function refreshTournamentEnrollments({ forceReload = false } = {}) {
   const tournamentId = state.selectedEnrollmentTournamentId;
   const categoryId = state.selectedEnrollmentCategoryId;
@@ -4699,11 +4762,7 @@ async function refreshTournamentEnrollments({ forceReload = false } = {}) {
   renderTournamentEnrollments([], { loading: true });
 
   try {
-    const response = await request(
-      `/tournaments/${tournamentId}/categories/${categoryId}/enrollments`
-    );
-    const list = Array.isArray(response) ? response : [];
-    state.tournamentEnrollments.set(cacheKey, list);
+    const list = await fetchTournamentEnrollments(tournamentId, categoryId, { forceReload });
     if (pendingTournamentEnrollmentKey === cacheKey) {
       renderTournamentEnrollments(list);
     }
@@ -4832,6 +4891,31 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
       pendingTournamentMatchesKey = '';
     }
   }
+}
+
+async function reloadTournaments({ selectTournamentId } = {}) {
+  let tournaments = [];
+
+  try {
+    const response = await request('/tournaments');
+    tournaments = Array.isArray(response) ? response : [];
+  } catch (error) {
+    showGlobalMessage(error.message, 'error');
+    throw error;
+  }
+
+  state.tournaments = tournaments;
+
+  const normalizedSelection = selectTournamentId ? normalizeId(selectTournamentId) : '';
+  if (normalizedSelection) {
+    state.selectedTournamentId = normalizedSelection;
+    state.selectedTournamentCategoriesId = normalizedSelection;
+    state.selectedEnrollmentTournamentId = normalizedSelection;
+    state.selectedMatchTournamentId = normalizedSelection;
+  }
+
+  updateTournamentSelectors();
+  return tournaments;
 }
 
 function normalizeId(value) {
@@ -8712,6 +8796,1061 @@ async function submitLeagueFormData({ form, leagueId, statusElement }) {
   }
 }
 
+function buildTournamentPayload(form, { isEditing = false } = {}) {
+  const formData = new FormData(form);
+  const payload = {
+    name: (formData.get('name') || '').trim(),
+  };
+
+  const description = (formData.get('description') || '').trim();
+  if (description) {
+    payload.description = description;
+  } else if (isEditing) {
+    payload.description = null;
+  }
+
+  ['startDate', 'endDate', 'registrationCloseDate'].forEach((field) => {
+    const value = formData.get(field);
+    if (value) {
+      payload[field] = value;
+    } else if (isEditing) {
+      payload[field] = null;
+    }
+  });
+
+  const poster = (formData.get('poster') || '').trim();
+  if (poster) {
+    payload.poster = poster;
+  } else if (isEditing) {
+    payload.poster = null;
+  }
+
+  const status = (formData.get('status') || '').trim();
+  if (status) {
+    payload.status = status;
+  }
+
+  const feeEntries = Array.from(form.querySelectorAll('[data-fee-entry]'));
+  if (feeEntries.length) {
+    const fees = feeEntries
+      .map((entry) => {
+        const label = entry.querySelector('[data-fee-field="label"]')?.value.trim();
+        const amountValue = entry.querySelector('[data-fee-field="amount"]')?.value;
+        const amount = Number.parseFloat(amountValue);
+        if (!label || Number.isNaN(amount) || amount < 0) {
+          return null;
+        }
+        const currencyRaw = entry.querySelector('[data-fee-field="currency"]')?.value.trim();
+        const descriptionValue = entry
+          .querySelector('[data-fee-field="description"]')
+          ?.value.trim();
+        return {
+          label,
+          amount,
+          currency: currencyRaw ? currencyRaw.toUpperCase() : 'EUR',
+          description: descriptionValue || undefined,
+        };
+      })
+      .filter(Boolean);
+    if (fees.length || isEditing) {
+      payload.fees = fees;
+    }
+  } else if (isEditing) {
+    payload.fees = [];
+  }
+
+  return payload;
+}
+
+async function submitTournamentFormData({ form, tournamentId, statusElement }) {
+  if (!form) return { success: false };
+  const isEditing = Boolean(tournamentId);
+  const payload = buildTournamentPayload(form, { isEditing });
+
+  if (!payload.name) {
+    setStatusMessage(statusElement, 'error', 'El nombre del torneo es obligatorio.');
+    return { success: false };
+  }
+
+  setStatusMessage(
+    statusElement,
+    'info',
+    isEditing ? 'Actualizando torneo...' : 'Creando torneo...'
+  );
+
+  try {
+    const url = isEditing ? `/tournaments/${tournamentId}` : '/tournaments';
+    const method = isEditing ? 'PATCH' : 'POST';
+    const result = await request(url, { method, body: payload });
+    const createdId = normalizeId(result) || normalizeId(tournamentId);
+    await reloadTournaments({ selectTournamentId: createdId });
+    if (createdId) {
+      state.tournamentDetails.delete(createdId);
+      await refreshTournamentDetail(createdId);
+    }
+    setStatusMessage(
+      statusElement,
+      'success',
+      isEditing ? 'Torneo actualizado.' : 'Torneo creado.'
+    );
+    return { success: true, tournamentId: createdId };
+  } catch (error) {
+    setStatusMessage(statusElement, 'error', error.message);
+    return { success: false };
+  }
+}
+
+function openTournamentModal(tournamentId = '') {
+  if (!isAdmin()) return;
+  const normalizedId = tournamentId ? normalizeId(tournamentId) : '';
+  const tournament = normalizedId ? getTournamentById(normalizedId) : null;
+
+  const statusOptions = Object.entries(TOURNAMENT_STATUS_LABELS)
+    .map(([value, label]) => `<option value="${value}">${label}</option>`)
+    .join('');
+
+  const form = document.createElement('form');
+  form.className = 'form';
+  form.innerHTML = `
+    <label>
+      Nombre
+      <input type="text" name="name" required />
+    </label>
+    <label>
+      Descripción
+      <textarea name="description" rows="3" placeholder="Detalles opcionales"></textarea>
+    </label>
+    <div class="form-grid">
+      <label>
+        Fecha de inicio
+        <input type="date" name="startDate" />
+      </label>
+      <label>
+        Fecha de finalización
+        <input type="date" name="endDate" />
+      </label>
+    </div>
+    <label>
+      Cierre de inscripciones
+      <input type="date" name="registrationCloseDate" />
+      <span class="form-hint">Déjalo vacío si las inscripciones cierran el día de inicio.</span>
+    </label>
+    <label>
+      Estado
+      <select name="status" required>
+        ${statusOptions}
+      </select>
+    </label>
+    <label>
+      Cartel o imagen destacada
+      <input type="url" name="poster" placeholder="URL opcional del póster" />
+    </label>
+    <div class="form-section" data-fees-section>
+      <div class="form-section__header">
+        <h3>Cuotas de inscripción</h3>
+        <button type="button" class="secondary" data-action="add-fee">Añadir cuota</button>
+      </div>
+      <p class="form-hint">Define importes opcionales para la inscripción del torneo.</p>
+      <div data-fee-list></div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="primary">${tournament ? 'Actualizar' : 'Crear'} torneo</button>
+      <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+    </div>
+  `;
+
+  const status = document.createElement('p');
+  status.className = 'status-message';
+  status.style.display = 'none';
+
+  const feeList = form.querySelector('[data-fee-list]');
+  const addFeeButton = form.querySelector('[data-action="add-fee"]');
+
+  function addFeeEntry(data = {}) {
+    if (!feeList) return;
+    const entry = document.createElement('div');
+    entry.className = 'form-section';
+    entry.dataset.feeEntry = 'true';
+    entry.innerHTML = `
+      <div class="form-grid">
+        <label>
+          Concepto
+          <input type="text" data-fee-field="label" placeholder="Ej. Inscripción individual" />
+        </label>
+        <label>
+          Importe
+          <input type="number" min="0" step="0.01" data-fee-field="amount" />
+        </label>
+        <label>
+          Divisa
+          <input type="text" maxlength="3" data-fee-field="currency" placeholder="EUR" />
+        </label>
+      </div>
+      <label>
+        Notas
+        <input type="text" data-fee-field="description" placeholder="Información opcional" />
+      </label>
+      <div class="form-actions">
+        <button type="button" class="ghost" data-action="remove-fee">Quitar cuota</button>
+      </div>
+    `;
+
+    const removeButton = entry.querySelector('[data-action="remove-fee"]');
+    removeButton?.addEventListener('click', () => {
+      entry.remove();
+    });
+
+    feeList.appendChild(entry);
+
+    const labelField = entry.querySelector('[data-fee-field="label"]');
+    const amountField = entry.querySelector('[data-fee-field="amount"]');
+    const currencyField = entry.querySelector('[data-fee-field="currency"]');
+    const descriptionField = entry.querySelector('[data-fee-field="description"]');
+
+    if (labelField && data.label) {
+      labelField.value = data.label;
+    }
+    if (amountField && typeof data.amount !== 'undefined') {
+      amountField.value = data.amount;
+    }
+    if (currencyField && data.currency) {
+      currencyField.value = data.currency;
+    }
+    if (descriptionField && data.description) {
+      descriptionField.value = data.description;
+    }
+  }
+
+  addFeeButton?.addEventListener('click', () => {
+    addFeeEntry();
+  });
+
+  if (Array.isArray(tournament?.fees) && tournament.fees.length) {
+    tournament.fees.forEach((fee) => addFeeEntry(fee));
+  }
+
+  form.elements.name.value = tournament?.name || '';
+  form.elements.description.value = tournament?.description || '';
+  if (form.elements.startDate) {
+    form.elements.startDate.value = formatDateInput(tournament?.startDate);
+  }
+  if (form.elements.endDate) {
+    form.elements.endDate.value = formatDateInput(tournament?.endDate);
+  }
+  if (form.elements.registrationCloseDate) {
+    form.elements.registrationCloseDate.value = formatDateInput(
+      tournament?.registrationCloseDate
+    );
+  }
+  if (form.elements.poster) {
+    form.elements.poster.value = tournament?.poster || '';
+  }
+  if (form.elements.status) {
+    form.elements.status.value = tournament?.status || 'inscripcion';
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const result = await submitTournamentFormData({
+      form,
+      tournamentId: normalizedId,
+      statusElement: status,
+    });
+    if (result.success) {
+      closeModal();
+    }
+  });
+
+  const cancelButton = form.querySelector('[data-action="cancel"]');
+  cancelButton?.addEventListener('click', () => {
+    setStatusMessage(status, '', '');
+    closeModal();
+  });
+
+  openModal({
+    title: tournament ? 'Editar torneo' : 'Nuevo torneo',
+    content: (body) => {
+      body.appendChild(form);
+      body.appendChild(status);
+    },
+    onClose: () => setStatusMessage(status, '', ''),
+  });
+}
+
+function buildTournamentCategoryPayload(form) {
+  const formData = new FormData(form);
+  const payload = {
+    name: (formData.get('name') || '').trim(),
+    gender: formData.get('gender') || 'masculino',
+  };
+
+  const description = (formData.get('description') || '').trim();
+  if (description) {
+    payload.description = description;
+  }
+
+  const menuTitle = (formData.get('menuTitle') || '').trim();
+  if (menuTitle) {
+    payload.menuTitle = menuTitle;
+  }
+
+  const skillLevel = formData.get('skillLevel');
+  if (skillLevel) {
+    payload.skillLevel = skillLevel;
+  }
+
+  const color = formData.get('color');
+  if (color) {
+    payload.color = color;
+  }
+
+  const drawSizeValue = (formData.get('drawSize') || '').trim();
+  if (drawSizeValue) {
+    const parsed = Number.parseInt(drawSizeValue, 10);
+    if (!Number.isNaN(parsed) && parsed >= 0) {
+      payload.drawSize = parsed;
+    }
+  }
+
+  return payload;
+}
+
+async function submitTournamentCategoryForm({ form, tournamentId, statusElement }) {
+  if (!form || !tournamentId) return { success: false };
+
+  const payload = buildTournamentCategoryPayload(form);
+  if (!payload.name) {
+    setStatusMessage(statusElement, 'error', 'El nombre de la categoría es obligatorio.');
+    return { success: false };
+  }
+
+  if (!payload.gender) {
+    setStatusMessage(statusElement, 'error', 'Selecciona el género de la categoría.');
+    return { success: false };
+  }
+
+  setStatusMessage(statusElement, 'info', 'Creando categoría de torneo...');
+
+  try {
+    await request(`/tournaments/${tournamentId}/categories`, { method: 'POST', body: payload });
+    await reloadTournaments({ selectTournamentId: tournamentId });
+    state.tournamentDetails.delete(tournamentId);
+    await refreshTournamentDetail(tournamentId);
+    setStatusMessage(statusElement, 'success', 'Categoría creada correctamente.');
+    return { success: true };
+  } catch (error) {
+    setStatusMessage(statusElement, 'error', error.message);
+    return { success: false };
+  }
+}
+
+async function openTournamentCategoryModal(defaultTournamentId = '') {
+  if (!isAdmin()) return;
+  const tournaments = Array.isArray(state.tournaments) ? [...state.tournaments] : [];
+  if (!tournaments.length) {
+    showGlobalMessage('Registra un torneo antes de crear categorías.', 'error');
+    return;
+  }
+
+  const normalizedDefault = defaultTournamentId
+    ? normalizeId(defaultTournamentId)
+    : normalizeId(state.selectedTournamentCategoriesId || state.selectedTournamentId);
+
+  const form = document.createElement('form');
+  form.className = 'form';
+  form.innerHTML = `
+    <label>
+      Torneo
+      <select name="tournamentId" required></select>
+    </label>
+    <label>
+      Nombre
+      <input type="text" name="name" required />
+    </label>
+    <label>
+      Título corto (opcional)
+      <input type="text" name="menuTitle" placeholder="Texto para menús o tarjetas" />
+    </label>
+    <label>
+      Descripción
+      <textarea name="description" rows="3" placeholder="Detalles opcionales"></textarea>
+    </label>
+    <div class="form-grid">
+      <label>
+        Género
+        <select name="gender" required>
+          <option value="masculino">Masculino</option>
+          <option value="femenino">Femenino</option>
+        </select>
+      </label>
+      <label>
+        Nivel
+        <select name="skillLevel">
+          <option value="">Sin nivel específico</option>
+          ${CATEGORY_SKILL_LEVEL_OPTIONS.map(
+            (option) => `<option value="${option.value}">${option.label}</option>`
+          ).join('')}
+        </select>
+      </label>
+    </div>
+    <label>
+      Color identificativo
+      <input type="color" name="color" value="${DEFAULT_CATEGORY_COLOR}" />
+    </label>
+    <label>
+      Tamaño de cuadro (opcional)
+      <input type="number" name="drawSize" min="0" placeholder="Ej. 16" />
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary">Crear categoría</button>
+      <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+    </div>
+  `;
+
+  const status = document.createElement('p');
+  status.className = 'status-message';
+  status.style.display = 'none';
+
+  const tournamentSelect = form.elements.tournamentId;
+  tournaments
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+    .forEach((tournament) => {
+      const option = document.createElement('option');
+      option.value = normalizeId(tournament);
+      option.textContent = tournament.name || 'Torneo';
+      tournamentSelect.appendChild(option);
+    });
+
+  if (
+    normalizedDefault &&
+    Array.from(tournamentSelect.options).some((option) => option.value === normalizedDefault)
+  ) {
+    tournamentSelect.value = normalizedDefault;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const tournamentId = tournamentSelect.value;
+    if (!tournamentId) {
+      setStatusMessage(status, 'error', 'Selecciona un torneo.');
+      return;
+    }
+
+    const result = await submitTournamentCategoryForm({
+      form,
+      tournamentId,
+      statusElement: status,
+    });
+    if (result.success) {
+      closeModal();
+    }
+  });
+
+  const cancelButton = form.querySelector('[data-action="cancel"]');
+  cancelButton?.addEventListener('click', () => {
+    setStatusMessage(status, '', '');
+    closeModal();
+  });
+
+  openModal({
+    title: 'Nueva categoría de torneo',
+    content: (body) => {
+      body.appendChild(form);
+      body.appendChild(status);
+    },
+    onClose: () => setStatusMessage(status, '', ''),
+  });
+}
+
+async function openTournamentEnrollmentModal() {
+  if (!isAdmin()) return;
+  const tournaments = Array.isArray(state.tournaments) ? [...state.tournaments] : [];
+  if (!tournaments.length) {
+    showGlobalMessage('Registra un torneo antes de inscribir jugadores.', 'error');
+    return;
+  }
+
+  const form = document.createElement('form');
+  form.className = 'form';
+  form.innerHTML = `
+    <label>
+      Torneo
+      <select name="tournamentId" required></select>
+    </label>
+    <label>
+      Categoría
+      <select name="categoryId" required disabled>
+        <option value="">Selecciona un torneo</option>
+      </select>
+    </label>
+    <label>
+      Jugador
+      <select name="playerId" required disabled>
+        <option value="">Selecciona una categoría</option>
+      </select>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary" disabled>Inscribir jugador</button>
+      <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+    </div>
+  `;
+
+  const status = document.createElement('p');
+  status.className = 'status-message';
+  status.style.display = 'none';
+
+  const tournamentSelect = form.elements.tournamentId;
+  const categorySelect = form.elements.categoryId;
+  const playerSelect = form.elements.playerId;
+  const submitButton = form.querySelector('button[type="submit"]');
+
+  tournaments
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+    .forEach((tournament) => {
+      const option = document.createElement('option');
+      option.value = normalizeId(tournament);
+      option.textContent = tournament.name || 'Torneo';
+      tournamentSelect.appendChild(option);
+    });
+
+  const preferredTournamentId = normalizeId(
+    state.selectedEnrollmentTournamentId || state.selectedTournamentId
+  );
+  if (
+    preferredTournamentId &&
+    Array.from(tournamentSelect.options).some((option) => option.value === preferredTournamentId)
+  ) {
+    tournamentSelect.value = preferredTournamentId;
+  }
+
+  async function populateCategories(tournamentId) {
+    categorySelect.innerHTML = '<option value="">Selecciona una categoría</option>';
+    categorySelect.disabled = true;
+
+    if (!tournamentId) {
+      playerSelect.innerHTML = '<option value="">Selecciona una categoría</option>';
+      playerSelect.disabled = true;
+      submitButton.disabled = true;
+      return;
+    }
+
+    if (!state.tournamentDetails.has(tournamentId)) {
+      await refreshTournamentDetail(tournamentId);
+    }
+
+    const categories = getTournamentCategories(tournamentId);
+    categories
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+      .forEach((category) => {
+        const id = normalizeId(category);
+        if (!id) return;
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = category.menuTitle || category.name || 'Categoría';
+        categorySelect.appendChild(option);
+      });
+
+    categorySelect.disabled = !categories.length;
+
+    if (categories.length) {
+      const preferredCategory = normalizeId(state.selectedEnrollmentCategoryId);
+      if (
+        preferredCategory &&
+        categories.some((category) => normalizeId(category) === preferredCategory)
+      ) {
+        categorySelect.value = preferredCategory;
+      }
+    }
+
+    await updatePlayerOptions();
+  }
+
+  async function updatePlayerOptions() {
+    const tournamentId = tournamentSelect.value;
+    const categoryId = categorySelect.value;
+    playerSelect.innerHTML = '<option value="">Selecciona un jugador</option>';
+    playerSelect.disabled = true;
+    submitButton.disabled = true;
+
+    if (!tournamentId || !categoryId) {
+      return;
+    }
+
+    try {
+      await ensurePlayersLoaded();
+    } catch (error) {
+      return;
+    }
+
+    let enrollments = [];
+    try {
+      enrollments = await fetchTournamentEnrollments(tournamentId, categoryId);
+    } catch (error) {
+      setStatusMessage(status, 'error', error.message);
+      return;
+    }
+
+    const enrolledIds = new Set(
+      enrollments.map((enrollment) => normalizeId(enrollment.user)).filter(Boolean)
+    );
+
+    const availablePlayers = state.players
+      .filter((player) => entityHasRole(player, 'player'))
+      .filter((player) => !enrolledIds.has(normalizeId(player)))
+      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+
+    if (!availablePlayers.length) {
+      playerSelect.innerHTML = '<option value="">Sin jugadores disponibles</option>';
+      playerSelect.disabled = true;
+      submitButton.disabled = true;
+      return;
+    }
+
+    availablePlayers.forEach((player) => {
+      const option = document.createElement('option');
+      option.value = normalizeId(player);
+      option.textContent = player.fullName || player.email || 'Jugador';
+      playerSelect.appendChild(option);
+    });
+
+    playerSelect.disabled = false;
+    submitButton.disabled = !playerSelect.value;
+    setStatusMessage(status, '', '');
+  }
+
+  tournamentSelect.addEventListener('change', async (event) => {
+    setStatusMessage(status, '', '');
+    await populateCategories(event.target.value);
+    updateTournamentActionAvailability();
+  });
+
+  categorySelect.addEventListener('change', async () => {
+    setStatusMessage(status, '', '');
+    await updatePlayerOptions();
+    updateTournamentActionAvailability();
+  });
+
+  playerSelect.addEventListener('change', () => {
+    submitButton.disabled = !playerSelect.value;
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const tournamentId = tournamentSelect.value;
+    const categoryId = categorySelect.value;
+    const playerId = playerSelect.value;
+    if (!tournamentId || !categoryId || !playerId) {
+      setStatusMessage(status, 'error', 'Selecciona torneo, categoría y jugador.');
+      return;
+    }
+
+    setStatusMessage(status, 'info', 'Inscribiendo jugador...');
+    submitButton.disabled = true;
+
+    try {
+      await request(`/tournaments/${tournamentId}/categories/${categoryId}/enrollments`, {
+        method: 'POST',
+        body: { userId: playerId },
+      });
+      state.tournamentEnrollments.delete(`${tournamentId}:${categoryId}`);
+      await fetchTournamentEnrollments(tournamentId, categoryId, { forceReload: true });
+      if (state.selectedEnrollmentTournamentId === tournamentId) {
+        state.selectedEnrollmentCategoryId = categoryId;
+        await refreshTournamentEnrollments({ forceReload: true });
+      }
+      state.tournamentDetails.delete(tournamentId);
+      await refreshTournamentDetail(tournamentId);
+      updateTournamentActionAvailability();
+      setStatusMessage(status, 'success', 'Jugador inscrito correctamente.');
+      closeModal();
+    } catch (error) {
+      submitButton.disabled = false;
+      setStatusMessage(status, 'error', error.message);
+    }
+  });
+
+  const cancelButton = form.querySelector('[data-action="cancel"]');
+  cancelButton?.addEventListener('click', () => {
+    setStatusMessage(status, '', '');
+    closeModal();
+  });
+
+  openModal({
+    title: 'Inscribir jugador en torneo',
+    content: (body) => {
+      body.appendChild(form);
+      body.appendChild(status);
+    },
+    onClose: () => setStatusMessage(status, '', ''),
+  });
+
+  populateCategories(tournamentSelect.value);
+}
+
+async function openTournamentDrawModal() {
+  if (!isAdmin()) return;
+  const tournaments = Array.isArray(state.tournaments) ? [...state.tournaments] : [];
+  if (!tournaments.length) {
+    showGlobalMessage('Registra un torneo antes de generar cuadros.', 'error');
+    return;
+  }
+
+  const defaultTournamentId = normalizeId(
+    state.selectedMatchTournamentId || state.selectedTournamentId
+  );
+  const defaultCategoryId = normalizeId(state.selectedMatchCategoryId);
+
+  const form = document.createElement('form');
+  form.className = 'form';
+  form.innerHTML = `
+    <label>
+      Torneo
+      <select name="tournamentId" required></select>
+    </label>
+    <label>
+      Categoría
+      <select name="categoryId" required disabled>
+        <option value="">Selecciona un torneo</option>
+      </select>
+    </label>
+    <fieldset class="form-section" data-match-section>
+      <div class="form-section__header">
+        <h3>Partidos del cuadro</h3>
+        <button type="button" class="secondary" data-action="add-match">Añadir partido</button>
+      </div>
+      <p class="form-hint" data-match-hint>
+        Añade los emparejamientos para iniciar el cuadro del torneo.
+      </p>
+      <div data-match-list></div>
+    </fieldset>
+    <label class="checkbox-option">
+      <input type="checkbox" name="replaceExisting" value="true" />
+      Reemplazar los partidos existentes de esta categoría
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary" disabled>Generar cuadro</button>
+      <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+    </div>
+  `;
+
+  const status = document.createElement('p');
+  status.className = 'status-message';
+  status.style.display = 'none';
+
+  const tournamentSelect = form.elements.tournamentId;
+  const categorySelect = form.elements.categoryId;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const addMatchButton = form.querySelector('[data-action="add-match"]');
+  const matchList = form.querySelector('[data-match-list]');
+  const matchHint = form.querySelector('[data-match-hint]');
+
+  tournaments
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+    .forEach((tournament) => {
+      const option = document.createElement('option');
+      option.value = normalizeId(tournament);
+      option.textContent = tournament.name || 'Torneo';
+      tournamentSelect.appendChild(option);
+    });
+
+  if (
+    defaultTournamentId &&
+    Array.from(tournamentSelect.options).some((option) => option.value === defaultTournamentId)
+  ) {
+    tournamentSelect.value = defaultTournamentId;
+  }
+
+  let currentEnrollments = [];
+
+  function updateMatchControlsAvailability() {
+    const hasPlayers = Array.isArray(currentEnrollments) && currentEnrollments.length >= 2;
+    const hasCategory = Boolean(categorySelect.value);
+    if (matchHint) {
+      if (!hasCategory) {
+        matchHint.textContent = 'Selecciona un torneo y categoría para comenzar.';
+        matchHint.hidden = false;
+      } else if (!hasPlayers) {
+        matchHint.textContent =
+          'Necesitas al menos dos jugadores inscritos en la categoría para generar el cuadro.';
+        matchHint.hidden = false;
+      } else {
+        matchHint.textContent = 'Define cada partido del cuadro en el orden deseado.';
+        matchHint.hidden = true;
+      }
+    }
+    if (addMatchButton) {
+      addMatchButton.disabled = !hasPlayers;
+    }
+    submitButton.disabled = !hasPlayers || !matchList?.children.length;
+  }
+
+  function getAvailablePlayers() {
+    return currentEnrollments
+      .map((enrollment) => enrollment.user)
+      .filter(Boolean)
+      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+  }
+
+  function populatePlayerSelect(select, selectedValue = '') {
+    if (!select) return;
+    const players = getAvailablePlayers();
+    select.innerHTML = '<option value="">Selecciona un jugador</option>';
+    players.forEach((player) => {
+      const option = document.createElement('option');
+      option.value = normalizeId(player);
+      option.textContent = player.fullName || player.email || 'Jugador';
+      select.appendChild(option);
+    });
+    if (selectedValue && players.some((player) => normalizeId(player) === selectedValue)) {
+      select.value = selectedValue;
+    }
+  }
+
+  function addMatchEntry(data = {}) {
+    if (!matchList) return;
+    const entry = document.createElement('div');
+    entry.className = 'form-section';
+    entry.dataset.matchEntry = 'true';
+    entry.innerHTML = `
+      <div class="form-grid">
+        <label>
+          Ronda
+          <input type="text" data-match-field="round" placeholder="Ej. Cuartos de final" />
+        </label>
+        <label>
+          Nº de partido
+          <input type="number" min="1" step="1" data-match-field="matchNumber" />
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Jugador A
+          <select data-match-field="playerA" required></select>
+        </label>
+        <label>
+          Jugador B
+          <select data-match-field="playerB" required></select>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Fecha y hora (opcional)
+          <input type="datetime-local" data-match-field="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
+        </label>
+        <label>
+          Pista (opcional)
+          <input type="text" data-match-field="court" placeholder="Nombre de la pista" />
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="ghost" data-action="remove-match">Quitar partido</button>
+      </div>
+    `;
+
+    const removeButton = entry.querySelector('[data-action="remove-match"]');
+    removeButton?.addEventListener('click', () => {
+      entry.remove();
+      updateMatchControlsAvailability();
+    });
+
+    matchList.appendChild(entry);
+
+    const roundField = entry.querySelector('[data-match-field="round"]');
+    const matchNumberField = entry.querySelector('[data-match-field="matchNumber"]');
+    const playerASelect = entry.querySelector('[data-match-field="playerA"]');
+    const playerBSelect = entry.querySelector('[data-match-field="playerB"]');
+    const scheduledField = entry.querySelector('[data-match-field="scheduledAt"]');
+    const courtField = entry.querySelector('[data-match-field="court"]');
+
+    populatePlayerSelect(playerASelect, normalizeId(data.playerA));
+    populatePlayerSelect(playerBSelect, normalizeId(data.playerB));
+
+    if (roundField && data.round) {
+      roundField.value = data.round;
+    }
+    if (matchNumberField && typeof data.matchNumber !== 'undefined') {
+      matchNumberField.value = data.matchNumber;
+    }
+    if (scheduledField && data.scheduledAt) {
+      scheduledField.value = formatDateTimeLocal(data.scheduledAt);
+    }
+    if (courtField && data.court) {
+      courtField.value = data.court;
+    }
+
+    playerASelect?.addEventListener('change', () => {
+      updateMatchControlsAvailability();
+    });
+    playerBSelect?.addEventListener('change', () => {
+      updateMatchControlsAvailability();
+    });
+
+    updateMatchControlsAvailability();
+  }
+
+  async function populateMatchesForCategory(tournamentId, categoryId) {
+    if (!categoryId) {
+      matchList.innerHTML = '';
+      currentEnrollments = [];
+      updateMatchControlsAvailability();
+      return;
+    }
+
+    try {
+      currentEnrollments = await fetchTournamentEnrollments(tournamentId, categoryId, {
+        forceReload: true,
+      });
+    } catch (error) {
+      setStatusMessage(status, 'error', error.message);
+      currentEnrollments = [];
+    }
+
+    matchList.innerHTML = '';
+    updateMatchControlsAvailability();
+  }
+
+  async function populateCategories(tournamentId) {
+    categorySelect.innerHTML = '<option value="">Selecciona una categoría</option>';
+    categorySelect.disabled = true;
+    currentEnrollments = [];
+
+    if (!tournamentId) {
+      matchList.innerHTML = '';
+      updateMatchControlsAvailability();
+      return;
+    }
+
+    if (!state.tournamentDetails.has(tournamentId)) {
+      await refreshTournamentDetail(tournamentId);
+    }
+
+    const categories = getTournamentCategories(tournamentId);
+    categories
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+      .forEach((category) => {
+        const id = normalizeId(category);
+        if (!id) return;
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = category.menuTitle || category.name || 'Categoría';
+        categorySelect.appendChild(option);
+      });
+
+    categorySelect.disabled = !categories.length;
+
+    if (categories.length && defaultCategoryId) {
+      if (categories.some((category) => normalizeId(category) === defaultCategoryId)) {
+        categorySelect.value = defaultCategoryId;
+      }
+    }
+
+    await populateMatchesForCategory(tournamentId, categorySelect.value);
+  }
+
+  addMatchButton?.addEventListener('click', () => {
+    addMatchEntry();
+  });
+
+  tournamentSelect.addEventListener('change', async (event) => {
+    await populateCategories(event.target.value);
+    updateTournamentActionAvailability();
+  });
+
+  categorySelect.addEventListener('change', async (event) => {
+    await populateMatchesForCategory(tournamentSelect.value, event.target.value);
+    updateTournamentActionAvailability();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const tournamentId = tournamentSelect.value;
+    const categoryId = categorySelect.value;
+    if (!tournamentId || !categoryId) {
+      setStatusMessage(status, 'error', 'Selecciona torneo y categoría.');
+      return;
+    }
+
+    const entries = matchList ? Array.from(matchList.querySelectorAll('[data-match-entry]')) : [];
+    if (!entries.length) {
+      setStatusMessage(status, 'error', 'Añade al menos un partido al cuadro.');
+      return;
+    }
+
+    const matches = [];
+    for (const entry of entries) {
+      const round = entry.querySelector('[data-match-field="round"]')?.value.trim();
+      const matchNumberValue = entry.querySelector('[data-match-field="matchNumber"]')?.value;
+      const playerA = entry.querySelector('[data-match-field="playerA"]')?.value;
+      const playerB = entry.querySelector('[data-match-field="playerB"]')?.value;
+      const scheduledAt = entry.querySelector('[data-match-field="scheduledAt"]')?.value;
+      const court = entry.querySelector('[data-match-field="court"]')?.value.trim();
+
+      if (!playerA || !playerB) {
+        setStatusMessage(status, 'error', 'Selecciona ambos jugadores en cada partido.');
+        return;
+      }
+
+      if (playerA === playerB) {
+        setStatusMessage(status, 'error', 'Un partido no puede tener el mismo jugador en ambos lados.');
+        return;
+      }
+
+      const parsedMatchNumber = Number.parseInt(matchNumberValue, 10);
+      matches.push({
+        round: round || undefined,
+        matchNumber: Number.isNaN(parsedMatchNumber) ? undefined : parsedMatchNumber,
+        players: [playerA, playerB],
+        scheduledAt: scheduledAt || undefined,
+        court: court || undefined,
+      });
+    }
+
+    const replaceExisting = form.elements.replaceExisting?.checked || false;
+
+    setStatusMessage(status, 'info', 'Generando cuadro...');
+    submitButton.disabled = true;
+
+    try {
+      await request(`/tournaments/${tournamentId}/categories/${categoryId}/matches/generate`, {
+        method: 'POST',
+        body: { matches, replaceExisting },
+      });
+      state.tournamentMatches.delete(`${tournamentId}:${categoryId}`);
+      state.tournamentDetails.delete(tournamentId);
+      state.selectedMatchTournamentId = tournamentId;
+      state.selectedMatchCategoryId = categoryId;
+      await refreshTournamentDetail(tournamentId);
+      await refreshTournamentMatches({ forceReload: true });
+      updateTournamentActionAvailability();
+      setStatusMessage(status, 'success', 'Cuadro generado correctamente.');
+      closeModal();
+    } catch (error) {
+      submitButton.disabled = false;
+      setStatusMessage(status, 'error', error.message);
+    }
+  });
+
+  const cancelButton = form.querySelector('[data-action="cancel"]');
+  cancelButton?.addEventListener('click', () => {
+    setStatusMessage(status, '', '');
+    closeModal();
+  });
+
+  openModal({
+    title: 'Generar cuadro de torneo',
+    content: (body) => {
+      body.appendChild(form);
+      body.appendChild(status);
+    },
+    onClose: () => setStatusMessage(status, '', ''),
+  });
+
+  await populateCategories(tournamentSelect.value);
+  updateMatchControlsAvailability();
+}
+
 function buildPlayerPayload(formData, isEditing = false) {
   const payload = {
     fullName: (formData.get('fullName') || '').trim(),
@@ -11377,6 +12516,7 @@ tournamentEnrollmentTournamentSelect?.addEventListener('change', async (event) =
   if (value && !state.tournamentDetails.has(value)) {
     await refreshTournamentDetail(value);
   }
+  updateTournamentActionAvailability();
 });
 
 tournamentEnrollmentCategorySelect?.addEventListener('change', async (event) => {
@@ -11387,6 +12527,7 @@ tournamentEnrollmentCategorySelect?.addEventListener('change', async (event) => 
   } else {
     renderTournamentEnrollments([], { loading: false });
   }
+  updateTournamentActionAvailability();
 });
 
 tournamentMatchTournamentSelect?.addEventListener('change', async (event) => {
@@ -11397,6 +12538,7 @@ tournamentMatchTournamentSelect?.addEventListener('change', async (event) => {
   if (value && !state.tournamentDetails.has(value)) {
     await refreshTournamentDetail(value);
   }
+  updateTournamentActionAvailability();
 });
 
 tournamentMatchCategorySelect?.addEventListener('change', async (event) => {
@@ -11407,6 +12549,7 @@ tournamentMatchCategorySelect?.addEventListener('change', async (event) => {
   } else {
     renderTournamentMatches([], { loading: false });
   }
+  updateTournamentActionAvailability();
 });
 
 notificationsList?.addEventListener('click', async (event) => {
@@ -11788,6 +12931,36 @@ categoryCreateButton?.addEventListener('click', () => {
 leagueCreateButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
   openLeagueModal();
+});
+
+tournamentCreateButton?.addEventListener('click', () => {
+  if (!isAdmin()) return;
+  openTournamentModal();
+});
+
+tournamentEditButton?.addEventListener('click', () => {
+  if (!isAdmin()) return;
+  const tournamentId = state.selectedTournamentId;
+  if (!tournamentId) {
+    return;
+  }
+  openTournamentModal(tournamentId);
+});
+
+tournamentCategoryCreateButton?.addEventListener('click', () => {
+  if (!isAdmin()) return;
+  const preferred = state.selectedTournamentCategoriesId || state.selectedTournamentId || '';
+  openTournamentCategoryModal(preferred);
+});
+
+tournamentEnrollmentAddButton?.addEventListener('click', () => {
+  if (!isAdmin()) return;
+  openTournamentEnrollmentModal();
+});
+
+tournamentDrawGenerateButton?.addEventListener('click', () => {
+  if (!isAdmin()) return;
+  openTournamentDrawModal();
 });
 
 playerCreateButton?.addEventListener('click', () => {
