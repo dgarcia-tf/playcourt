@@ -149,30 +149,58 @@ function validateSetsForMatchFormat({ matchFormat, sets = [], winnerId, playerId
     ensureSequentialSetNumbers();
 
     const setWins = new Map(players.map((playerId) => [playerId, 0]));
+    let mainSetWasTie = false;
+    let tieBreakPlayed = false;
 
     sortedSets.forEach((set, index) => {
       const scores = getScoresForSet(set);
       const [firstScore, secondScore] = scores;
-
-      if (firstScore.value === secondScore.value) {
-        throw new Error('Cada set debe tener un ganador.');
-      }
-
-      const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
-      const loserEntry = firstScore.value > secondScore.value ? secondScore : firstScore;
 
       if (index === 0) {
         if (set.tieBreak) {
           throw new Error('El set principal no puede marcarse como super tie-break.');
         }
 
+        if (firstScore.value === secondScore.value) {
+          mainSetWasTie = true;
+          const minimumGamesToForceTieBreak = 5;
+          if (
+            firstScore.value < minimumGamesToForceTieBreak ||
+            secondScore.value < minimumGamesToForceTieBreak
+          ) {
+            throw new Error(
+              'El set principal debe alcanzar al menos 5 juegos por jugador para forzar el super tie-break.'
+            );
+          }
+
+          if (sortedSets.length === 1) {
+            throw new Error('Si el set principal termina empatado se debe registrar el super tie-break.');
+          }
+
+          return;
+        }
+
+        const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
+
         if (winnerEntry.value < 10) {
           throw new Error('El set principal debe alcanzar al menos 10 juegos.');
         }
+
+        const currentWins = setWins.get(winnerEntry.playerId) || 0;
+        setWins.set(winnerEntry.playerId, currentWins + 1);
       } else {
         if (!set.tieBreak) {
           throw new Error('El super tie-break debe registrarse como tal.');
         }
+
+        tieBreakPlayed = true;
+
+        if (firstScore.value === secondScore.value) {
+          throw new Error('El super tie-break debe tener un ganador con más puntos.');
+        }
+
+        const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
+        const loserEntry = firstScore.value > secondScore.value ? secondScore : firstScore;
 
         if (winnerEntry.value <= loserEntry.value) {
           throw new Error('El super tie-break debe tener un ganador con más puntos.');
@@ -181,26 +209,30 @@ function validateSetsForMatchFormat({ matchFormat, sets = [], winnerId, playerId
         if (winnerEntry.value < 10) {
           throw new Error('El super tie-break debe alcanzar al menos 10 puntos.');
         }
-      }
 
-      const currentWins = setWins.get(winnerEntry.playerId) || 0;
-      setWins.set(winnerEntry.playerId, currentWins + 1);
+        const currentWins = setWins.get(winnerEntry.playerId) || 0;
+        setWins.set(winnerEntry.playerId, currentWins + 1);
+      }
     });
+
+    if (tieBreakPlayed && !mainSetWasTie) {
+      throw new Error('El super tie-break solo debe registrarse cuando el set principal termina empatado.');
+    }
 
     const wins = players.map((playerId) => setWins.get(playerId) || 0);
     const maxWins = Math.max(...wins);
     const minWins = Math.min(...wins);
 
-    if (maxWins === minWins) {
-      throw new Error('Los sets reportados no determinan un ganador.');
-    }
-
-    if (sortedSets.length === 1) {
-      if (maxWins !== 1) {
-        throw new Error('El partido debe registrar un ganador en el set principal.');
+    if (tieBreakPlayed) {
+      if (maxWins === minWins) {
+        throw new Error('Los sets reportados no determinan un ganador.');
       }
-    } else if (!(maxWins === 2 && minWins === 1)) {
-      throw new Error('El super tie-break debe definir al ganador del partido.');
+
+      if (!(maxWins === 1 && minWins === 0)) {
+        throw new Error('El super tie-break debe definir al ganador del partido.');
+      }
+    } else if (!(maxWins === 1 && minWins === 0)) {
+      throw new Error('El partido debe registrar un ganador en el set principal.');
     }
 
     const computedWinner = players.find((playerId) => (setWins.get(playerId) || 0) === maxWins);

@@ -25,6 +25,32 @@ function normalizeId(value) {
   return null;
 }
 
+function resolveMatchTimestamp(match) {
+  if (!match || typeof match !== 'object') {
+    return null;
+  }
+
+  const candidates = [
+    match.result?.confirmedAt,
+    match.result?.reportedAt,
+    match.result?.updatedAt,
+    match.updatedAt,
+    match.completedAt,
+    match.scheduledAt,
+    match.createdAt,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const date = candidate instanceof Date ? candidate : new Date(candidate);
+    if (date instanceof Date && !Number.isNaN(date.getTime())) {
+      return date.getTime();
+    }
+  }
+
+  return null;
+}
+
 function aggregateScoresFromSets(sets = []) {
   if (!Array.isArray(sets) || !sets.length) {
     return null;
@@ -99,11 +125,17 @@ function calculateRanking(enrollments = [], matches = []) {
       gamesWon: 0,
       gamesLost: 0,
       points: 0,
+      lastMatchPoints: null,
+      previousMatchPoints: null,
+      lastMatchResult: null,
+      previousMatchResult: null,
+      _recentMatches: [],
     });
   });
 
-  matches
-    .filter((match) => {
+  const relevantMatches = matches
+    .map((match, index) => ({ match, index }))
+    .filter(({ match }) => {
       if (!match) return false;
       const winnerId = normalizeId(match.result?.winner);
       if (!winnerId) {
@@ -115,7 +147,23 @@ function calculateRanking(enrollments = [], matches = []) {
       }
       return false;
     })
-    .forEach((match) => {
+    .sort((a, b) => {
+      const timeA = resolveMatchTimestamp(a.match);
+      const timeB = resolveMatchTimestamp(b.match);
+      if (Number.isFinite(timeA) && Number.isFinite(timeB)) {
+        if (timeA !== timeB) {
+          return timeA - timeB;
+        }
+      } else if (Number.isFinite(timeA)) {
+        return -1;
+      } else if (Number.isFinite(timeB)) {
+        return 1;
+      }
+      return a.index - b.index;
+    })
+    .map(({ match }) => match);
+
+  relevantMatches.forEach((match) => {
       const players = Array.isArray(match.players) ? match.players : [];
       const winnerId = normalizeId(match.result?.winner);
       const sets = match.result?.sets;
@@ -140,6 +188,11 @@ function calculateRanking(enrollments = [], matches = []) {
             gamesWon: 0,
             gamesLost: 0,
             points: 0,
+            lastMatchPoints: null,
+            previousMatchPoints: null,
+            lastMatchResult: null,
+            previousMatchResult: null,
+            _recentMatches: [],
           });
         }
 
@@ -161,8 +214,38 @@ function calculateRanking(enrollments = [], matches = []) {
           entry.losses += 1;
           entry.points += gamesWon;
         }
+
+        const matchPoints = winnerId && winnerId === playerId ? 10 + gamesWon : gamesWon;
+        const outcome = winnerId && winnerId === playerId ? 'win' : 'loss';
+        if (!Array.isArray(entry._recentMatches)) {
+          entry._recentMatches = [];
+        }
+        entry._recentMatches.push({
+          points: Number.isFinite(matchPoints) ? matchPoints : 0,
+          result: outcome,
+        });
+        if (entry._recentMatches.length > 2) {
+          entry._recentMatches = entry._recentMatches.slice(-2);
+        }
       });
     });
+
+  stats.forEach((entry) => {
+    const history = Array.isArray(entry._recentMatches) ? entry._recentMatches : [];
+    if (history.length) {
+      const last = history[history.length - 1];
+      entry.lastMatchPoints = Number.isFinite(last?.points) ? last.points : null;
+      entry.lastMatchResult =
+        last?.result === 'win' || last?.result === 'loss' ? last.result : null;
+    }
+    if (history.length > 1) {
+      const previous = history[history.length - 2];
+      entry.previousMatchPoints = Number.isFinite(previous?.points) ? previous.points : null;
+      entry.previousMatchResult =
+        previous?.result === 'win' || previous?.result === 'loss' ? previous.result : null;
+    }
+    delete entry._recentMatches;
+  });
 
   return Array.from(stats.values()).sort((a, b) => {
     if (b.points !== a.points) {
@@ -194,6 +277,18 @@ function buildSnapshot(ranking = []) {
     points: entry.points,
     wins: entry.wins,
     gamesWon: entry.gamesWon,
+    lastMatchPoints: Number.isFinite(entry.lastMatchPoints) ? entry.lastMatchPoints : null,
+    previousMatchPoints: Number.isFinite(entry.previousMatchPoints)
+      ? entry.previousMatchPoints
+      : null,
+    lastMatchResult:
+      entry.lastMatchResult === 'win' || entry.lastMatchResult === 'loss'
+        ? entry.lastMatchResult
+        : null,
+    previousMatchResult:
+      entry.previousMatchResult === 'win' || entry.previousMatchResult === 'loss'
+        ? entry.previousMatchResult
+        : null,
   }));
 }
 
@@ -237,6 +332,18 @@ function attachMovementToRanking(ranking = [], currentSnapshot = [], previousSna
       previousPosition: typeof previousPosition === 'number' ? previousPosition : null,
       movement,
       movementDelta,
+      lastMatchPoints: Number.isFinite(entry.lastMatchPoints) ? entry.lastMatchPoints : null,
+      previousMatchPoints: Number.isFinite(entry.previousMatchPoints)
+        ? entry.previousMatchPoints
+        : null,
+      lastMatchResult:
+        entry.lastMatchResult === 'win' || entry.lastMatchResult === 'loss'
+          ? entry.lastMatchResult
+          : null,
+      previousMatchResult:
+        entry.previousMatchResult === 'win' || entry.previousMatchResult === 'loss'
+          ? entry.previousMatchResult
+          : null,
     };
   });
 
@@ -249,6 +356,18 @@ function attachMovementToRanking(ranking = [], currentSnapshot = [], previousSna
     previousPosition: entry.previousPosition,
     movement: entry.movement,
     movementDelta: entry.movementDelta,
+    lastMatchPoints: Number.isFinite(entry.lastMatchPoints) ? entry.lastMatchPoints : null,
+    previousMatchPoints: Number.isFinite(entry.previousMatchPoints)
+      ? entry.previousMatchPoints
+      : null,
+    lastMatchResult:
+      entry.lastMatchResult === 'win' || entry.lastMatchResult === 'loss'
+        ? entry.lastMatchResult
+        : null,
+    previousMatchResult:
+      entry.previousMatchResult === 'win' || entry.previousMatchResult === 'loss'
+        ? entry.previousMatchResult
+        : null,
   }));
 
   return { result, snapshot };

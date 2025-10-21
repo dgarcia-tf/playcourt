@@ -693,41 +693,144 @@ function createMovementIcon(type) {
 
 function resolveMovement(entry) {
   if (!entry) return null;
-  if (entry.movement === 'nuevo' || entry.previousPosition === null) {
-    return {
-      type: 'new',
-      text: 'Nuevo',
-      ariaLabel: 'Nuevo ingreso al ranking',
-    };
+
+  const toFiniteNumber = (value) => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const previousPosition = toFiniteNumber(entry.previousPosition);
+  const delta = toFiniteNumber(entry.movementDelta);
+  const lastPoints = toFiniteNumber(entry.lastMatchPoints);
+  const previousPoints = toFiniteNumber(entry.previousMatchPoints);
+  const lastResult =
+    entry.lastMatchResult === 'win' || entry.lastMatchResult === 'loss'
+      ? entry.lastMatchResult
+      : null;
+
+  let type = 'same';
+  let positionDelta = null;
+
+  if (entry.movement === 'nuevo' || previousPosition === null) {
+    type = 'new';
+  } else if (delta !== null) {
+    positionDelta = delta;
+    if (delta > 0) {
+      type = 'up';
+    } else if (delta < 0) {
+      type = 'down';
+    } else {
+      type = 'same';
+    }
   }
 
-  const delta = Number(entry.movementDelta);
-  if (!Number.isFinite(delta)) {
+  const metrics = [];
+  const ariaParts = [];
+
+  if (lastPoints !== null) {
+    const hasPrevious = previousPoints !== null;
+    const comparisonValue = hasPrevious ? lastPoints - previousPoints : lastPoints;
+    const metricType = comparisonValue > 0 ? 'positive' : comparisonValue < 0 ? 'negative' : 'neutral';
+    const resultLabel = lastResult === 'win' ? 'V' : lastResult === 'loss' ? 'D' : '';
+    const baseValue = hasPrevious ? comparisonValue : lastPoints;
+    const signPrefix = hasPrevious && baseValue > 0 ? '+' : '';
+    const formattedNumber = `${signPrefix}${baseValue}`;
+    const valueText = `${resultLabel ? `${resultLabel} ` : ''}${formattedNumber} pts`;
+
+    const matchDescriptor =
+      lastResult === 'win'
+        ? 'Victoria en el último partido'
+        : lastResult === 'loss'
+        ? 'Derrota en el último partido'
+        : 'Último partido';
+    let description;
+    if (hasPrevious) {
+      const previousComparison = ` (${lastPoints} vs ${previousPoints})`;
+      if (comparisonValue > 0) {
+        description = `${matchDescriptor}: ganó ${comparisonValue} puntos más que en el anterior${previousComparison}.`;
+      } else if (comparisonValue < 0) {
+        description = `${matchDescriptor}: consiguió ${Math.abs(comparisonValue)} puntos menos que en el anterior${previousComparison}.`;
+      } else {
+        description = `${matchDescriptor}: obtuvo los mismos puntos que en el anterior${previousComparison}.`;
+      }
+    } else {
+      description = `${matchDescriptor}: sumó ${lastPoints} puntos.`;
+    }
+
+    metrics.push({
+      key: 'performance',
+      label: 'Último partido',
+      value: valueText,
+      type: metricType,
+      description,
+      delta: hasPrevious ? comparisonValue : null,
+      result: lastResult,
+    });
+    ariaParts.push(description);
+  }
+
+  let positionDescription = '';
+  if (type === 'new') {
+    metrics.push({
+      key: 'position',
+      label: 'Posición',
+      value: 'Nuevo',
+      type: 'neutral',
+      description: 'Nuevo ingreso al ranking.',
+      delta: null,
+    });
+    ariaParts.push('Nuevo ingreso al ranking.');
+  } else if (positionDelta !== null) {
+    const absolute = Math.abs(positionDelta);
+    let value;
+    let metricType = 'neutral';
+    if (positionDelta > 0) {
+      value = `↑ ${absolute}`;
+      metricType = 'positive';
+      positionDescription = `Posición: sube ${absolute} ${absolute === 1 ? 'posición' : 'posiciones'}.`;
+    } else if (positionDelta < 0) {
+      value = `↓ ${absolute}`;
+      metricType = 'negative';
+      positionDescription = `Posición: baja ${absolute} ${absolute === 1 ? 'posición' : 'posiciones'}.`;
+    } else {
+      value = '= 0';
+      positionDescription = 'Posición: se mantiene sin cambios.';
+    }
+    metrics.push({
+      key: 'position',
+      label: 'Posición',
+      value,
+      type: metricType,
+      description: positionDescription,
+      delta: positionDelta,
+    });
+    ariaParts.push(positionDescription);
+  } else if (typeof entry.movement === 'string' && entry.movement.trim()) {
+    const normalizedMovement = entry.movement.trim();
+    const capitalized = `${normalizedMovement.charAt(0).toUpperCase()}${normalizedMovement.slice(1)}`;
+    const descriptionText = `Posición: ${normalizedMovement}.`;
+    metrics.push({
+      key: 'position',
+      label: 'Posición',
+      value: capitalized,
+      type: 'neutral',
+      description: descriptionText,
+      delta: null,
+    });
+    ariaParts.push(descriptionText);
+  }
+
+  if (!metrics.length) {
     return null;
   }
 
-  if (delta > 0) {
-    const absolute = Math.abs(delta);
-    return {
-      type: 'up',
-      text: `+${absolute}`,
-      ariaLabel: `Sube ${absolute} ${absolute === 1 ? 'posición' : 'posiciones'}`,
-    };
-  }
-
-  if (delta < 0) {
-    const absolute = Math.abs(delta);
-    return {
-      type: 'down',
-      text: `-${absolute}`,
-      ariaLabel: `Baja ${absolute} ${absolute === 1 ? 'posición' : 'posiciones'}`,
-    };
-  }
-
   return {
-    type: 'same',
-    text: 'Igual',
-    ariaLabel: 'Se mantiene en la misma posición',
+    type,
+    metrics,
+    ariaLabel: ariaParts.filter(Boolean).join(' '),
   };
 }
 
@@ -748,12 +851,37 @@ function createMovementBadge(entry) {
     badge.appendChild(icon);
   }
 
-  const label = document.createElement('span');
-  label.className = 'movement-badge__label';
-  label.textContent = movement.text;
-  badge.appendChild(label);
+  const metrics = Array.isArray(movement.metrics) ? movement.metrics : [];
+  if (metrics.length) {
+    const metricsContainer = document.createElement('span');
+    metricsContainer.className = 'movement-badge__metrics';
+    metrics.forEach((metric) => {
+      if (!metric || !metric.label) return;
+      const metricElement = document.createElement('span');
+      metricElement.className = `movement-badge__metric movement-badge__metric--${metric.type || 'neutral'}`;
+      if (metric.description) {
+        metricElement.title = metric.description;
+      }
 
-  badge.setAttribute('aria-label', movement.ariaLabel);
+      const metricLabel = document.createElement('span');
+      metricLabel.className = 'movement-badge__metric-label';
+      metricLabel.textContent = metric.label;
+      metricElement.appendChild(metricLabel);
+
+      const metricValue = document.createElement('span');
+      metricValue.className = 'movement-badge__metric-value';
+      metricValue.textContent = metric.value ?? '—';
+      metricElement.appendChild(metricValue);
+
+      metricsContainer.appendChild(metricElement);
+    });
+
+    if (metricsContainer.childElementCount > 0) {
+      badge.appendChild(metricsContainer);
+    }
+  }
+
+  badge.setAttribute('aria-label', movement.ariaLabel || '');
   return badge;
 }
 
@@ -820,10 +948,28 @@ function buildMovementBadgeMarkup(entry) {
 
   const style = MOVEMENT_STYLES[movement.type] || MOVEMENT_STYLES.same;
   const iconMarkup = getMovementIconMarkup(movement.type);
+  const metrics = Array.isArray(movement.metrics) ? movement.metrics : [];
+  const metricsMarkup = metrics
+    .filter((metric) => metric && metric.label)
+    .map((metric) => {
+      const titleAttr = metric.description
+        ? ` title="${escapeHtml(metric.description)}"`
+        : '';
+      return `
+        <span class="movement-badge__metric movement-badge__metric--${metric.type || 'neutral'}"${titleAttr}>
+          <span class="movement-badge__metric-label">${escapeHtml(metric.label)}</span>
+          <span class="movement-badge__metric-value">${escapeHtml(metric.value ?? '—')}</span>
+        </span>
+      `;
+    })
+    .join('');
+  const ariaAttr = movement.ariaLabel
+    ? ` aria-label="${escapeHtml(movement.ariaLabel)}"`
+    : '';
   return `
-    <span class="movement-badge movement-badge--${movement.type}" style="--movement-badge-bg:${style.background};color:${style.color};">
+    <span class="movement-badge movement-badge--${movement.type}" style="--movement-badge-bg:${style.background};color:${style.color};"${ariaAttr}>
       ${iconMarkup}
-      <span class="movement-badge__label">${movement.text}</span>
+      <span class="movement-badge__metrics">${metricsMarkup}</span>
     </span>
   `.trim();
 }
@@ -889,7 +1035,7 @@ const state = {
   calendarMatches: [],
   calendarDate: new Date(),
   globalCalendarDate: new Date(),
-  globalCalendarViewMode: 'day',
+  globalCalendarViewMode: 'month',
   matchPagination: {
     upcoming: {},
     pending: {},
@@ -15383,7 +15529,7 @@ async function loadAllData() {
       request('/notifications/mine?upcoming=true').catch(() => []),
       request('/club').catch(() => null),
       request('/seasons').catch(() => []),
-      request('/matches?statuses=pendiente,propuesto,programado,revision'),
+      request('/matches?statuses=pendiente,propuesto,programado,revision,completado,finalizado'),
       request('/matches?status=completado').catch(() => []),
       request('/matches?resultStatus=en_revision').catch(() => []),
     ]);
@@ -16023,7 +16169,7 @@ logoutButtons.forEach((button) => {
     state.pendingEnrollmentRequestCount = 0;
     state.calendarDate = new Date();
     state.globalCalendarDate = new Date();
-    state.globalCalendarViewMode = 'day';
+    state.globalCalendarViewMode = 'month';
     state.matchPagination = { upcoming: {}, pending: {}, completed: {} };
     clearSession();
     updateNotificationCounts([]);
