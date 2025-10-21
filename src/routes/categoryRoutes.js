@@ -16,7 +16,7 @@ const { generateCategoryMatches } = require('../controllers/matchController');
 const { getCategoryRanking } = require('../controllers/rankingController');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const { GENDERS } = require('../models/User');
-const { CATEGORY_STATUSES, CATEGORY_SKILL_LEVELS } = require('../models/Category');
+const { CATEGORY_STATUSES, CATEGORY_SKILL_LEVELS, MATCH_FORMATS } = require('../models/Category');
 const { HEX_COLOR_REGEX, normalizeHexColor } = require('../utils/colors');
 
 const router = express.Router();
@@ -39,6 +39,11 @@ router.post(
       .optional()
       .isIn(Object.values(CATEGORY_STATUSES))
       .withMessage('Estado de la categoría inválido'),
+    body('matchFormat')
+      .optional({ nullable: true })
+      .customSanitizer((value) => (value === '' ? null : value))
+      .custom((value) => value === null || Object.values(MATCH_FORMATS).includes(value))
+      .withMessage('Formato de partido inválido'),
     body('minimumAge')
       .customSanitizer((value) => (value === '' ? null : value))
       .optional({ nullable: true })
@@ -90,6 +95,11 @@ router.patch(
       .optional()
       .isIn(Object.values(CATEGORY_STATUSES))
       .withMessage('Estado de la categoría inválido'),
+    body('matchFormat')
+      .optional({ nullable: true })
+      .customSanitizer((value) => (value === '' ? null : value))
+      .custom((value) => value === null || Object.values(MATCH_FORMATS).includes(value))
+      .withMessage('Formato de partido inválido'),
     body('minimumAge')
       .customSanitizer((value) => (value === '' ? null : value))
       .optional({ nullable: true })

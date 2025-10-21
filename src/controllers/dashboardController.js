@@ -163,7 +163,7 @@ async function getGlobalOverview(req, res) {
       ],
     })
       .populate('players', 'fullName photo')
-      .populate('category', 'name color')
+      .populate('category', 'name color matchFormat')
       .populate('tournament', 'name status')
       .sort({ scheduledAt: 1 })
       .limit(12)
@@ -414,7 +414,7 @@ async function getTournamentDashboard(req, res) {
       ],
     })
       .populate('players', 'fullName photo')
-      .populate('category', 'name color')
+      .populate('category', 'name color matchFormat')
       .populate('tournament', 'name status')
       .sort({ scheduledAt: 1 })
       .limit(20)
