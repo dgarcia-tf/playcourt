@@ -1,10 +1,13 @@
 const { validationResult, body, query } = require('express-validator');
 const mongoose = require('mongoose');
-const { CourtReservation, RESERVATION_STATUS } = require('../models/CourtReservation');
+const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
 const { USER_ROLES, userHasRole } = require('../models/User');
-
-const DEFAULT_DURATION_MINUTES = 90;
+const {
+  ensureReservationAvailability,
+  DEFAULT_RESERVATION_DURATION_MINUTES,
+  normalizeParticipants,
+} = require('../services/courtReservationService');
 
 function sanitizeNotes(notes) {
   if (typeof notes !== 'string') {
@@ -66,29 +69,6 @@ async function ensureCourtExists(courtName) {
   return matched?.name || normalized;
 }
 
-async function ensureAvailability({ court, startsAt, endsAt, excludeId }) {
-  const query = {
-    court,
-    status: RESERVATION_STATUS.RESERVED,
-    $and: [
-      { startsAt: { $lt: endsAt } },
-      { endsAt: { $gt: startsAt } },
-    ],
-  };
-
-  if (excludeId) {
-    query._id = { $ne: excludeId };
-  }
-
-  const overlappingReservation = await CourtReservation.findOne(query);
-
-  if (overlappingReservation) {
-    const error = new Error('La pista ya está reservada en el horario seleccionado.');
-    error.statusCode = 409;
-    throw error;
-  }
-}
-
 const validateCreateReservation = [
   body('court').isString().withMessage('La pista es obligatoria.'),
   body('startsAt')
@@ -107,6 +87,14 @@ const validateCreateReservation = [
     .isString()
     .isLength({ max: 500 })
     .withMessage('Las notas deben tener menos de 500 caracteres.'),
+  body('participants')
+    .optional()
+    .isArray({ max: 3 })
+    .withMessage('La lista de participantes es inválida.'),
+  body('participants.*')
+    .optional()
+    .isMongoId()
+    .withMessage('Cada participante debe ser un identificador válido.'),
 ];
 
 const validateListReservations = [
@@ -134,7 +122,9 @@ async function createReservation(req, res) {
   }
 
   let endsAt = toDate(rawEndsAt);
-  const duration = Number.isFinite(Number(durationMinutes)) ? Number(durationMinutes) : DEFAULT_DURATION_MINUTES;
+  const duration = Number.isFinite(Number(durationMinutes))
+    ? Number(durationMinutes)
+    : DEFAULT_RESERVATION_DURATION_MINUTES;
 
   if (!endsAt) {
     endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
@@ -146,7 +136,15 @@ async function createReservation(req, res) {
 
   const court = await ensureCourtExists(rawCourt);
 
-  await ensureAvailability({ court, startsAt, endsAt });
+  await ensureReservationAvailability({ court, startsAt, endsAt });
+
+  const participantList = Array.isArray(req.body.participants) ? req.body.participants : [];
+  const normalizedParticipants = normalizeParticipants(participantList);
+  const requesterId = req.user.id.toString();
+  if (!normalizedParticipants.includes(requesterId)) {
+    normalizedParticipants.unshift(requesterId);
+  }
+  const participants = normalizedParticipants.slice(0, 4);
 
   const reservation = await CourtReservation.create({
     court,
@@ -154,9 +152,14 @@ async function createReservation(req, res) {
     endsAt,
     notes: sanitizeNotes(notes),
     createdBy: req.user.id,
+    participants,
+    type: RESERVATION_TYPES.MANUAL,
   });
 
-  await reservation.populate('createdBy', 'fullName email roles');
+  await reservation.populate([
+    { path: 'createdBy', select: 'fullName email roles' },
+    { path: 'participants', select: 'fullName email roles' },
+  ]);
 
   return res.status(201).json(reservation);
 }
@@ -190,7 +193,18 @@ async function listReservations(req, res) {
 
   const reservations = await CourtReservation.find(filters)
     .sort({ startsAt: 1 })
-    .populate('createdBy', 'fullName email roles');
+    .populate('createdBy', 'fullName email roles')
+    .populate('participants', 'fullName email roles')
+    .populate({
+      path: 'match',
+      select: 'players category league season status scheduledAt court',
+      populate: [
+        { path: 'players', select: 'fullName email' },
+        { path: 'category', select: 'name color' },
+        { path: 'league', select: 'name year status' },
+        { path: 'season', select: 'name year' },
+      ],
+    });
 
   return res.json(reservations);
 }
@@ -210,6 +224,12 @@ async function cancelReservation(req, res) {
 
   const isOwner = reservation.createdBy?.toString() === req.user.id.toString();
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
+
+  if (reservation.match) {
+    return res.status(409).json({
+      message: 'La reserva está asociada a un partido de liga. Actualiza el partido para modificar la pista.',
+    });
+  }
 
   if (!isOwner && !isAdmin) {
     return res.status(403).json({ message: 'No tienes permisos para cancelar esta reserva.' });
@@ -245,7 +265,18 @@ async function getAvailability(req, res) {
     startsAt: { $gte: range.start, $lt: range.end },
   })
     .sort({ startsAt: 1 })
-    .populate('createdBy', 'fullName email roles');
+    .populate('createdBy', 'fullName email roles')
+    .populate('participants', 'fullName email roles')
+    .populate({
+      path: 'match',
+      select: 'players category league season status scheduledAt court',
+      populate: [
+        { path: 'players', select: 'fullName email' },
+        { path: 'category', select: 'name color' },
+        { path: 'league', select: 'name year status' },
+        { path: 'season', select: 'name year' },
+      ],
+    });
 
   const grouped = courts.map((courtName) => ({
     court: courtName,

@@ -2624,3 +2624,105 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     display: block;
   }
 }
+.courts-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 960px) {
+  .courts-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.court-reservation-item {
+  position: relative;
+}
+
+.court-reservation-item--cancelled {
+  opacity: 0.65;
+  background: #f8fafc;
+  border-style: dashed;
+}
+
+.court-reservation-item--cancelled strong {
+  text-decoration: line-through;
+}
+
+.reservation-notes {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+}
+
+.reservation-actions,
+.court-schedule-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.court-availability-item {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.court-availability-slot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.court-availability-slot span:first-child {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.court-schedule {
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  padding: 1.2rem 1.4rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.court-schedule h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.court-schedule-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.court-schedule-row:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.court-schedule-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.court-schedule-info span:first-child {
+  font-weight: 600;
+  color: var(--text-primary);
+}
