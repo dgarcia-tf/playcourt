@@ -644,16 +644,6 @@
                     <select id="league-payments-league" disabled></select>
                   </label>
                   <label class="inline-field">
-                    Estado
-                    <select id="league-payments-status" disabled>
-                      <option value="">Todos</option>
-                      <option value="pendiente">Pendiente</option>
-                      <option value="pagado">Pagado</option>
-                      <option value="exento">Exento</option>
-                      <option value="fallido">Fallido</option>
-                    </select>
-                  </label>
-                  <label class="inline-field">
                     Búsqueda
                     <input
                       type="search"
@@ -675,7 +665,10 @@
                   >
                     <div class="league-payments-group-header">
                       <h4 id="league-payments-pending-title">Pagos pendientes</h4>
-                      <span class="tag" id="league-payments-pending-count">0</span>
+                      <div class="league-payments-group-stats">
+                        <span class="tag" id="league-payments-pending-count">0</span>
+                        <span class="tag" id="league-payments-pending-total">0,00&nbsp;EUR</span>
+                      </div>
                     </div>
                     <ul class="list league-payments-list" id="league-payments-pending"></ul>
                     <p class="empty-state" id="league-payments-pending-empty" hidden>
@@ -689,7 +682,10 @@
                   >
                     <div class="league-payments-group-header">
                       <h4 id="league-payments-paid-title">Pagos registrados</h4>
-                      <span class="tag" id="league-payments-paid-count">0</span>
+                      <div class="league-payments-group-stats">
+                        <span class="tag" id="league-payments-paid-count">0</span>
+                        <span class="tag" id="league-payments-paid-total">0,00&nbsp;EUR</span>
+                      </div>
                     </div>
                     <ul class="list league-payments-list" id="league-payments-paid"></ul>
                     <p class="empty-state" id="league-payments-paid-empty" hidden>

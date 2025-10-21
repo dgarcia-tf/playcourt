@@ -878,7 +878,6 @@ const state = {
   leaguePayments: new Map(),
   leaguePaymentFilters: {
     league: '',
-    status: '',
     search: '',
   },
   leaguePaymentsLoading: false,
@@ -1266,12 +1265,13 @@ const leaguePaymentsGroups = document.getElementById('league-payments-groups');
 const leaguePaymentsPendingList = document.getElementById('league-payments-pending');
 const leaguePaymentsPendingEmpty = document.getElementById('league-payments-pending-empty');
 const leaguePaymentsPendingCount = document.getElementById('league-payments-pending-count');
+const leaguePaymentsPendingTotal = document.getElementById('league-payments-pending-total');
 const leaguePaymentsPaidList = document.getElementById('league-payments-paid');
 const leaguePaymentsPaidEmpty = document.getElementById('league-payments-paid-empty');
 const leaguePaymentsPaidCount = document.getElementById('league-payments-paid-count');
+const leaguePaymentsPaidTotal = document.getElementById('league-payments-paid-total');
 const leaguePaymentsCount = document.getElementById('league-payments-count');
 const leaguePaymentsLeagueSelect = document.getElementById('league-payments-league');
-const leaguePaymentsStatusSelect = document.getElementById('league-payments-status');
 const leaguePaymentsSearchInput = document.getElementById('league-payments-search');
 const leaguePaymentsEmpty = document.getElementById('league-payments-empty');
 const leaguePaymentsFeeBadge = document.getElementById('league-payments-fee');
@@ -1503,7 +1503,6 @@ function ensureLeaguePaymentFilters() {
   if (!state.leaguePaymentFilters) {
     state.leaguePaymentFilters = {
       league: '',
-      status: '',
       search: '',
     };
   }
@@ -1569,7 +1568,6 @@ function pruneLeagueCaches() {
   let filtersReset = false;
   if (filters.league && !activeLeagueIds.has(filters.league)) {
     filters.league = '';
-    filters.status = '';
     filters.search = '';
     filtersReset = true;
   }
@@ -1731,6 +1729,30 @@ function updateLeaguePaymentFeeIndicator(feeValue) {
   }
 }
 
+function formatLeaguePaymentTotal(amount = 0) {
+  const numericAmount = Number(amount);
+  const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
+  return (
+    formatCurrencyValue(safeAmount, DEFAULT_LEAGUE_CURRENCY) ||
+    `${safeAmount.toFixed(2)} ${DEFAULT_LEAGUE_CURRENCY}`
+  );
+}
+
+function updateLeaguePaymentTotalElement(element, amount = 0) {
+  if (!element) return;
+  element.textContent = formatLeaguePaymentTotal(amount);
+}
+
+function calculateLeaguePaymentTotal(entries = []) {
+  if (!Array.isArray(entries)) {
+    return 0;
+  }
+  return entries.reduce((total, entry) => {
+    const amount = Number(entry?.amount);
+    return Number.isFinite(amount) ? total + amount : total;
+  }, 0);
+}
+
 function resetLeaguePaymentGroups() {
   if (leaguePaymentsPendingList) {
     leaguePaymentsPendingList.innerHTML = '';
@@ -1744,6 +1766,8 @@ function resetLeaguePaymentGroups() {
   if (leaguePaymentsPaidCount) {
     leaguePaymentsPaidCount.textContent = '0';
   }
+  updateLeaguePaymentTotalElement(leaguePaymentsPendingTotal, 0);
+  updateLeaguePaymentTotalElement(leaguePaymentsPaidTotal, 0);
   if (leaguePaymentsPendingEmpty) {
     leaguePaymentsPendingEmpty.hidden = true;
   }
@@ -1790,7 +1814,6 @@ function updateLeaguePaymentControls({ resetSelection = false } = {}) {
 
   filters.league = resolvedLeague;
   if (shouldResetFilters) {
-    filters.status = '';
     filters.search = '';
   }
 
@@ -1798,15 +1821,6 @@ function updateLeaguePaymentControls({ resetSelection = false } = {}) {
   leaguePaymentsLeagueSelect.disabled = !availableIds.size;
 
   const hasSelection = Boolean(resolvedLeague);
-
-  if (leaguePaymentsStatusSelect) {
-    if (!hasSelection || shouldResetFilters) {
-      leaguePaymentsStatusSelect.value = '';
-    } else {
-      leaguePaymentsStatusSelect.value = filters.status || '';
-    }
-    leaguePaymentsStatusSelect.disabled = !hasSelection;
-  }
 
   if (leaguePaymentsSearchInput) {
     if (!hasSelection || shouldResetFilters) {
@@ -2468,6 +2482,15 @@ function renderLeaguePayments(entries = [], { fee = null } = {}) {
 
   resetLeaguePaymentGroups();
 
+  const pendingEntries = entries.filter((entry) => (entry.status || 'pendiente') !== 'pagado');
+  const paidEntries = entries.filter((entry) => (entry.status || 'pendiente') === 'pagado');
+
+  updateLeaguePaymentTotalElement(
+    leaguePaymentsPendingTotal,
+    calculateLeaguePaymentTotal(pendingEntries)
+  );
+  updateLeaguePaymentTotalElement(leaguePaymentsPaidTotal, calculateLeaguePaymentTotal(paidEntries));
+
   if (!entries.length) {
     if (leaguePaymentsPendingCount) {
       leaguePaymentsPendingCount.textContent = '0';
@@ -2493,9 +2516,6 @@ function renderLeaguePayments(entries = [], { fee = null } = {}) {
   if (leaguePaymentsEmpty) {
     leaguePaymentsEmpty.hidden = true;
   }
-
-  const pendingEntries = entries.filter((entry) => (entry.status || 'pendiente') !== 'pagado');
-  const paidEntries = entries.filter((entry) => (entry.status || 'pendiente') === 'pagado');
 
   const groups = [
     {
@@ -2590,12 +2610,8 @@ async function refreshLeaguePayments({ force = false } = {}) {
 
     const activeFilters = ensureLeaguePaymentFilters();
     const searchTerm = (activeFilters.search || '').trim().toLowerCase();
-    const statusFilter = activeFilters.status || '';
 
     const filteredEntries = (data.entries || []).filter((entry) => {
-      if (statusFilter && entry.status !== statusFilter) {
-        return false;
-      }
       if (searchTerm) {
         const categoryNames = entry.categories.map((category) => category?.name || '').join(' ');
         const haystack = `${entry.player?.fullName || ''} ${entry.player?.email || ''} ${
@@ -3704,7 +3720,6 @@ function resetData() {
   }
   state.leaguePaymentFilters = {
     league: '',
-    status: '',
     search: '',
   };
   state.leaguePaymentsLoading = false;
@@ -16247,7 +16262,6 @@ leaguePaymentsLeagueSelect?.addEventListener('change', async (event) => {
   const previousLeague = filters.league || '';
   filters.league = value;
   if (value !== previousLeague) {
-    filters.status = '';
     filters.search = '';
   }
   updateLeaguePaymentControls();
@@ -16255,16 +16269,6 @@ leaguePaymentsLeagueSelect?.addEventListener('change', async (event) => {
     await refreshLeaguePayments({ force: value !== previousLeague });
   } catch (error) {
     console.warn('No se pudo actualizar los pagos de liga tras cambiar la liga seleccionada', error);
-  }
-});
-
-leaguePaymentsStatusSelect?.addEventListener('change', async (event) => {
-  const filters = ensureLeaguePaymentFilters();
-  filters.status = event.target.value || '';
-  try {
-    await refreshLeaguePayments();
-  } catch (error) {
-    console.warn('No se pudo actualizar los pagos de liga al filtrar por estado', error);
   }
 });
 
