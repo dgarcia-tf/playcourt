@@ -16,7 +16,7 @@ const CATEGORY_SKILL_LEVELS = {
 const MATCH_FORMATS = {
   TWO_SETS_SIX_GAMES_SUPER_TB: 'two_sets_six_games_super_tb',
   TWO_SETS_FOUR_GAMES_SUPER_TB: 'two_sets_four_games_super_tb',
-  PRO_SET_NINE_GAMES: 'pro_set_nine_games',
+  SINGLE_SET_TEN_GAMES_SUPER_TB: 'single_set_ten_games_super_tb',
 };
 
 const DEFAULT_CATEGORY_MATCH_FORMAT = MATCH_FORMATS.TWO_SETS_SIX_GAMES_SUPER_TB;
