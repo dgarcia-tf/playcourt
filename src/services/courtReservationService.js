@@ -1,4 +1,5 @@
 const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
+const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 
 const DEFAULT_RESERVATION_DURATION_MINUTES = 90;
 
@@ -29,7 +30,15 @@ function resolveEndsAt(startsAt, endsAt, durationMinutes = DEFAULT_RESERVATION_D
   return { startsAt: startDate, endsAt: computedEnd };
 }
 
-async function ensureReservationAvailability({ court, startsAt, endsAt, excludeReservationId }) {
+async function ensureReservationAvailability({
+  court,
+  startsAt,
+  endsAt,
+  excludeReservationId,
+  reservationType = RESERVATION_TYPES.MANUAL,
+  contextType,
+  contextId,
+}) {
   if (!court || !startsAt || !endsAt) {
     const error = new Error('Los parámetros de la reserva son inválidos.');
     error.statusCode = 400;
@@ -58,6 +67,38 @@ async function ensureReservationAvailability({ court, startsAt, endsAt, excludeR
   const overlappingReservation = await CourtReservation.findOne(query).select('_id match');
   if (overlappingReservation) {
     const error = new Error('La pista ya está reservada en el horario seleccionado.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const blockQuery = {
+    startsAt: { $lt: endsAt },
+    endsAt: { $gt: startsAt },
+    $or: [{ courts: { $size: 0 } }, { courts: court }],
+  };
+
+  const blockingEntries = await CourtBlock.find(blockQuery)
+    .select('contextType context courts startsAt endsAt')
+    .lean();
+
+  if (blockingEntries.length) {
+    if (reservationType === RESERVATION_TYPES.MATCH && contextType && contextId) {
+      const contextKey = contextId.toString();
+      const allowed = blockingEntries.some((block) => {
+        if (block.contextType !== contextType) {
+          return false;
+        }
+        const blockContext = block.context?.toString?.();
+        return blockContext && blockContext === contextKey;
+      });
+      if (allowed) {
+        return;
+      }
+    }
+
+    const error = new Error(
+      'La pista está bloqueada para partidos oficiales en el horario seleccionado. Contacta con la organización.'
+    );
     error.statusCode = 409;
     throw error;
   }
@@ -93,11 +134,24 @@ async function upsertMatchReservation({ match, createdBy }) {
   const participants = normalizeParticipants(match.players);
   const existing = await CourtReservation.findOne({ match: match._id });
 
+  let contextType;
+  let contextId;
+  if (match.league) {
+    contextType = COURT_BLOCK_CONTEXTS.LEAGUE;
+    contextId = match.league;
+  } else if (match.tournament) {
+    contextType = COURT_BLOCK_CONTEXTS.TOURNAMENT;
+    contextId = match.tournament;
+  }
+
   await ensureReservationAvailability({
     court: match.court,
     startsAt,
     endsAt,
     excludeReservationId: existing?._id,
+    reservationType: RESERVATION_TYPES.MATCH,
+    contextType,
+    contextId,
   });
 
   const creatorCandidate = createdBy || match.proposal?.requestedBy || match.createdBy;
