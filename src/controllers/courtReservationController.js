@@ -114,7 +114,14 @@ async function createReservation(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { court: rawCourt, startsAt: rawStartsAt, endsAt: rawEndsAt, durationMinutes, notes } = req.body;
+  const {
+    court: rawCourt,
+    startsAt: rawStartsAt,
+    endsAt: rawEndsAt,
+    durationMinutes,
+    notes,
+    matchType: rawMatchType,
+  } = req.body;
 
   const startsAt = toDate(rawStartsAt);
   if (!startsAt) {
@@ -294,6 +301,41 @@ async function getAvailability(req, res) {
   return res.json({ date: range.start, courts: grouped });
 }
 
+async function listReservationPlayers(req, res) {
+  const playerFilter = {
+    $or: [{ roles: USER_ROLES.PLAYER }, { role: USER_ROLES.PLAYER }],
+  };
+
+  let players = await User.find(playerFilter)
+    .select('fullName email roles')
+    .sort({ fullName: 1, email: 1 })
+    .lean();
+
+  const requesterId = req.user?.id?.toString();
+  if (requesterId && !players.some((player) => player?._id?.toString() === requesterId)) {
+    const requester = await User.findById(requesterId).select('fullName email roles').lean();
+    if (requester) {
+      players.push(requester);
+    }
+  }
+
+  const sanitized = players
+    .map((player) => ({
+      _id: player?._id?.toString(),
+      id: player?._id?.toString(),
+      fullName: typeof player?.fullName === 'string' ? player.fullName : '',
+      email: typeof player?.email === 'string' ? player.email : '',
+      roles: Array.isArray(player?.roles) ? player.roles : player?.roles ? [player.roles] : [],
+    }))
+    .sort((a, b) => {
+      const labelA = (a.fullName || a.email || '').toLocaleLowerCase('es');
+      const labelB = (b.fullName || b.email || '').toLocaleLowerCase('es');
+      return labelA.localeCompare(labelB, 'es');
+    });
+
+  return res.json(sanitized);
+}
+
 module.exports = {
   createReservation,
   listReservations,
@@ -301,4 +343,5 @@ module.exports = {
   getAvailability,
   validateCreateReservation,
   validateListReservations,
+  listReservationPlayers,
 };

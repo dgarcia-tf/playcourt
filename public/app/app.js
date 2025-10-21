@@ -1970,6 +1970,12 @@ function resetData() {
   state.dashboardSummary = null;
   state.dashboardCategoryId = '';
   state.matchesCategoryId = '';
+  state.courtReservations = [];
+  state.courtAvailability = [];
+  state.courtAdminSchedule = [];
+  state.reservationPlayers = [];
+  state.reservationPlayersLoaded = false;
+  state.reservationPlayersLoading = false;
   state.generalChatMessages = [];
   state.noticeUnreadCount = 0;
   updateCategoryControlsAvailability();
@@ -1986,6 +1992,32 @@ function resetData() {
   if (pendingApprovalsList) {
     pendingApprovalsList.innerHTML =
       '<li class="empty-state">Inicia sesión para consultar los resultados pendientes.</li>';
+  }
+  if (courtReservationList) {
+    courtReservationList.innerHTML =
+      '<li class="empty-state">Inicia sesión para gestionar tus reservas.</li>';
+  }
+  if (courtAvailabilityList) {
+    courtAvailabilityList.innerHTML =
+      '<li class="empty-state">Inicia sesión para consultar la disponibilidad de pistas.</li>';
+  }
+  if (courtAvailabilityEmpty) {
+    courtAvailabilityEmpty.hidden = false;
+  }
+  if (courtAdminSchedule) {
+    courtAdminSchedule.innerHTML =
+      '<p class="meta">Inicia sesión con una cuenta administradora para ver el detalle de reservas.</p>';
+  }
+  if (courtAdminEmpty) {
+    courtAdminEmpty.hidden = false;
+  }
+  if (courtReservationParticipantsContainer) {
+    courtReservationParticipantsContainer.innerHTML = '';
+    courtReservationParticipantsContainer.hidden = true;
+  }
+  if (courtReservationParticipantsHint) {
+    courtReservationParticipantsHint.hidden = true;
+    courtReservationParticipantsHint.textContent = defaultCourtReservationParticipantsHint;
   }
   if (completedMatchesList) {
     completedMatchesList.innerHTML =
