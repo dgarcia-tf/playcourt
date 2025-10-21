@@ -87,6 +87,24 @@ const categorySchema = new mongoose.Schema(
           type: Number,
           default: 0,
         },
+        lastMatchPoints: {
+          type: Number,
+          default: null,
+        },
+        previousMatchPoints: {
+          type: Number,
+          default: null,
+        },
+        lastMatchResult: {
+          type: String,
+          enum: ['win', 'loss'],
+          default: null,
+        },
+        previousMatchResult: {
+          type: String,
+          enum: ['win', 'loss'],
+          default: null,
+        },
         previousPosition: {
           type: Number,
           default: null,
@@ -125,6 +143,24 @@ const categorySchema = new mongoose.Schema(
         gamesWon: {
           type: Number,
           default: 0,
+        },
+        lastMatchPoints: {
+          type: Number,
+          default: null,
+        },
+        previousMatchPoints: {
+          type: Number,
+          default: null,
+        },
+        lastMatchResult: {
+          type: String,
+          enum: ['win', 'loss'],
+          default: null,
+        },
+        previousMatchResult: {
+          type: String,
+          enum: ['win', 'loss'],
+          default: null,
         },
         previousPosition: {
           type: Number,

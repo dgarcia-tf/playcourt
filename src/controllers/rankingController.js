@@ -75,11 +75,21 @@ async function getCategoryRanking(req, res) {
           return entry;
         }
         const fallbackNumber = (value) => (typeof value === 'number' ? value : null);
+        const fallbackResult = (value) =>
+          value === 'win' || value === 'loss' ? value : null;
         return {
           ...entry,
           movement: stored.movement ?? entry.movement,
           movementDelta: fallbackNumber(stored.movementDelta) ?? entry.movementDelta,
           previousPosition: fallbackNumber(stored.previousPosition) ?? entry.previousPosition,
+          lastMatchPoints:
+            fallbackNumber(stored.lastMatchPoints) ?? entry.lastMatchPoints ?? null,
+          previousMatchPoints:
+            fallbackNumber(stored.previousMatchPoints) ?? entry.previousMatchPoints ?? null,
+          lastMatchResult:
+            fallbackResult(stored.lastMatchResult) ?? entry.lastMatchResult ?? null,
+          previousMatchResult:
+            fallbackResult(stored.previousMatchResult) ?? entry.previousMatchResult ?? null,
         };
       });
 

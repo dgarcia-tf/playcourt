@@ -14,7 +14,15 @@ const { authenticate, authorizeRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
-const MATCH_STATUS_OPTIONS = ['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado'];
+const MATCH_STATUS_OPTIONS = [
+  'pendiente',
+  'propuesto',
+  'programado',
+  'revision',
+  'completado',
+  'caducado',
+  'finalizado',
+];
 
 router.get(
   '/',
@@ -23,7 +31,7 @@ router.get(
     query('categoryId').optional().isMongoId(),
     query('status')
       .optional()
-      .isIn(['pendiente', 'propuesto', 'programado', 'completado', 'caducado']),
+      .isIn(['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado', 'finalizado']),
     query('statuses')
       .optional()
       .customSanitizer((value) => {
