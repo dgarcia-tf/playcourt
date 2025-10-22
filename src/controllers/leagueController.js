@@ -245,12 +245,32 @@ async function createLeague(req, res) {
 }
 
 async function getLeagueOverview(req, res) {
-  const leagues = await League.find()
-    .sort({ startDate: -1, createdAt: -1 })
-    .lean();
+  const { leagueId } = req.query;
+
+  const rawLeagueIds = Array.isArray(leagueId)
+    ? leagueId.filter((value) => typeof value === 'string')
+    : typeof leagueId === 'string' && leagueId
+      ? [leagueId]
+      : [];
+
+  const normalizedLeagueIds = rawLeagueIds
+    .map((id) => (mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null))
+    .filter(Boolean);
+
+  if (rawLeagueIds.length && !normalizedLeagueIds.length) {
+    return res.status(400).json({ message: 'Identificador de liga inválido' });
+  }
+
+  const leagueQuery = normalizedLeagueIds.length ? { _id: { $in: normalizedLeagueIds } } : {};
+
+  const leagues = await League.find(leagueQuery).lean();
 
   if (!leagues.length) {
-    return res.json({ active: [], archived: [], rankingFilters: { active: [], finished: [] } });
+    return res.json({
+      active: [],
+      archived: [],
+      rankingFilters: { active: [], finished: [], all: [] },
+    });
   }
 
   const leagueIds = leagues.map((league) => league._id);
@@ -326,6 +346,31 @@ async function getLeagueOverview(req, res) {
   });
 
   const toSortableName = (value) => (typeof value === 'string' ? value : '');
+  const toChronoTimestamp = (value) => {
+    if (!value) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    const time = date.getTime();
+    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  };
+
+  const compareChronologically = (a, b) => {
+    const startDiff = toChronoTimestamp(a.startDate) - toChronoTimestamp(b.startDate);
+    if (startDiff !== 0) {
+      return startDiff;
+    }
+
+    const endDiff = toChronoTimestamp(a.endDate) - toChronoTimestamp(b.endDate);
+    if (endDiff !== 0) {
+      return endDiff;
+    }
+
+    return toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
+      sensitivity: 'base',
+    });
+  };
 
   const buildLeaguePayload = (league) => {
     const leagueId = normalizeId(league);
@@ -351,20 +396,7 @@ async function getLeagueOverview(req, res) {
           enrollmentCount,
         };
       })
-      .sort((a, b) => {
-        const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
-        const startDiff = toTimestamp(b.startDate) - toTimestamp(a.startDate);
-        if (startDiff !== 0) {
-          return startDiff;
-        }
-        const endDiff = toTimestamp(b.endDate) - toTimestamp(a.endDate);
-        if (endDiff !== 0) {
-          return endDiff;
-        }
-        return toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
-          sensitivity: 'base',
-        });
-      });
+      .sort(compareChronologically);
 
     const playerMap = playersByLeague.get(leagueId) || new Map();
     const players = Array.from(playerMap.values()).sort((a, b) =>
@@ -410,28 +442,16 @@ async function getLeagueOverview(req, res) {
     }
   });
 
-  const sortByStartDate = (a, b) => {
-    const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
-    const diff = toTimestamp(b.startDate) - toTimestamp(a.startDate);
-    if (diff !== 0) {
-      return diff;
-    }
-    const endDiff = toTimestamp(b.endDate) - toTimestamp(a.endDate);
-    if (endDiff !== 0) {
-      return endDiff;
-    }
-    return toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
-      sensitivity: 'base',
-    });
-  };
-
-  activeLeagues.sort(sortByStartDate);
-  archivedLeagues.sort(sortByStartDate);
+  activeLeagues.sort(compareChronologically);
+  archivedLeagues.sort(compareChronologically);
 
   const buildRankingFilter = (league) => ({
     leagueId: league.id,
     leagueName: league.name,
     year: league.year,
+    status: league.status,
+    startDate: league.startDate,
+    endDate: league.endDate,
     categories: league.categories.map((category) => ({
       id: category.id,
       name: category.name,
@@ -446,6 +466,20 @@ async function getLeagueOverview(req, res) {
     active: activeLeagues.map(buildRankingFilter),
     finished: archivedLeagues.map(buildRankingFilter),
   };
+
+  const rankingFilterOrder = [...activeLeagues, ...archivedLeagues]
+    .sort((a, b) => {
+      const aClosed = a.status === LEAGUE_STATUS.CLOSED;
+      const bClosed = b.status === LEAGUE_STATUS.CLOSED;
+      if (aClosed !== bClosed) {
+        return aClosed ? 1 : -1;
+      }
+
+      return compareChronologically(a, b);
+    })
+    .map(buildRankingFilter);
+
+  rankingFilters.all = rankingFilterOrder;
 
   return res.json({ active: activeLeagues, archived: archivedLeagues, rankingFilters });
 }
