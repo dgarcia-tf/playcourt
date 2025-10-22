@@ -10,7 +10,7 @@ const COURT_RESERVATION_DEFAULT_DURATION = 75;
 const CALENDAR_TIME_SLOT_MINUTES = COURT_RESERVATION_DEFAULT_DURATION;
 const CALENDAR_TIME_SLOT_STEP_SECONDS = CALENDAR_TIME_SLOT_MINUTES * 60;
 const COURT_RESERVATION_FIRST_SLOT_MINUTE = 8 * 60 + 30;
-const COURT_RESERVATION_LAST_SLOT_END_MINUTE = 21 * 60;
+const COURT_RESERVATION_LAST_SLOT_END_MINUTE = 22 * 60 + 15;
 
 const SCHEDULE_LABELS = {
   manana: 'Mañana',
@@ -181,7 +181,7 @@ const DEFAULT_RULE_SECTIONS = [
     bullets: [
       'Bloques matutinos: 08:00 – 12:00 · Ideal para jugadores con horario flexible.',
       'Bloques vespertinos: 16:00 – 19:00 · Mayor disponibilidad de monitores y personal de apoyo.',
-      'Bloques nocturnos: 19:00 – 22:00 · Iluminación LED en todas las pistas rápidas.',
+      'Bloques nocturnos: 19:00 – 22:15 · Iluminación LED en todas las pistas rápidas.',
     ],
   },
   {
@@ -10763,7 +10763,7 @@ function openProposalForm(matchId, triggerButton) {
     }
 
     if (!isValidReservationSlotStart(proposedDate)) {
-      updateError('Selecciona un horario válido entre las 08:30 y las 21:00.');
+      updateError('Selecciona un horario válido entre las 08:30 y las 22:15.');
       if (hasScheduleTemplates) {
         proposedSlotSelect?.focus();
       } else {
@@ -15344,7 +15344,7 @@ async function submitMatchFormData({ form, matchId, statusElement, creating = fa
       setStatusMessage(
         statusElement,
         'error',
-        'Selecciona un horario válido de 75 minutos entre las 08:30 y las 21:00.'
+        'Selecciona un horario válido de 75 minutos entre las 08:30 y las 22:15.'
       );
       return false;
     }
@@ -17764,7 +17764,7 @@ courtReservationForm?.addEventListener('submit', async (event) => {
     setStatusMessage(
       courtReservationStatus,
       'error',
-      'Selecciona un horario válido de 75 minutos entre las 08:30 y las 21:00.'
+      'Selecciona un horario válido de 75 minutos entre las 08:30 y las 22:15.'
     );
     return;
   }
