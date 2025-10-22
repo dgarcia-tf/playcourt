@@ -467,9 +467,66 @@ async function listLeagues(req, res) {
     query.status = status;
   }
 
-  const leagues = await League.find(query)
-    .sort({ startDate: -1, createdAt: -1 })
-    .populate('categories', 'name gender skillLevel color matchFormat');
+  const leagues = await League.find(query).populate(
+    'categories',
+    'name gender skillLevel color matchFormat'
+  );
+
+  const toTimestamp = (value) => {
+    if (!value) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    const time = date.getTime();
+    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  };
+
+  const resolveChronoValue = (league) => {
+    const timestamps = [
+      toTimestamp(league.startDate),
+      toTimestamp(league.endDate),
+      toTimestamp(league.createdAt),
+    ];
+
+    const numericYear = Number(league.year);
+    if (Number.isFinite(numericYear)) {
+      const yearTimestamp = new Date(numericYear, 0, 1).getTime();
+      if (Number.isFinite(yearTimestamp)) {
+        timestamps.push(yearTimestamp);
+      }
+    }
+
+    return timestamps.reduce(
+      (min, value) => (value < min ? value : min),
+      Number.POSITIVE_INFINITY
+    );
+  };
+
+  const compareByName = (a, b) =>
+    String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' });
+
+  leagues.sort((a, b) => {
+    const aActive = a.status === LEAGUE_STATUS.ACTIVE;
+    const bActive = b.status === LEAGUE_STATUS.ACTIVE;
+    if (aActive !== bActive) {
+      return aActive ? -1 : 1;
+    }
+
+    const chronoA = resolveChronoValue(a);
+    const chronoB = resolveChronoValue(b);
+    if (chronoA !== chronoB) {
+      if (!Number.isFinite(chronoA)) {
+        return 1;
+      }
+      if (!Number.isFinite(chronoB)) {
+        return -1;
+      }
+      return chronoA - chronoB;
+    }
+
+    return compareByName(a, b);
+  });
 
   return res.json(leagues);
 }
