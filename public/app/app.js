@@ -1142,6 +1142,9 @@ const globalUpcomingMatchesList = document.getElementById('global-upcoming-match
 const leagueMetricPlayers = document.getElementById('league-metric-players');
 const leagueMetricCategories = document.getElementById('league-metric-categories');
 const leagueMetricUpcoming = document.getElementById('league-metric-upcoming');
+const leagueActiveSummary = document.getElementById('league-active-summary');
+const leagueActiveCount = document.getElementById('league-active-count');
+const leagueActiveList = document.getElementById('league-active-list');
 const leagueRankingCards = document.getElementById('league-ranking-cards');
 const leagueUpcomingMatchesList = document.getElementById('league-upcoming-matches');
 const tournamentMetricActive = document.getElementById('tournament-metric-active');
@@ -5723,20 +5726,14 @@ function renderLeagueDashboard(summary) {
     leagueMetricUpcoming.textContent = String(metrics.upcomingMatches ?? 0);
   }
 
-  const rankingCategories = Array.isArray(summary?.categories)
-    ? summary.categories
-    : Array.isArray(summary?.leagueRankings)
-      ? summary.leagueRankings.flatMap((group) =>
-          Array.isArray(group?.categories)
-            ? group.categories.map((categorySummary) => ({
-                ...categorySummary,
-                league: categorySummary?.league || group?.league || null,
-              }))
-            : []
-        )
-      : [];
+  const leagueGroups = Array.isArray(summary?.leagueRankings) ? summary.leagueRankings : [];
+  const activeLeaguesValue = Number(metrics.activeLeagues);
+  const activeLeaguesCount = Number.isFinite(activeLeaguesValue)
+    ? activeLeaguesValue
+    : leagueGroups.length;
 
-  renderLeagueRankingCards(rankingCategories);
+  renderLeagueActiveSummary(leagueGroups, activeLeaguesCount);
+  renderLeagueRankingCards(leagueGroups);
   renderDashboardMatchList(
     summary?.upcomingMatches || [],
     leagueUpcomingMatchesList,
@@ -5744,100 +5741,195 @@ function renderLeagueDashboard(summary) {
   );
 }
 
-function renderLeagueRankingCards(categories = []) {
+function renderLeagueActiveSummary(leagueGroups = [], activeLeagues = 0) {
+  if (!leagueActiveSummary) return;
+
+  const parsedActive = Number(activeLeagues);
+  const activeCount = Number.isFinite(parsedActive) ? parsedActive : 0;
+  if (leagueActiveCount) {
+    leagueActiveCount.textContent = String(activeCount);
+  }
+
+  if (leagueActiveList) {
+    leagueActiveList.innerHTML = '';
+
+    const seen = new Set();
+    const leagues = [];
+
+    leagueGroups.forEach((group) => {
+      const categories = Array.isArray(group?.categories) ? group.categories : [];
+      if (!categories.length) {
+        return;
+      }
+      const leagueId = normalizeId(group?.league);
+      if (!leagueId || seen.has(leagueId)) {
+        return;
+      }
+      seen.add(leagueId);
+      leagues.push(group.league);
+    });
+
+    if (!leagues.length) {
+      const empty = document.createElement('span');
+      empty.className = 'empty-state';
+      empty.textContent = 'No hay ligas activas registradas.';
+      leagueActiveList.appendChild(empty);
+    } else {
+      leagues
+        .sort((a, b) => a?.name?.localeCompare?.(b?.name || '') || 0)
+        .forEach((league) => {
+          const tag = document.createElement('span');
+          tag.className = 'tag';
+          tag.textContent = league?.name || 'Liga';
+          leagueActiveList.appendChild(tag);
+        });
+    }
+  }
+
+  leagueActiveSummary.hidden = false;
+}
+
+function createLeagueRankingCategoryCard(categorySummary) {
+  const card = document.createElement('div');
+  card.className = 'collection-card';
+
+  const header = document.createElement('div');
+  header.className = 'collection-card__header';
+
+  const title = document.createElement('div');
+  title.className = 'collection-card__title';
+  if (categorySummary.category?.color) {
+    const indicator = createCategoryColorIndicator(
+      categorySummary.category.color,
+      categorySummary.category?.name
+    );
+    if (indicator) {
+      title.appendChild(indicator);
+    }
+  }
+  title.appendChild(document.createTextNode(categorySummary.category?.name || 'Categoría'));
+  header.appendChild(title);
+
+  if (categorySummary.league?.name) {
+    const subtitle = document.createElement('span');
+    subtitle.className = 'collection-card__subtitle';
+    subtitle.textContent = categorySummary.league.name;
+    header.appendChild(subtitle);
+  }
+
+  card.appendChild(header);
+
+  const meta = document.createElement('div');
+  meta.className = 'collection-card__meta';
+  const playerCount = Number(categorySummary.playerCount ?? 0);
+  const upcomingCount = Number(categorySummary.upcomingMatches ?? 0);
+  meta.textContent = `${playerCount} jugadores · ${upcomingCount} partidos próximos`;
+  card.appendChild(meta);
+
+  const ranking = Array.isArray(categorySummary.ranking)
+    ? categorySummary.ranking.slice(0, 3)
+    : [];
+
+  if (!ranking.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'Sin resultados registrados.';
+    card.appendChild(empty);
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'collection-card__list';
+
+    ranking.forEach((entry, index) => {
+      const listItem = document.createElement('li');
+      listItem.className = 'collection-card__list-item';
+
+      const position = document.createElement('span');
+      position.className = 'collection-card__position';
+      const podiumEmoji = getPodiumEmoji(index);
+      position.textContent = podiumEmoji ? `${index + 1}. ${podiumEmoji}` : `${index + 1}.`;
+      listItem.appendChild(position);
+
+      const playerInfo = document.createElement('div');
+      playerInfo.className = 'collection-card__player';
+      const name = document.createElement('strong');
+      name.textContent = entry.player?.fullName || 'Jugador';
+      playerInfo.appendChild(name);
+      const stats = document.createElement('span');
+      stats.textContent = `${entry.points ?? 0} pts · ${entry.wins ?? 0} victorias`;
+      playerInfo.appendChild(stats);
+      listItem.appendChild(playerInfo);
+
+      const matchesPlayed = document.createElement('span');
+      matchesPlayed.className = 'collection-card__points';
+      matchesPlayed.textContent = `${entry.matchesPlayed ?? 0} jugados`;
+      listItem.appendChild(matchesPlayed);
+
+      list.appendChild(listItem);
+    });
+
+    card.appendChild(list);
+  }
+
+  return card;
+}
+
+function renderLeagueRankingCards(groups = []) {
   if (!leagueRankingCards) return;
   leagueRankingCards.innerHTML = '';
 
-  if (!Array.isArray(categories) || !categories.length) {
+  if (!Array.isArray(groups) || !groups.length) {
     leagueRankingCards.innerHTML = '<p class="empty-state">Aún no hay categorías disponibles.</p>';
     return;
   }
 
-  categories.forEach((categorySummary) => {
-    const card = document.createElement('div');
-    card.className = 'collection-card';
+  let hasContent = false;
+
+  groups.forEach((group) => {
+    const categories = Array.isArray(group?.categories) ? group.categories : [];
+    if (!categories.length) {
+      return;
+    }
+
+    const wrapper = document.createElement('section');
+    wrapper.className = 'league-ranking-group';
 
     const header = document.createElement('div');
-    header.className = 'collection-card__header';
+    header.className = 'league-ranking-group__header';
 
-    const title = document.createElement('div');
-    title.className = 'collection-card__title';
-    if (categorySummary.category?.color) {
-      const indicator = createCategoryColorIndicator(
-        categorySummary.category.color,
-        categorySummary.category?.name
-      );
-      if (indicator) {
-        title.appendChild(indicator);
-      }
-    }
-    title.appendChild(
-      document.createTextNode(categorySummary.category?.name || 'Categoría')
-    );
+    const title = document.createElement('h4');
+    title.className = 'league-ranking-group__title';
+    title.textContent = group?.league?.name || 'Liga';
     header.appendChild(title);
 
-    if (categorySummary.league?.name) {
-      const subtitle = document.createElement('span');
-      subtitle.className = 'collection-card__subtitle';
-      subtitle.textContent = categorySummary.league.name;
-      header.appendChild(subtitle);
-    }
+    const meta = document.createElement('span');
+    meta.className = 'league-ranking-group__meta';
+    const totalCategories = categories.length;
+    meta.textContent = `${totalCategories} ${
+      totalCategories === 1 ? 'categoría' : 'categorías'
+    }`;
+    header.appendChild(meta);
 
-    card.appendChild(header);
+    wrapper.appendChild(header);
 
-    const meta = document.createElement('div');
-    meta.className = 'collection-card__meta';
-    const playerCount = Number(categorySummary.playerCount ?? 0);
-    const upcomingCount = Number(categorySummary.upcomingMatches ?? 0);
-    meta.textContent = `${playerCount} jugadores · ${upcomingCount} partidos próximos`;
-    card.appendChild(meta);
+    const categoryContainer = document.createElement('div');
+    categoryContainer.className = 'league-ranking-group__categories';
 
-    const ranking = Array.isArray(categorySummary.ranking)
-      ? categorySummary.ranking.slice(0, 3)
-      : [];
-
-    if (!ranking.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-state';
-      empty.textContent = 'Sin resultados registrados.';
-      card.appendChild(empty);
-    } else {
-      const list = document.createElement('ul');
-      list.className = 'collection-card__list';
-
-      ranking.forEach((entry, index) => {
-        const listItem = document.createElement('li');
-        listItem.className = 'collection-card__list-item';
-
-        const position = document.createElement('span');
-        position.className = 'collection-card__position';
-        const podiumEmoji = getPodiumEmoji(index);
-        position.textContent = podiumEmoji ? `${index + 1}. ${podiumEmoji}` : `${index + 1}.`;
-        listItem.appendChild(position);
-
-        const playerInfo = document.createElement('div');
-        playerInfo.className = 'collection-card__player';
-        const name = document.createElement('strong');
-        name.textContent = entry.player?.fullName || 'Jugador';
-        playerInfo.appendChild(name);
-        const stats = document.createElement('span');
-        stats.textContent = `${entry.points ?? 0} pts · ${entry.wins ?? 0} victorias`;
-        playerInfo.appendChild(stats);
-        listItem.appendChild(playerInfo);
-
-        const matchesPlayed = document.createElement('span');
-        matchesPlayed.className = 'collection-card__points';
-        matchesPlayed.textContent = `${entry.matchesPlayed ?? 0} jugados`;
-        listItem.appendChild(matchesPlayed);
-
-        list.appendChild(listItem);
+    categories.forEach((categorySummary) => {
+      const card = createLeagueRankingCategoryCard({
+        ...categorySummary,
+        league: categorySummary.league || group.league,
       });
+      categoryContainer.appendChild(card);
+    });
 
-      card.appendChild(list);
-    }
-
-    leagueRankingCards.appendChild(card);
+    wrapper.appendChild(categoryContainer);
+    leagueRankingCards.appendChild(wrapper);
+    hasContent = true;
   });
+
+  if (!hasContent) {
+    leagueRankingCards.innerHTML = '<p class="empty-state">Aún no hay categorías disponibles.</p>';
+  }
 }
 
 function renderTournamentDashboard(summary) {
