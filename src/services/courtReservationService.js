@@ -1,7 +1,11 @@
 const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 
-const DEFAULT_RESERVATION_DURATION_MINUTES = 90;
+const DEFAULT_RESERVATION_DURATION_MINUTES = 75;
+const RESERVATION_DAY_START_MINUTE = 8 * 60 + 30;
+const RESERVATION_DAY_END_MINUTE = 21 * 60;
+const INVALID_RESERVATION_SLOT_MESSAGE =
+  'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 21:00.';
 
 function toDate(value) {
   if (!value) {
@@ -25,9 +29,38 @@ function resolveEndsAt(startsAt, endsAt, durationMinutes = DEFAULT_RESERVATION_D
     return { startsAt: startDate, endsAt: endDate };
   }
 
-  const duration = Number.isFinite(Number(durationMinutes)) ? Number(durationMinutes) : DEFAULT_RESERVATION_DURATION_MINUTES;
+  const duration = Number.isFinite(Number(durationMinutes))
+    ? Number(durationMinutes)
+    : DEFAULT_RESERVATION_DURATION_MINUTES;
   const computedEnd = new Date(startDate.getTime() + duration * 60 * 1000);
   return { startsAt: startDate, endsAt: computedEnd };
+}
+
+function minutesFromDayStart(date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function isValidReservationSlot(startDate, endDate) {
+  if (!startDate || !endDate) {
+    return false;
+  }
+
+  if (startDate.toDateString() !== endDate.toDateString()) {
+    return false;
+  }
+
+  const durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / (60 * 1000));
+  if (durationMinutes !== DEFAULT_RESERVATION_DURATION_MINUTES) {
+    return false;
+  }
+
+  const startMinutes = minutesFromDayStart(startDate);
+  const endMinutes = minutesFromDayStart(endDate);
+  if (startMinutes < RESERVATION_DAY_START_MINUTE || endMinutes > RESERVATION_DAY_END_MINUTE) {
+    return false;
+  }
+
+  return (startMinutes - RESERVATION_DAY_START_MINUTE) % DEFAULT_RESERVATION_DURATION_MINUTES === 0;
 }
 
 async function ensureReservationAvailability({
@@ -45,8 +78,23 @@ async function ensureReservationAvailability({
     throw error;
   }
 
-  if (endsAt <= startsAt) {
+  const startDate = toDate(startsAt);
+  const endDate = toDate(endsAt);
+
+  if (!startDate || !endDate) {
+    const error = new Error('Los parámetros de la reserva son inválidos.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (endDate <= startDate) {
     const error = new Error('La hora de finalización debe ser posterior a la de inicio.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!isValidReservationSlot(startDate, endDate)) {
+    const error = new Error(INVALID_RESERVATION_SLOT_MESSAGE);
     error.statusCode = 400;
     throw error;
   }
@@ -55,8 +103,8 @@ async function ensureReservationAvailability({
     court,
     status: RESERVATION_STATUS.RESERVED,
     $and: [
-      { startsAt: { $lt: endsAt } },
-      { endsAt: { $gt: startsAt } },
+      { startsAt: { $lt: endDate } },
+      { endsAt: { $gt: startDate } },
     ],
   };
 
@@ -72,8 +120,8 @@ async function ensureReservationAvailability({
   }
 
   const blockQuery = {
-    startsAt: { $lt: endsAt },
-    endsAt: { $gt: startsAt },
+    startsAt: { $lt: endDate },
+    endsAt: { $gt: startDate },
     $or: [{ courts: { $size: 0 } }, { courts: court }],
   };
 
@@ -217,6 +265,7 @@ async function cancelMatchReservation(matchId, { cancelledBy } = {}) {
 
 module.exports = {
   DEFAULT_RESERVATION_DURATION_MINUTES,
+  INVALID_RESERVATION_SLOT_MESSAGE,
   ensureReservationAvailability,
   upsertMatchReservation,
   cancelMatchReservation,

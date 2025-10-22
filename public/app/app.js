@@ -6,9 +6,11 @@ const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
 const MAX_POSTER_SIZE = 5 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENT_SIZE = 3 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENTS = 5;
-const CALENDAR_TIME_SLOT_MINUTES = 15;
+const COURT_RESERVATION_DEFAULT_DURATION = 75;
+const CALENDAR_TIME_SLOT_MINUTES = COURT_RESERVATION_DEFAULT_DURATION;
 const CALENDAR_TIME_SLOT_STEP_SECONDS = CALENDAR_TIME_SLOT_MINUTES * 60;
-const COURT_RESERVATION_DEFAULT_DURATION = 90;
+const COURT_RESERVATION_FIRST_SLOT_MINUTE = 8 * 60 + 30;
+const COURT_RESERVATION_LAST_SLOT_END_MINUTE = 21 * 60;
 
 const SCHEDULE_LABELS = {
   manana: 'Mañana',
@@ -654,11 +656,11 @@ function setCourtBlockDefaultRange(baseDate = new Date()) {
   }
 
   if (reference.getHours() === 0 && reference.getMinutes() === 0) {
-    reference.setHours(9, 0, 0, 0);
+    reference.setHours(8, 30, 0, 0);
   }
 
   const start = roundDateUpToInterval(reference, CALENDAR_TIME_SLOT_MINUTES);
-  const end = new Date(start.getTime() + COURT_RESERVATION_DEFAULT_DURATION * 60 * 1000);
+  const end = addMinutes(start, COURT_RESERVATION_DEFAULT_DURATION);
   courtBlockStartInput.value = formatDateTimeLocal(start);
   courtBlockEndInput.value = formatDateTimeLocal(end);
 }
@@ -680,13 +682,10 @@ function resetCourtReservationForm() {
 
   const baseDate = roundDateUpToInterval(new Date(), CALENDAR_TIME_SLOT_MINUTES);
   const dateValue = formatDateInput(baseDate);
-  const timeValue = formatTimeInputValue(baseDate);
   if (courtReservationDateInput) {
     courtReservationDateInput.value = dateValue;
   }
-  if (courtReservationTimeInput) {
-    courtReservationTimeInput.value = timeValue;
-  }
+  populateCourtReservationTimeOptions(baseDate, formatTimeInputValue(baseDate));
   if (courtReservationDurationSelect) {
     courtReservationDurationSelect.value = String(COURT_RESERVATION_DEFAULT_DURATION);
   }
@@ -1546,6 +1545,10 @@ const modalClose = document.getElementById('modal-close');
 
 let activeModalCleanup = null;
 let noticeDraftAttachments = [];
+
+if (adminMatchDate) {
+  adminMatchDate.step = String(CALENDAR_TIME_SLOT_STEP_SECONDS);
+}
 
 function translateGender(value) {
   if (value === 'femenino') return 'Femenino';
@@ -4739,6 +4742,12 @@ function startOfWeek(date) {
   return copy;
 }
 
+function addMinutes(date, minutes) {
+  const copy = new Date(date);
+  copy.setMinutes(copy.getMinutes() + minutes);
+  return copy;
+}
+
 function addDays(date, days) {
   const copy = new Date(date);
   copy.setDate(copy.getDate() + days);
@@ -4782,16 +4791,35 @@ function roundDateToInterval(date, minutes = CALENDAR_TIME_SLOT_MINUTES, mode = 
   if (Number.isNaN(base.getTime())) {
     return new Date(NaN);
   }
+
   base.setSeconds(0, 0);
-  const intervalMs = minutes * 60 * 1000;
-  const remainder = base.getTime() % intervalMs;
-  if (remainder === 0) {
-    return base;
+  const dayStart = startOfDay(base);
+  const minutesFromStart = Math.floor((base.getTime() - dayStart.getTime()) / 60000);
+  const firstSlot = COURT_RESERVATION_FIRST_SLOT_MINUTE;
+  const lastSlotStart = COURT_RESERVATION_LAST_SLOT_END_MINUTE - minutes;
+
+  if (minutesFromStart <= firstSlot) {
+    return new Date(dayStart.getTime() + firstSlot * 60 * 1000);
   }
-  if (mode === 'floor') {
-    return new Date(base.getTime() - remainder);
+
+  const offset = Math.max(0, minutesFromStart - firstSlot);
+  const stepCount = mode === 'floor' ? Math.floor(offset / minutes) : Math.ceil(offset / minutes);
+  let slotMinutes = firstSlot + stepCount * minutes;
+
+  if (mode === 'ceil' && slotMinutes > lastSlotStart) {
+    const nextDay = addDays(dayStart, 1);
+    return new Date(nextDay.getTime() + firstSlot * 60 * 1000);
   }
-  return new Date(base.getTime() + (intervalMs - remainder));
+
+  if (slotMinutes > lastSlotStart) {
+    slotMinutes = lastSlotStart;
+  }
+
+  if (slotMinutes < firstSlot) {
+    slotMinutes = firstSlot;
+  }
+
+  return new Date(dayStart.getTime() + slotMinutes * 60 * 1000);
 }
 
 function roundDateUpToInterval(date, minutes = CALENDAR_TIME_SLOT_MINUTES) {
@@ -4831,6 +4859,119 @@ function combineDateAndTime(dateValue, timeValue) {
     return null;
   }
   return date;
+}
+
+function getReservationSlotStartsForDate(baseDate = new Date()) {
+  const reference = new Date(baseDate);
+  if (Number.isNaN(reference.getTime())) {
+    return [];
+  }
+
+  const dayStart = startOfDay(reference);
+  const slots = [];
+  const lastSlotStart = COURT_RESERVATION_LAST_SLOT_END_MINUTE - COURT_RESERVATION_DEFAULT_DURATION;
+  for (
+    let minute = COURT_RESERVATION_FIRST_SLOT_MINUTE;
+    minute <= lastSlotStart;
+    minute += COURT_RESERVATION_DEFAULT_DURATION
+  ) {
+    slots.push(addMinutes(dayStart, minute));
+  }
+  return slots;
+}
+
+function getReservationSlotEnd(start) {
+  return addMinutes(start, COURT_RESERVATION_DEFAULT_DURATION);
+}
+
+function formatReservationSlotLabel(start) {
+  return formatTimeRangeLabel(start, getReservationSlotEnd(start));
+}
+
+function isValidReservationSlotStart(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return false;
+  }
+  const startMinutes = date.getHours() * 60 + date.getMinutes();
+  const earliest = COURT_RESERVATION_FIRST_SLOT_MINUTE;
+  const latestStart = COURT_RESERVATION_LAST_SLOT_END_MINUTE - COURT_RESERVATION_DEFAULT_DURATION;
+  if (startMinutes < earliest || startMinutes > latestStart) {
+    return false;
+  }
+  return (startMinutes - earliest) % COURT_RESERVATION_DEFAULT_DURATION === 0;
+}
+
+function populateCourtReservationTimeOptions(reference, selectedValue, options = {}) {
+  if (!courtReservationTimeInput) {
+    return [];
+  }
+
+  let baseDate;
+  if (reference instanceof Date) {
+    baseDate = new Date(reference);
+  } else if (typeof reference === 'string' && reference) {
+    baseDate = new Date(`${reference}T00:00:00`);
+  } else if (courtReservationDateInput?.value) {
+    baseDate = new Date(`${courtReservationDateInput.value}T00:00:00`);
+  } else {
+    baseDate = new Date();
+  }
+
+  if (Number.isNaN(baseDate.getTime())) {
+    baseDate = new Date();
+  }
+
+  const slots = getReservationSlotStartsForDate(baseDate);
+  const resolvedSelected = selectedValue || courtReservationTimeInput.value || '';
+  const fragment = document.createDocumentFragment();
+  let matchedSelected = false;
+
+  slots.forEach((slot) => {
+    const value = formatTimeInputValue(slot);
+    const option = new Option(formatReservationSlotLabel(slot), value, false, value === resolvedSelected);
+    if (value === resolvedSelected) {
+      matchedSelected = true;
+    }
+    fragment.appendChild(option);
+  });
+
+  courtReservationTimeInput.innerHTML = '';
+
+  if (!slots.length) {
+    const emptyOption = new Option('Sin horarios disponibles', '', true, true);
+    emptyOption.disabled = true;
+    fragment.appendChild(emptyOption);
+    courtReservationTimeInput.appendChild(fragment);
+    courtReservationTimeInput.disabled = true;
+    return slots;
+  }
+
+  courtReservationTimeInput.disabled = false;
+  courtReservationTimeInput.appendChild(fragment);
+
+  if (!matchedSelected && resolvedSelected) {
+    const fallbackDate = combineDateAndTime(formatDateInput(baseDate), resolvedSelected);
+    if (fallbackDate && !Number.isNaN(fallbackDate.getTime())) {
+      const fallbackEnd =
+        options.endsAt instanceof Date && !Number.isNaN(options.endsAt.getTime())
+          ? options.endsAt
+          : getReservationSlotEnd(fallbackDate);
+      const fallbackOption = new Option(
+        formatTimeRangeLabel(fallbackDate, fallbackEnd),
+        resolvedSelected,
+        true,
+        true
+      );
+      courtReservationTimeInput.appendChild(fallbackOption);
+      matchedSelected = true;
+    }
+  }
+
+  if (!matchedSelected) {
+    courtReservationTimeInput.value = formatTimeInputValue(slots[0]);
+  }
+
+  return slots;
 }
 
 function hasActiveLeagues() {
@@ -9748,11 +9889,14 @@ function openReservationEditorFromCalendar(eventData = {}) {
     if (courtReservationDateInput) {
       courtReservationDateInput.value = formatDateInput(start);
     }
-    if (courtReservationTimeInput) {
-      courtReservationTimeInput.value = formatTimeInputValue(start);
-    }
+    const endsAt = eventData.endsAt ? new Date(eventData.endsAt) : undefined;
+    populateCourtReservationTimeOptions(start, formatTimeInputValue(start), { endsAt });
   } else if (state.courtAdminDate && courtReservationDateInput) {
-    courtReservationDateInput.value = formatDateInput(state.courtAdminDate);
+    const adminDate = new Date(state.courtAdminDate);
+    courtReservationDateInput.value = formatDateInput(adminDate);
+    populateCourtReservationTimeOptions(adminDate);
+  } else {
+    populateCourtReservationTimeOptions(new Date());
   }
 
   if (eventData.court && courtReservationCourtSelect) {
@@ -9998,6 +10142,12 @@ function openProposalForm(matchId, triggerButton) {
     const proposedDate = new Date(proposedValue);
     if (Number.isNaN(proposedDate.getTime())) {
       updateError('La fecha indicada no es válida.');
+      proposedInput.focus();
+      return;
+    }
+
+    if (!isValidReservationSlotStart(proposedDate)) {
+      updateError('Selecciona un horario válido entre las 08:30 y las 21:00.');
       proposedInput.focus();
       return;
     }
@@ -14467,6 +14617,22 @@ async function submitMatchFormData({ form, matchId, statusElement, creating = fa
   const isEditing = !creating && Boolean(matchId);
   const payload = buildMatchPayload(formData, isEditing);
 
+  if (payload.scheduledAt) {
+    const scheduledDate = new Date(payload.scheduledAt);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      setStatusMessage(statusElement, 'error', 'Selecciona una fecha y hora válidas.');
+      return false;
+    }
+    if (!isValidReservationSlotStart(scheduledDate)) {
+      setStatusMessage(
+        statusElement,
+        'error',
+        'Selecciona un horario válido de 75 minutos entre las 08:30 y las 21:00.'
+      );
+      return false;
+    }
+  }
+
   const player1 = formData.get('player1');
   const player2 = formData.get('player2');
   const selectedPlayers = [player1, player2].filter(Boolean);
@@ -16805,6 +16971,15 @@ courtReservationForm?.addEventListener('submit', async (event) => {
     return;
   }
 
+  if (!isValidReservationSlotStart(startsAt)) {
+    setStatusMessage(
+      courtReservationStatus,
+      'error',
+      'Selecciona un horario válido de 75 minutos entre las 08:30 y las 21:00.'
+    );
+    return;
+  }
+
   const courtValue = courtReservationCourtSelect?.value || '';
   if (!courtValue) {
     setStatusMessage(courtReservationStatus, 'error', 'Selecciona una pista disponible.');
@@ -16844,6 +17019,15 @@ courtReservationForm?.addEventListener('submit', async (event) => {
     if (courtReservationSubmit) {
       courtReservationSubmit.disabled = false;
     }
+  }
+});
+
+courtReservationDateInput?.addEventListener('change', (event) => {
+  const value = event.target.value;
+  if (value) {
+    populateCourtReservationTimeOptions(value);
+  } else {
+    populateCourtReservationTimeOptions(new Date());
   }
 });
 
