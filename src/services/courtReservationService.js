@@ -266,6 +266,8 @@ async function cancelMatchReservation(matchId, { cancelledBy } = {}) {
 module.exports = {
   DEFAULT_RESERVATION_DURATION_MINUTES,
   INVALID_RESERVATION_SLOT_MESSAGE,
+  RESERVATION_DAY_START_MINUTE,
+  RESERVATION_DAY_END_MINUTE,
   ensureReservationAvailability,
   upsertMatchReservation,
   cancelMatchReservation,
