@@ -1,5 +1,7 @@
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const { League, LEAGUE_STATUS } = require('../models/League');
 const {
   Category,
@@ -9,6 +11,31 @@ const {
   DEFAULT_CATEGORY_MATCH_FORMAT,
 } = require('../models/Category');
 const { GENDERS } = require('../models/User');
+
+const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
+const LEAGUE_POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'leagues');
+
+async function removeFileIfExists(filePath) {
+  if (!filePath) {
+    return;
+  }
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+}
+
+function buildPosterPublicPath(filename) {
+  if (!filename) {
+    return undefined;
+  }
+
+  return path.posix.join('uploads', 'leagues', filename);
+}
 
 async function createLeague(req, res) {
   const errors = validationResult(req);
@@ -20,6 +47,7 @@ async function createLeague(req, res) {
     name,
     year,
     description,
+    poster,
     startDate,
     endDate,
     registrationCloseDate,
@@ -150,6 +178,11 @@ async function createLeague(req, res) {
     categories: distinctCategories.map((id) => new mongoose.Types.ObjectId(id)),
     createdBy: req.user.id,
   };
+
+  const trimmedPoster = typeof poster === 'string' ? poster.trim() : '';
+  if (trimmedPoster) {
+    payload.poster = trimmedPoster;
+  }
 
   if (typeof status !== 'undefined') {
     payload.status = status;
@@ -386,6 +419,7 @@ async function updateLeague(req, res) {
     name,
     year,
     description,
+    poster,
     startDate,
     endDate,
     registrationCloseDate,
@@ -409,6 +443,28 @@ async function updateLeague(req, res) {
 
   if (typeof description !== 'undefined') {
     league.description = description ? description.trim() : undefined;
+  }
+
+  const previousPosterFilename = league.posterFile?.filename;
+  const previousPosterPublicPath = previousPosterFilename
+    ? `/${buildPosterPublicPath(previousPosterFilename)}`
+    : null;
+  let posterFileToRemove = null;
+  if (typeof poster !== 'undefined') {
+    const trimmedPoster = typeof poster === 'string' ? poster.trim() : '';
+    if (trimmedPoster) {
+      if (previousPosterPublicPath && trimmedPoster !== previousPosterPublicPath) {
+        posterFileToRemove = path.join(LEAGUE_POSTER_UPLOAD_DIR, previousPosterFilename);
+        league.posterFile = undefined;
+      }
+      league.poster = trimmedPoster;
+    } else {
+      if (previousPosterFilename) {
+        posterFileToRemove = path.join(LEAGUE_POSTER_UPLOAD_DIR, previousPosterFilename);
+      }
+      league.poster = undefined;
+      league.posterFile = undefined;
+    }
   }
 
   if (typeof startDate !== 'undefined') {
@@ -489,7 +545,52 @@ async function updateLeague(req, res) {
 
   await league.populate('categories', 'name gender skillLevel color');
 
+  if (posterFileToRemove) {
+    await removeFileIfExists(posterFileToRemove);
+  }
+
   return res.json(league);
+}
+
+async function uploadLeaguePoster(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { leagueId } = req.params;
+  const { file } = req;
+
+  if (!file) {
+    return res.status(400).json({ message: 'No se recibió ningún archivo de imagen' });
+  }
+
+  const league = await League.findById(leagueId);
+  if (!league) {
+    await removeFileIfExists(file.path);
+    return res.status(404).json({ message: 'Liga no encontrada' });
+  }
+
+  const previousPosterPath = league.posterFile?.filename
+    ? path.join(LEAGUE_POSTER_UPLOAD_DIR, league.posterFile.filename)
+    : null;
+
+  const relativePosterPath = buildPosterPublicPath(file.filename);
+  league.poster = relativePosterPath ? `/${relativePosterPath}` : undefined;
+  league.posterFile = {
+    filename: file.filename,
+    mimetype: file.mimetype,
+    size: file.size,
+    uploadedAt: new Date(),
+  };
+
+  await league.save();
+
+  if (previousPosterPath) {
+    await removeFileIfExists(previousPosterPath);
+  }
+
+  return res.status(201).json({ poster: league.poster, posterFile: league.posterFile });
 }
 
 async function deleteLeague(req, res) {
@@ -512,7 +613,15 @@ async function deleteLeague(req, res) {
     );
   }
 
+  const posterPath = league.posterFile?.filename
+    ? path.join(LEAGUE_POSTER_UPLOAD_DIR, league.posterFile.filename)
+    : null;
+
   await league.deleteOne();
+
+  if (posterPath) {
+    await removeFileIfExists(posterPath);
+  }
 
   return res.status(204).send();
 }
@@ -523,6 +632,7 @@ module.exports = {
   getLeagueDetail,
   addLeaguePaymentRecord,
   updateLeaguePaymentRecord,
+  uploadLeaguePoster,
   updateLeague,
   deleteLeague,
 };
