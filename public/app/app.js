@@ -675,11 +675,86 @@ function formatScheduleSlotFallbackLabel(dateValue, timeValue) {
   return `Horario seleccionado · ${formatTimeRangeLabel(combined, endsAt)}`;
 }
 
+function isTimeRangeOverlapping(startA, endA, startB, endB) {
+  if (!startA || !endA || !startB || !endB) {
+    return false;
+  }
+
+  return startA < endB && startB < endA;
+}
+
+function parseDateSafe(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isCourtAvailableForSlot(slotStart, slotEnd, { reservations = [], blocks = [] } = {}) {
+  const hasReservationConflict = reservations.some((reservation) => {
+    if (!reservation || reservation.status === 'cancelada') {
+      return false;
+    }
+
+    const reservationStart = parseDateSafe(reservation.startsAt);
+    const reservationEnd = parseDateSafe(reservation.endsAt) ||
+      (reservationStart ? addMinutes(reservationStart, COURT_RESERVATION_DEFAULT_DURATION) : null);
+
+    return isTimeRangeOverlapping(slotStart, slotEnd, reservationStart, reservationEnd);
+  });
+
+  if (hasReservationConflict) {
+    return false;
+  }
+
+  const hasBlockConflict = blocks.some((block) => {
+    const blockStart = parseDateSafe(block?.startsAt);
+    const blockEnd = parseDateSafe(block?.endsAt);
+    return isTimeRangeOverlapping(slotStart, slotEnd, blockStart, blockEnd);
+  });
+
+  return !hasBlockConflict;
+}
+
+function filterSlotsByAvailability(options, { dateValue, availability, availabilityDate }) {
+  if (!Array.isArray(options) || !options.length) {
+    return options;
+  }
+
+  if (!dateValue || !Array.isArray(availability) || !availability.length) {
+    return options;
+  }
+
+  const availabilityDateValue = formatDateInput(availabilityDate);
+  if (!availabilityDateValue || availabilityDateValue !== dateValue) {
+    return options;
+  }
+
+  return options.filter((slot) => {
+    const slotStart = combineDateAndTime(dateValue, slot.value);
+    if (!(slotStart instanceof Date) || Number.isNaN(slotStart.getTime())) {
+      return true;
+    }
+
+    const slotEnd = addMinutes(slotStart, COURT_RESERVATION_DEFAULT_DURATION);
+    return availability.some((entry) =>
+      isCourtAvailableForSlot(slotStart, slotEnd, {
+        reservations: Array.isArray(entry?.reservations) ? entry.reservations : [],
+        blocks: Array.isArray(entry?.blocks) ? entry.blocks : [],
+      })
+    );
+  });
+}
+
 function renderMatchScheduleSlots({
   select,
   dateValue,
   templates = getClubMatchScheduleTemplates(),
   selectedTime = '',
+  availability,
+  availabilityDate,
 } = {}) {
   if (!select) {
     return { matched: false, hasOptions: false };
@@ -712,11 +787,13 @@ function renderMatchScheduleSlots({
     return { matched: false, hasOptions: false };
   }
 
+  const filteredOptions = filterSlotsByAvailability(options, { dateValue, availability, availabilityDate });
+
   const placeholder = new Option('Sin horario (partido pendiente)', '', !selectedTime, !selectedTime);
   select.appendChild(placeholder);
 
   let matched = false;
-  options.forEach((slot) => {
+  filteredOptions.forEach((slot) => {
     const option = new Option(slot.displayLabel || slot.label, slot.value, false, slot.value === selectedTime);
     if (slot.value === selectedTime) {
       matched = true;
@@ -731,13 +808,97 @@ function renderMatchScheduleSlots({
     matched = true;
   }
 
+  if (!filteredOptions.length) {
+    const unavailableOption = new Option('No hay horarios libres para este día', '', false, false);
+    unavailableOption.disabled = true;
+    select.appendChild(unavailableOption);
+  }
+
   select.disabled = false;
 
   if (!matched) {
     select.value = '';
   }
 
-  return { matched: Boolean(selectedTime && matched), hasOptions: true };
+  return { matched: Boolean(selectedTime && matched), hasOptions: filteredOptions.length > 0 };
+}
+
+function getScheduleAvailabilityState(scope = 'player') {
+  if (scope === 'admin') {
+    return { availability: state.courtAdminSchedule || [], date: state.courtAdminDate };
+  }
+
+  return { availability: state.courtAvailability || [], date: state.courtAvailabilityDate };
+}
+
+async function resolveScheduleAvailability({ scope = 'player', dateValue } = {}) {
+  const dateString = typeof dateValue === 'string' ? dateValue : '';
+  const targetDate = dateString ? new Date(`${dateString}T00:00:00`) : null;
+  if (targetDate && Number.isNaN(targetDate.getTime())) {
+    return getScheduleAvailabilityState(scope);
+  }
+
+  const currentState = getScheduleAvailabilityState(scope);
+  const currentDateValue = formatDateInput(currentState.date);
+  const targetDateValue = formatDateInput(targetDate);
+
+  if (!targetDateValue) {
+    return currentState;
+  }
+
+  if (currentDateValue === targetDateValue) {
+    return currentState;
+  }
+
+  if (scope === 'admin') {
+    state.courtAdminDate = targetDate;
+  } else {
+    state.courtAvailabilityDate = targetDate;
+  }
+
+  await refreshCourtAvailability(scope);
+
+  return getScheduleAvailabilityState(scope);
+}
+
+function setScheduleSelectLoading(select) {
+  if (!select) {
+    return;
+  }
+
+  select.innerHTML = '';
+  const option = new Option('Cargando disponibilidad...', '', true, true);
+  option.disabled = true;
+  select.appendChild(option);
+  select.disabled = true;
+}
+
+async function updateMatchScheduleSlots({
+  select,
+  dateValue,
+  templates = getClubMatchScheduleTemplates(),
+  selectedTime = '',
+  scope = 'player',
+} = {}) {
+  if (!select) {
+    return { matched: false, hasOptions: false };
+  }
+
+  if (!dateValue) {
+    return renderMatchScheduleSlots({ select, dateValue, templates, selectedTime });
+  }
+
+  setScheduleSelectLoading(select);
+
+  const { availability, date } = await resolveScheduleAvailability({ scope, dateValue });
+  return renderMatchScheduleSlots({
+    select,
+    dateValue,
+    templates,
+    selectedTime,
+    availability,
+    availabilityDate: date,
+  });
 }
 
 function populateCourtReservationCourts() {
@@ -1790,17 +1951,27 @@ if (adminMatchDatetimeInput) {
 }
 
 if (adminMatchDay && adminMatchSlot) {
-  const handleAdminScheduleDateChange = () => {
-    renderMatchScheduleSlots({
-      select: adminMatchSlot,
-      dateValue: adminMatchDay.value,
-      templates: getClubMatchScheduleTemplates(),
-    });
-    syncAdminMatchScheduledValue();
+  const handleAdminScheduleDateChange = async () => {
+    try {
+      await updateMatchScheduleSlots({
+        select: adminMatchSlot,
+        dateValue: adminMatchDay.value,
+        templates: getClubMatchScheduleTemplates(),
+        scope: 'admin',
+      });
+    } catch (error) {
+      console.warn('No fue posible cargar la disponibilidad de pistas', error);
+    } finally {
+      syncAdminMatchScheduledValue();
+    }
   };
 
-  adminMatchDay.addEventListener('change', handleAdminScheduleDateChange);
-  adminMatchDay.addEventListener('input', handleAdminScheduleDateChange);
+  adminMatchDay.addEventListener('change', () => {
+    handleAdminScheduleDateChange();
+  });
+  adminMatchDay.addEventListener('input', () => {
+    handleAdminScheduleDateChange();
+  });
   adminMatchSlot.addEventListener('change', () => {
     syncAdminMatchScheduledValue();
   });
@@ -10654,42 +10825,54 @@ function openProposalForm(matchId, triggerButton) {
       proposedDayInput.min = minDateString;
     }
 
-    const updateSlotOptions = (selectedTime = '') => {
-      if (!proposedSlotSelect) return;
-      const { hasOptions } = renderMatchScheduleSlots({
+    const updateSlotOptions = async (selectedTime = '') => {
+      if (!proposedSlotSelect) {
+        return { matched: false, hasOptions: false };
+      }
+
+      const result = await updateMatchScheduleSlots({
         select: proposedSlotSelect,
         dateValue: proposedDayInput?.value || '',
         templates: scheduleTemplates,
         selectedTime,
+        scope: 'player',
       });
 
-      if (hasOptions && !proposedSlotSelect.value) {
+      if (result.hasOptions && !proposedSlotSelect.value) {
         const firstAvailable = Array.from(proposedSlotSelect.options).find((option) => option.value);
         if (firstAvailable) {
           proposedSlotSelect.value = firstAvailable.value;
         }
       }
+
+      return result;
     };
 
     if (proposedDayInput) {
       if (defaultDateString) {
         proposedDayInput.value = defaultDateString;
       }
-      proposedDayInput.addEventListener('change', () => {
-        updateSlotOptions();
-        updateError();
-      });
-      proposedDayInput.addEventListener('input', () => {
-        updateSlotOptions();
-        updateError();
-      });
+      const handleDayChange = () => {
+        updateSlotOptions()
+          .catch((error) => {
+            console.warn('No fue posible cargar la disponibilidad de pistas', error);
+          })
+          .finally(() => {
+            updateError();
+          });
+      };
+
+      proposedDayInput.addEventListener('change', handleDayChange);
+      proposedDayInput.addEventListener('input', handleDayChange);
     }
 
     if (proposedSlotSelect) {
       const defaultTimeValue = !Number.isNaN(defaultDateValue.getTime())
         ? formatTimeInputValue(defaultDateValue)
         : '';
-      updateSlotOptions(defaultTimeValue);
+      updateSlotOptions(defaultTimeValue).catch((error) => {
+        console.warn('No fue posible cargar la disponibilidad de pistas', error);
+      });
       proposedSlotSelect.addEventListener('change', () => {
         updateError();
       });
@@ -13769,12 +13952,20 @@ function updateAdminMatchScheduleVisibility({ selectedTime } = {}) {
 
   if (hasTemplates && adminMatchSlot) {
     const dateValue = adminMatchDay?.value || '';
-    renderMatchScheduleSlots({
+    updateMatchScheduleSlots({
       select: adminMatchSlot,
       dateValue,
       templates,
       selectedTime,
-    });
+      scope: 'admin',
+    })
+      .catch((error) => {
+        console.warn('No fue posible cargar la disponibilidad de pistas', error);
+      })
+      .then(() => {
+        syncAdminMatchScheduledValue();
+      });
+    return;
   }
 
   syncAdminMatchScheduledValue();
@@ -16399,22 +16590,32 @@ function openMatchModal(matchId = '') {
       scheduledField.value = dateValue && timeValue ? `${dateValue}T${timeValue}` : '';
     };
 
-    const updateScheduleSlotOptions = (selectedTime = '') => {
-      renderMatchScheduleSlots({
+    const updateScheduleSlotOptions = async (selectedTime = '') => {
+      return updateMatchScheduleSlots({
         select: scheduleSlotField,
         dateValue: scheduleDateField.value,
         templates: scheduleTemplates,
         selectedTime,
+        scope: 'admin',
       });
     };
 
-    const handleScheduleDateChange = () => {
-      updateScheduleSlotOptions('');
-      syncScheduledValue();
+    const handleScheduleDateChange = async () => {
+      try {
+        await updateScheduleSlotOptions('');
+      } catch (error) {
+        console.warn('No fue posible cargar la disponibilidad de pistas', error);
+      } finally {
+        syncScheduledValue();
+      }
     };
 
-    scheduleDateField.addEventListener('change', handleScheduleDateChange);
-    scheduleDateField.addEventListener('input', handleScheduleDateChange);
+    scheduleDateField.addEventListener('change', () => {
+      handleScheduleDateChange();
+    });
+    scheduleDateField.addEventListener('input', () => {
+      handleScheduleDateChange();
+    });
     scheduleSlotField.addEventListener('change', () => {
       syncScheduledValue();
     });
@@ -16425,18 +16626,30 @@ function openMatchModal(matchId = '') {
       if (existingDate) {
         scheduleDateField.value = existingDate;
       }
-      updateScheduleSlotOptions(existingTime || '');
-      if (existingTime) {
-        scheduleSlotField.value = existingTime;
-        if (scheduleSlotField.value !== existingTime) {
-          scheduleSlotField.value = existingTime;
-        }
-      }
+      updateScheduleSlotOptions(existingTime || '')
+        .then((result) => {
+          if (existingTime && !result?.matched && scheduleSlotField.value !== existingTime) {
+            scheduleSlotField.value = existingTime;
+            if (scheduleSlotField.value !== existingTime) {
+              scheduleSlotField.value = existingTime;
+            }
+          }
+        })
+        .catch((error) => {
+          console.warn('No fue posible cargar la disponibilidad de pistas', error);
+        })
+        .finally(() => {
+          syncScheduledValue();
+        });
     } else {
-      updateScheduleSlotOptions('');
+      updateScheduleSlotOptions('')
+        .catch((error) => {
+          console.warn('No fue posible cargar la disponibilidad de pistas', error);
+        })
+        .finally(() => {
+          syncScheduledValue();
+        });
     }
-
-    syncScheduledValue();
   }
   if (courtField) {
     const courtValue = match?.court || '';
