@@ -3,6 +3,7 @@ const STORAGE_KEY = 'cn-sanmarcos-app-session';
 const REMEMBER_CREDENTIALS_KEY = 'cn-sanmarcos-remember-credentials';
 const NOTICE_LAST_SEEN_PREFIX = 'cn-sanmarcos-notices-last-seen:';
 const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
+const MAX_POSTER_SIZE = 5 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENT_SIZE = 3 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENTS = 5;
 const CALENDAR_TIME_SLOT_MINUTES = 15;
@@ -3278,7 +3279,9 @@ async function request(path, { method = 'GET', body, requireAuth = true } = {}) 
     Accept: 'application/json',
   };
 
-  if (body) {
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
+  if (body && !isFormData) {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -3294,7 +3297,7 @@ async function request(path, { method = 'GET', body, requireAuth = true } = {}) 
     response = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
     });
   } catch (error) {
     throw new Error('No fue posible conectar con el servidor.');
@@ -4775,6 +4778,16 @@ function renderLeagues(leagues = []) {
     const leagueId = normalizeId(league);
     if (leagueId) {
       item.dataset.leagueId = leagueId;
+    }
+
+    const posterUrl = typeof league.poster === 'string' ? league.poster.trim() : '';
+    if (posterUrl) {
+      const poster = document.createElement('img');
+      poster.className = 'league-list__poster';
+      poster.src = posterUrl;
+      poster.alt = league.name ? `Cartel de la liga ${league.name}` : 'Cartel de la liga';
+      poster.loading = 'lazy';
+      item.appendChild(poster);
     }
 
     const title = document.createElement('strong');
@@ -12227,6 +12240,13 @@ function buildLeaguePayload(formData, isEditing = false) {
     payload.description = null;
   }
 
+  const poster = (formData.get('poster') || '').trim();
+  if (poster) {
+    payload.poster = poster;
+  } else if (isEditing) {
+    payload.poster = null;
+  }
+
   const startDate = formData.get('startDate');
   if (startDate) {
     payload.startDate = startDate;
@@ -13860,6 +13880,11 @@ function openLeagueModal(leagueId = '') {
       Descripción
       <textarea name="description" rows="2" maxlength="280" placeholder="Detalles opcionales"></textarea>
     </label>
+    <label>
+      Cartel (URL)
+      <input type="url" name="poster" placeholder="https://ejemplo.com/cartel.jpg" />
+      <span class="form-hint">Enlace público opcional a la imagen del cartel.</span>
+    </label>
     <div class="form-grid">
       <label>
         Inicio
@@ -13901,6 +13926,9 @@ function openLeagueModal(leagueId = '') {
     form.elements.status.value = league?.status || 'activa';
   }
   form.elements.description.value = league?.description || '';
+  if (form.elements.poster) {
+    form.elements.poster.value = league?.poster || '';
+  }
   form.elements.startDate.value = formatDateInput(league?.startDate);
   form.elements.endDate.value = formatDateInput(league?.endDate);
   if (form.elements.registrationCloseDate) {
@@ -13942,6 +13970,72 @@ function openLeagueModal(leagueId = '') {
 
     const optionCount = categoriesSelect.options.length || 3;
     categoriesSelect.size = Math.min(8, Math.max(3, optionCount));
+  }
+
+  const formActions = form.querySelector('.form-actions');
+  if (league && normalizedId && formActions) {
+    const uploadSection = document.createElement('div');
+    uploadSection.className = 'form-section league-poster-upload';
+    uploadSection.innerHTML = `
+      <h3>Cartel de la liga</h3>
+      <p class="form-hint">Sube una imagen en formato JPG o PNG (máximo 5&nbsp;MB).</p>
+      <label>
+        Selecciona una imagen
+        <input type="file" name="posterFile" accept="image/*" />
+      </label>
+      <div class="form-actions">
+        <button type="button" class="secondary" data-action="upload-poster">Subir cartel</button>
+      </div>
+    `;
+    const posterUploadStatus = document.createElement('p');
+    posterUploadStatus.className = 'status-message';
+    posterUploadStatus.style.display = 'none';
+    uploadSection.appendChild(posterUploadStatus);
+    formActions.before(uploadSection);
+
+    const uploadButton = uploadSection.querySelector('[data-action="upload-poster"]');
+    const fileInput = uploadSection.querySelector('input[name="posterFile"]');
+    uploadButton?.addEventListener('click', async () => {
+      if (!fileInput?.files?.length) {
+        setStatusMessage(posterUploadStatus, 'error', 'Selecciona una imagen para el cartel.');
+        return;
+      }
+
+      const file = fileInput.files[0];
+      if (!file.type.startsWith('image/')) {
+        setStatusMessage(posterUploadStatus, 'error', 'El archivo seleccionado debe ser una imagen.');
+        return;
+      }
+
+      if (file.size > MAX_POSTER_SIZE) {
+        setStatusMessage(
+          posterUploadStatus,
+          'error',
+          'La imagen supera el tamaño máximo permitido (5 MB).'
+        );
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('poster', file);
+
+      setStatusMessage(posterUploadStatus, 'info', 'Subiendo cartel...');
+
+      try {
+        const result = await request(`/leagues/${normalizedId}/poster`, {
+          method: 'POST',
+          body: formData,
+        });
+        setStatusMessage(posterUploadStatus, 'success', 'Cartel actualizado.');
+        if (form.elements.poster) {
+          form.elements.poster.value = result?.poster || '';
+        }
+        fileInput.value = '';
+        await loadAllData();
+      } catch (error) {
+        setStatusMessage(posterUploadStatus, 'error', error.message);
+      }
+    });
   }
 
   const status = document.createElement('p');

@@ -43,7 +43,7 @@ const { authenticate, authenticateOptional, authorizeRoles } = require('../middl
 const { TOURNAMENT_STATUS } = require('../models/Tournament');
 const { GENDERS } = require('../models/User');
 const { CATEGORY_SKILL_LEVELS } = require('../models/Category');
-const { posterUpload } = require('../middleware/upload');
+const { tournamentPosterUpload } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -109,7 +109,7 @@ router.post(
   '/:tournamentId/poster',
   authorizeRoles('admin'),
   [param('tournamentId').isMongoId()],
-  posterUpload.single('poster'),
+  tournamentPosterUpload.single('poster'),
   uploadTournamentPoster
 );
 
