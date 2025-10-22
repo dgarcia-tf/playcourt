@@ -2439,11 +2439,13 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   item.className = 'league-payment-item';
   const statusValue = entry.status || 'pendiente';
   item.dataset.paymentStatus = statusValue;
-  if (statusValue !== 'pagado') {
-    item.open = true;
-  }
+  // Mostrar todos los pagos contraídos por defecto para resaltar solo la cabecera
+  // y permitir que el usuario expanda manualmente cualquier registro sin desplegar
+  // las secciones principales de pendientes y registrados.
+  item.open = false;
 
   const summary = document.createElement('summary');
+  summary.setAttribute('aria-expanded', 'false');
 
   const header = document.createElement('div');
   header.className = 'league-payment-header';
@@ -2483,6 +2485,10 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
 
   summary.appendChild(headerMeta);
   item.appendChild(summary);
+
+  item.addEventListener('toggle', () => {
+    summary.setAttribute('aria-expanded', item.open ? 'true' : 'false');
+  });
 
   const body = document.createElement('div');
   body.className = 'league-payment-body';
