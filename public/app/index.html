@@ -1577,161 +1577,6 @@
               </div>
             </section>
             <section id="section-account" class="app-section" hidden>
-              <article class="card">
-                <div class="card-header">
-                  <div>
-                    <h3>Mi cuenta</h3>
-                    <p class="card-subtitle">Consulta tus datos y edítalos cuando lo necesites.</p>
-                  </div>
-                  <button id="profile-edit" type="button" class="secondary">Editar datos</button>
-                </div>
-                <div class="account-wrapper">
-                  <div class="account-overview" id="account-overview">
-                    <div class="account-photo" id="account-photo" aria-hidden="true"></div>
-                    <dl class="account-list">
-                      <div>
-                        <dt>Nombre completo</dt>
-                        <dd id="account-full-name"></dd>
-                      </div>
-                      <div>
-                        <dt>Correo electrónico</dt>
-                        <dd id="account-email"></dd>
-                      </div>
-                      <div>
-                        <dt>Teléfono</dt>
-                        <dd id="account-phone"></dd>
-                      </div>
-                      <div>
-                        <dt>Socio del club</dt>
-                        <dd id="account-membership"></dd>
-                      </div>
-                      <div id="account-membership-number-row" hidden>
-                        <dt>Nº de socio</dt>
-                        <dd id="account-membership-number"></dd>
-                      </div>
-                      <div>
-                        <dt>Fecha de nacimiento</dt>
-                        <dd id="account-birth-date"></dd>
-                      </div>
-                      <div>
-                        <dt>Horario preferido</dt>
-                        <dd id="account-schedule"></dd>
-                      </div>
-                      <div>
-                        <dt>Notas</dt>
-                        <dd id="account-notes"></dd>
-                      </div>
-                      <div>
-                        <dt>Notificaciones push</dt>
-                        <dd id="account-push-status">Sin configurar</dd>
-                      </div>
-                    </dl>
-                  </div>
-                  <form id="profile-form" class="form profile-form" hidden>
-                    <div class="form-grid">
-                      <label>
-                        Nombre completo
-                        <input type="text" name="fullName" minlength="3" required />
-                      </label>
-                      <label>
-                        Correo electrónico
-                        <input type="email" name="email" required />
-                      </label>
-                    </div>
-                    <div class="form-grid">
-                      <label>
-                        Teléfono de contacto
-                        <input type="tel" name="phone" minlength="7" required />
-                      </label>
-                      <label>
-                        Horario preferido
-                        <select name="preferredSchedule" required>
-                          <option value="manana">Mañana</option>
-                          <option value="tarde">Tarde</option>
-                          <option value="noche">Noche</option>
-                          <option value="fin_de_semana">Fin de semana</option>
-                          <option value="flexible">Flexible</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div class="form-grid">
-                      <label>
-                        Género
-                        <select name="gender" required>
-                          <option value="masculino">Masculino</option>
-                          <option value="femenino">Femenino</option>
-                        </select>
-                      </label>
-                      <label>
-                        Fecha de nacimiento
-                        <input type="date" name="birthDate" required />
-                      </label>
-                    </div>
-                    <div class="form-grid">
-                      <label class="checkbox-option checkbox-option--stacked">
-                        <input type="checkbox" name="isMember" id="profile-is-member" value="true" />
-                        Soy socio del club
-                        <span class="form-hint">Marca esta opción si dispones de número de socio.</span>
-                      </label>
-                      <label id="profile-membership-wrapper" hidden>
-                        Nº de socio
-                        <input type="text" name="membershipNumber" id="profile-membership-number" maxlength="50" />
-                        <span class="form-hint">Introduce el número asignado por el club.</span>
-                      </label>
-                    </div>
-                    <label>
-                      Fotografía
-                      <input type="file" name="photo" accept="image/*" />
-                      <span class="form-hint">La imagen se guarda en Base64 con un límite de 2&nbsp;MB.</span>
-                    </label>
-                    <label>
-                      Notas
-                      <textarea name="notes" rows="2" maxlength="500" placeholder="Preferencias adicionales"></textarea>
-                    </label>
-                    <div class="form-grid form-grid--stacked">
-                      <label class="checkbox-option">
-                        <input type="checkbox" name="notifyMatchRequests" value="true" />
-                        Avisarme cuando reciba solicitudes de partido
-                      </label>
-                      <label class="checkbox-option">
-                        <input type="checkbox" name="notifyMatchResults" value="true" />
-                        Notificarme cuando se confirme un resultado
-                      </label>
-                    </div>
-                    <label>
-                      Actualizar contraseña (opcional)
-                      <input type="password" name="password" minlength="8" placeholder="Deja vacío para mantener la actual" />
-                    </label>
-                    <div class="form-actions">
-                      <button type="submit" class="primary">Guardar cambios</button>
-                      <button type="button" id="profile-cancel" class="ghost">Cancelar</button>
-                    </div>
-                  </form>
-                </div>
-                <p class="status-message" id="profile-status"></p>
-              </article>
-              <article class="card" id="push-settings-card">
-                <div class="card-header">
-                  <h3>Notificaciones push</h3>
-                </div>
-                <p class="card-subtitle" id="push-status-text">
-                  Activa las notificaciones push para recibir avisos inmediatos en este dispositivo.
-                </p>
-                <div class="card-actions">
-                  <button type="button" class="primary" id="push-enable-button">Activar notificaciones</button>
-                  <button type="button" class="ghost" id="push-disable-button" hidden>
-                    Desactivar notificaciones
-                  </button>
-                </div>
-                <p class="form-hint" id="push-permission-warning" hidden>
-                  Has bloqueado las notificaciones en el navegador. Reactívalas desde la configuración del sitio
-                  para volver a habilitarlas.
-                </p>
-                <p class="form-hint" id="push-unsupported-warning" hidden>
-                  Tu navegador no es compatible con las notificaciones push. Prueba en un dispositivo o navegador
-                  actualizado.
-                </p>
-              </article>
               <article class="card" id="account-dashboard-card">
                 <div class="card-header">
                   <div>
@@ -1811,6 +1656,163 @@
                 </div>
                 <p class="status-message" id="account-dashboard-status"></p>
               </article>
+              <div class="account-section__columns">
+                <article class="card">
+                  <div class="card-header">
+                    <div>
+                      <h3>Mi cuenta</h3>
+                      <p class="card-subtitle">Consulta tus datos y edítalos cuando lo necesites.</p>
+                    </div>
+                    <button id="profile-edit" type="button" class="secondary">Editar datos</button>
+                  </div>
+                  <div class="account-wrapper">
+                    <div class="account-overview" id="account-overview">
+                      <div class="account-photo" id="account-photo" aria-hidden="true"></div>
+                      <dl class="account-list">
+                        <div>
+                          <dt>Nombre completo</dt>
+                          <dd id="account-full-name"></dd>
+                        </div>
+                        <div>
+                          <dt>Correo electrónico</dt>
+                          <dd id="account-email"></dd>
+                        </div>
+                        <div>
+                          <dt>Teléfono</dt>
+                          <dd id="account-phone"></dd>
+                        </div>
+                        <div>
+                          <dt>Socio del club</dt>
+                          <dd id="account-membership"></dd>
+                        </div>
+                        <div id="account-membership-number-row" hidden>
+                          <dt>Nº de socio</dt>
+                          <dd id="account-membership-number"></dd>
+                        </div>
+                        <div>
+                          <dt>Fecha de nacimiento</dt>
+                          <dd id="account-birth-date"></dd>
+                        </div>
+                        <div>
+                          <dt>Horario preferido</dt>
+                          <dd id="account-schedule"></dd>
+                        </div>
+                        <div>
+                          <dt>Notas</dt>
+                          <dd id="account-notes"></dd>
+                        </div>
+                        <div>
+                          <dt>Notificaciones push</dt>
+                          <dd id="account-push-status">Sin configurar</dd>
+                        </div>
+                      </dl>
+                    </div>
+                    <form id="profile-form" class="form profile-form" hidden>
+                      <div class="form-grid">
+                        <label>
+                          Nombre completo
+                          <input type="text" name="fullName" minlength="3" required />
+                        </label>
+                        <label>
+                          Correo electrónico
+                          <input type="email" name="email" required />
+                        </label>
+                      </div>
+                      <div class="form-grid">
+                        <label>
+                          Teléfono de contacto
+                          <input type="tel" name="phone" minlength="7" required />
+                        </label>
+                        <label>
+                          Horario preferido
+                          <select name="preferredSchedule" required>
+                            <option value="manana">Mañana</option>
+                            <option value="tarde">Tarde</option>
+                            <option value="noche">Noche</option>
+                            <option value="fin_de_semana">Fin de semana</option>
+                            <option value="flexible">Flexible</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div class="form-grid">
+                        <label>
+                          Género
+                          <select name="gender" required>
+                            <option value="masculino">Masculino</option>
+                            <option value="femenino">Femenino</option>
+                          </select>
+                        </label>
+                        <label>
+                          Fecha de nacimiento
+                          <input type="date" name="birthDate" required />
+                        </label>
+                      </div>
+                      <div class="form-grid">
+                        <label class="checkbox-option checkbox-option--stacked">
+                          <input type="checkbox" name="isMember" id="profile-is-member" value="true" />
+                          Soy socio del club
+                          <span class="form-hint">Marca esta opción si dispones de número de socio.</span>
+                        </label>
+                        <label id="profile-membership-wrapper" hidden>
+                          Nº de socio
+                          <input type="text" name="membershipNumber" id="profile-membership-number" maxlength="50" />
+                          <span class="form-hint">Introduce el número asignado por el club.</span>
+                        </label>
+                      </div>
+                      <label>
+                        Fotografía
+                        <input type="file" name="photo" accept="image/*" />
+                        <span class="form-hint">La imagen se guarda en Base64 con un límite de 2&nbsp;MB.</span>
+                      </label>
+                      <label>
+                        Notas
+                        <textarea name="notes" rows="2" maxlength="500" placeholder="Preferencias adicionales"></textarea>
+                      </label>
+                      <div class="form-grid form-grid--stacked">
+                        <label class="checkbox-option">
+                          <input type="checkbox" name="notifyMatchRequests" value="true" />
+                          Avisarme cuando reciba solicitudes de partido
+                        </label>
+                        <label class="checkbox-option">
+                          <input type="checkbox" name="notifyMatchResults" value="true" />
+                          Notificarme cuando se confirme un resultado
+                        </label>
+                      </div>
+                      <label>
+                        Actualizar contraseña (opcional)
+                        <input type="password" name="password" minlength="8" placeholder="Deja vacío para mantener la actual" />
+                      </label>
+                      <div class="form-actions">
+                        <button type="submit" class="primary">Guardar cambios</button>
+                        <button type="button" id="profile-cancel" class="ghost">Cancelar</button>
+                      </div>
+                    </form>
+                  </div>
+                  <p class="status-message" id="profile-status"></p>
+                </article>
+                <article class="card" id="push-settings-card">
+                  <div class="card-header">
+                    <h3>Notificaciones push</h3>
+                  </div>
+                  <p class="card-subtitle" id="push-status-text">
+                    Activa las notificaciones push para recibir avisos inmediatos en este dispositivo.
+                  </p>
+                  <div class="card-actions">
+                    <button type="button" class="primary" id="push-enable-button">Activar notificaciones</button>
+                    <button type="button" class="ghost" id="push-disable-button" hidden>
+                      Desactivar notificaciones
+                    </button>
+                  </div>
+                  <p class="form-hint" id="push-permission-warning" hidden>
+                    Has bloqueado las notificaciones en el navegador. Reactívalas desde la configuración del sitio
+                    para volver a habilitarlas.
+                  </p>
+                  <p class="form-hint" id="push-unsupported-warning" hidden>
+                    Tu navegador no es compatible con las notificaciones push. Prueba en un dispositivo o navegador
+                    actualizado.
+                  </p>
+                </article>
+              </div>
             </section>
           </div>
         </div>
