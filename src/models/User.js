@@ -78,6 +78,25 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    isMember: {
+      type: Boolean,
+      default: false,
+    },
+    membershipNumber: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+      unique: true,
+      sparse: true,
+      set: (value) => {
+        if (typeof value !== 'string') {
+          return value;
+        }
+
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : undefined;
+      },
+    },
     photo: {
       type: String,
       trim: true,

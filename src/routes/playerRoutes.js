@@ -55,6 +55,25 @@ router.post(
       .isIn(Object.values(PREFERRED_SCHEDULES))
       .withMessage('Horario preferido inválido'),
     body('notes').optional().isString().trim().isLength({ max: 500 }),
+    body('isMember')
+      .optional()
+      .customSanitizer(sanitizeBoolean)
+      .custom((value) => typeof value === 'boolean')
+      .withMessage('El indicador de socio es inválido'),
+    body('membershipNumber')
+      .optional()
+      .isString()
+      .withMessage('El número de socio debe ser un texto')
+      .bail()
+      .trim()
+      .isLength({ max: 50 })
+      .withMessage('El número de socio es demasiado largo')
+      .custom((value, { req }) => {
+        if (req.body.isMember && !value) {
+          throw new Error('El número de socio es obligatorio para socios');
+        }
+        return true;
+      }),
     body('notifyMatchRequests')
       .optional()
       .customSanitizer(sanitizeBoolean)
@@ -101,6 +120,25 @@ router.patch(
       .isIn(Object.values(PREFERRED_SCHEDULES))
       .withMessage('Horario preferido inválido'),
     body('notes').optional().isString().trim().isLength({ max: 500 }),
+    body('isMember')
+      .optional()
+      .customSanitizer(sanitizeBoolean)
+      .custom((value) => typeof value === 'boolean')
+      .withMessage('El indicador de socio es inválido'),
+    body('membershipNumber')
+      .optional()
+      .isString()
+      .withMessage('El número de socio debe ser un texto')
+      .bail()
+      .trim()
+      .isLength({ max: 50 })
+      .withMessage('El número de socio es demasiado largo')
+      .custom((value, { req }) => {
+        if (req.body.isMember && !value) {
+          throw new Error('El número de socio es obligatorio para socios');
+        }
+        return true;
+      }),
     body('notifyMatchRequests')
       .optional()
       .customSanitizer(sanitizeBoolean)
