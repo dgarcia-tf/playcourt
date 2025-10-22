@@ -10552,6 +10552,8 @@ function openProposalForm(matchId, triggerButton) {
   form.className = 'proposal-form';
 
   const dateInputId = `proposal-${matchId}-datetime`;
+  const dayInputId = `${dateInputId}-day`;
+  const slotInputId = `${dateInputId}-slot`;
   const courtInputId = `proposal-${matchId}-court`;
   const messageInputId = `proposal-${matchId}-message`;
 
@@ -10574,12 +10576,31 @@ function openProposalForm(matchId, triggerButton) {
     </div>
   `;
 
-  form.innerHTML = `
-    <h4>Proponer fecha y hora</h4>
+  const scheduleTemplates = getClubMatchScheduleTemplates();
+  const hasScheduleTemplates = Array.isArray(scheduleTemplates) && scheduleTemplates.length > 0;
+  const scheduleFieldMarkup = hasScheduleTemplates
+    ? `
+    <div class="proposal-form__field">
+      <label for="${dayInputId}">Día del partido</label>
+      <input type="date" id="${dayInputId}" name="proposedDay" required />
+    </div>
+    <div class="proposal-form__field">
+      <label for="${slotInputId}">Franja horaria</label>
+      <select id="${slotInputId}" name="proposedSlot" required disabled>
+        <option value="">Selecciona un día para ver horarios disponibles</option>
+      </select>
+    </div>
+  `
+    : `
     <div class="proposal-form__field">
       <label for="${dateInputId}">Fecha y hora</label>
       <input type="datetime-local" id="${dateInputId}" name="proposedFor" required step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
     </div>
+  `;
+
+  form.innerHTML = `
+    <h4>Proponer fecha y hora</h4>
+    ${scheduleFieldMarkup}
     ${courtFieldMarkup}
     <div class="proposal-form__field">
       <label for="${messageInputId}">Mensaje (opcional)</label>
@@ -10592,7 +10613,9 @@ function openProposalForm(matchId, triggerButton) {
     </div>
   `;
 
-  const proposedInput = form.querySelector('input[name="proposedFor"]');
+  const proposedInput = hasScheduleTemplates ? null : form.querySelector('input[name="proposedFor"]');
+  const proposedDayInput = hasScheduleTemplates ? form.querySelector('input[name="proposedDay"]') : null;
+  const proposedSlotSelect = hasScheduleTemplates ? form.querySelector('select[name="proposedSlot"]') : null;
   const courtInput = form.querySelector('[name="court"]');
   const messageInput = form.querySelector('textarea[name="message"]');
   const cancelButton = form.querySelector('button[data-action="cancel"]');
@@ -10613,12 +10636,67 @@ function openProposalForm(matchId, triggerButton) {
   );
   if (proposedInput) {
     proposedInput.step = String(CALENDAR_TIME_SLOT_STEP_SECONDS);
+    if (!Number.isNaN(defaultDateValue.getTime())) {
+      proposedInput.value = formatDateTimeLocal(defaultDateValue);
+    }
+    if (!Number.isNaN(minDateValue.getTime())) {
+      proposedInput.min = formatDateTimeLocal(minDateValue);
+    }
   }
-  if (proposedInput && !Number.isNaN(defaultDateValue.getTime())) {
-    proposedInput.value = formatDateTimeLocal(defaultDateValue);
-  }
-  if (proposedInput && !Number.isNaN(minDateValue.getTime())) {
-    proposedInput.min = formatDateTimeLocal(minDateValue);
+
+  if (hasScheduleTemplates) {
+    const defaultDateString = !Number.isNaN(defaultDateValue.getTime())
+      ? formatDateInput(defaultDateValue)
+      : '';
+    const minDateString = !Number.isNaN(minDateValue.getTime()) ? formatDateInput(minDateValue) : '';
+
+    if (proposedDayInput && minDateString) {
+      proposedDayInput.min = minDateString;
+    }
+
+    const updateSlotOptions = (selectedTime = '') => {
+      if (!proposedSlotSelect) return;
+      const { hasOptions } = renderMatchScheduleSlots({
+        select: proposedSlotSelect,
+        dateValue: proposedDayInput?.value || '',
+        templates: scheduleTemplates,
+        selectedTime,
+      });
+
+      if (hasOptions && !proposedSlotSelect.value) {
+        const firstAvailable = Array.from(proposedSlotSelect.options).find((option) => option.value);
+        if (firstAvailable) {
+          proposedSlotSelect.value = firstAvailable.value;
+        }
+      }
+    };
+
+    if (proposedDayInput) {
+      if (defaultDateString) {
+        proposedDayInput.value = defaultDateString;
+      }
+      proposedDayInput.addEventListener('change', () => {
+        updateSlotOptions();
+        updateError();
+      });
+      proposedDayInput.addEventListener('input', () => {
+        updateSlotOptions();
+        updateError();
+      });
+    }
+
+    if (proposedSlotSelect) {
+      const defaultTimeValue = !Number.isNaN(defaultDateValue.getTime())
+        ? formatTimeInputValue(defaultDateValue)
+        : '';
+      updateSlotOptions(defaultTimeValue);
+      proposedSlotSelect.addEventListener('change', () => {
+        updateError();
+      });
+      proposedSlotSelect.addEventListener('input', () => {
+        updateError();
+      });
+    }
   }
 
   cancelButton?.addEventListener('click', (event) => {
@@ -10630,28 +10708,67 @@ function openProposalForm(matchId, triggerButton) {
     event.preventDefault();
     updateError();
 
-    if (!proposedInput) {
-      updateError('Indica la fecha y hora de la propuesta.');
-      return;
+    let proposedDate = null;
+
+    if (hasScheduleTemplates) {
+      const dayValue = proposedDayInput?.value || '';
+      if (!dayValue) {
+        updateError('Selecciona el día del partido.');
+        proposedDayInput?.focus();
+        return;
+      }
+
+      const slotValue = proposedSlotSelect?.value || '';
+      if (!slotValue) {
+        updateError('Selecciona una franja horaria.');
+        proposedSlotSelect?.focus();
+        return;
+      }
+
+      proposedDate = combineDateAndTime(dayValue, slotValue);
+      if (!(proposedDate instanceof Date) || Number.isNaN(proposedDate.getTime())) {
+        updateError('La combinación de día y franja no es válida.');
+        proposedSlotSelect?.focus();
+        return;
+      }
+    } else {
+      if (!proposedInput) {
+        updateError('Indica la fecha y hora de la propuesta.');
+        return;
+      }
+
+      const proposedValue = proposedInput.value;
+      if (!proposedValue) {
+        updateError('Indica la fecha y hora de la propuesta.');
+        proposedInput.focus();
+        return;
+      }
+
+      proposedDate = new Date(proposedValue);
+      if (Number.isNaN(proposedDate.getTime())) {
+        updateError('La fecha indicada no es válida.');
+        proposedInput.focus();
+        return;
+      }
     }
 
-    const proposedValue = proposedInput.value;
-    if (!proposedValue) {
-      updateError('Indica la fecha y hora de la propuesta.');
-      proposedInput.focus();
-      return;
-    }
-
-    const proposedDate = new Date(proposedValue);
-    if (Number.isNaN(proposedDate.getTime())) {
-      updateError('La fecha indicada no es válida.');
-      proposedInput.focus();
+    if (proposedDate && !Number.isNaN(minDateValue.getTime()) && proposedDate < minDateValue) {
+      updateError('Selecciona una fecha futura.');
+      if (hasScheduleTemplates) {
+        proposedDayInput?.focus();
+      } else {
+        proposedInput?.focus();
+      }
       return;
     }
 
     if (!isValidReservationSlotStart(proposedDate)) {
       updateError('Selecciona un horario válido entre las 08:30 y las 21:00.');
-      proposedInput.focus();
+      if (hasScheduleTemplates) {
+        proposedSlotSelect?.focus();
+      } else {
+        proposedInput?.focus();
+      }
       return;
     }
 
@@ -10696,7 +10813,11 @@ function openProposalForm(matchId, triggerButton) {
   activeProposalMatchId = matchId;
 
   listItem.appendChild(form);
-  proposedInput?.focus();
+  if (hasScheduleTemplates) {
+    (proposedDayInput || proposedSlotSelect)?.focus();
+  } else {
+    proposedInput?.focus();
+  }
 }
 
 function renderMyMatches(matches = []) {
@@ -16026,9 +16147,6 @@ function openMatchModal(matchId = '') {
         <select name="scheduledSlot" data-match-schedule="slot" disabled>
           <option value="">Selecciona un día para ver horarios</option>
         </select>
-        <span class="form-hint">
-          Las franjas provienen de los horarios preferentes del club. Deja la franja vacía para mantener el partido pendiente.
-        </span>
       </label>
     </div>
     <input type="hidden" name="scheduledAt" />
