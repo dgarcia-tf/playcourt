@@ -1695,6 +1695,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   flex-wrap: wrap;
   color: var(--text-secondary);
   font-size: 0.85rem;
+  margin-left: auto;
 }
 
 .league-payment-header-meta .tag {
