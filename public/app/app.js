@@ -1466,6 +1466,9 @@ const leaguePaymentsSearchInput = document.getElementById('league-payments-searc
 const leaguePaymentsEmpty = document.getElementById('league-payments-empty');
 const leaguePaymentsFeeBadge = document.getElementById('league-payments-fee');
 const leaguePaymentsStatusMessage = document.getElementById('league-payments-status');
+const leaguePaymentsGroupSections = leaguePaymentsGroups
+  ? Array.from(leaguePaymentsGroups.querySelectorAll('.league-payments-group'))
+  : [];
 const playerDirectoryList = document.getElementById('user-directory-list');
 const playerDirectoryCount = document.getElementById('user-directory-count');
 const playerDirectorySearch = document.getElementById('user-directory-search');
@@ -1941,6 +1944,15 @@ function calculateLeaguePaymentTotal(entries = []) {
     const amount = Number(entry?.amount);
     return Number.isFinite(amount) ? total + amount : total;
   }, 0);
+}
+
+function setLeaguePaymentsGroupCollapsed(section, collapsed) {
+  if (!section) return;
+  section.classList.toggle('league-payments-group--collapsed', collapsed);
+  const toggle = section.querySelector('[data-league-payments-group-toggle]');
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
 }
 
 function resetLeaguePaymentGroups() {
@@ -16550,6 +16562,17 @@ leaguePlayersGender?.addEventListener('change', (event) => {
   filters.gender = event.target.value || '';
   refreshLeaguePlayers().catch((error) => {
     console.warn('No se pudo actualizar el listado de jugadores de liga', error);
+  });
+});
+
+leaguePaymentsGroupSections.forEach((section) => {
+  const toggle = section?.querySelector('[data-league-payments-group-toggle]');
+  if (!toggle) return;
+  const defaultCollapsed = section.dataset.defaultCollapsed === 'true';
+  setLeaguePaymentsGroupCollapsed(section, defaultCollapsed);
+  toggle.addEventListener('click', () => {
+    const isCollapsed = section.classList.contains('league-payments-group--collapsed');
+    setLeaguePaymentsGroupCollapsed(section, !isCollapsed);
   });
 });
 
