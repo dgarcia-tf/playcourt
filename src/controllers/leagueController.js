@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const { League, LEAGUE_STATUS } = require('../models/League');
+const { refreshLeagueStatusIfExpired } = require('../services/leagueStatusService');
 const {
   Category,
   CATEGORY_STATUSES,
@@ -263,15 +264,18 @@ async function getLeagueOverview(req, res) {
 
   const leagueQuery = normalizedLeagueIds.length ? { _id: { $in: normalizedLeagueIds } } : {};
 
-  const leagues = await League.find(leagueQuery).lean();
+  const leagueDocuments = await League.find(leagueQuery);
+  await Promise.all(leagueDocuments.map((league) => refreshLeagueStatusIfExpired(league)));
 
-  if (!leagues.length) {
+  if (!leagueDocuments.length) {
     return res.json({
       active: [],
       archived: [],
       rankingFilters: { active: [], finished: [], all: [] },
     });
   }
+
+  const leagues = leagueDocuments.map((league) => league.toObject());
 
   const leagueIds = leagues.map((league) => league._id);
 
@@ -497,14 +501,17 @@ async function listLeagues(req, res) {
     query.year = Number(year);
   }
 
-  if (status) {
-    query.status = status;
-  }
-
   const leagues = await League.find(query).populate(
     'categories',
     'name gender skillLevel color matchFormat'
   );
+
+  await Promise.all(leagues.map((league) => refreshLeagueStatusIfExpired(league)));
+
+  const filteredLeagues =
+    status && typeof status === 'string'
+      ? leagues.filter((league) => league.status === status)
+      : leagues;
 
   const toTimestamp = (value) => {
     if (!value) {
@@ -540,7 +547,7 @@ async function listLeagues(req, res) {
   const compareByName = (a, b) =>
     String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' });
 
-  leagues.sort((a, b) => {
+  filteredLeagues.sort((a, b) => {
     const aActive = a.status === LEAGUE_STATUS.ACTIVE;
     const bActive = b.status === LEAGUE_STATUS.ACTIVE;
     if (aActive !== bActive) {
@@ -562,7 +569,7 @@ async function listLeagues(req, res) {
     return compareByName(a, b);
   });
 
-  return res.json(leagues);
+  return res.json(filteredLeagues);
 }
 
 async function getLeagueDetail(req, res) {
@@ -580,6 +587,8 @@ async function getLeagueDetail(req, res) {
   if (!league) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
+
+  await refreshLeagueStatusIfExpired(league);
 
   const result = league.toObject();
   const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
@@ -611,6 +620,8 @@ async function listLeagueEnrollments(req, res) {
   if (!league) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
+
+  await refreshLeagueStatusIfExpired(league);
 
   const categories = await Category.find({ league: leagueId }).select(
     'name gender skillLevel color matchFormat status minimumAge'
