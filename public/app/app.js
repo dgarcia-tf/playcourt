@@ -2120,6 +2120,7 @@ function translateSchedule(value) {
 function translateRole(role) {
   if (role === 'admin') return 'Administrador';
   if (role === 'player') return 'Jugador';
+  if (role === 'court_manager') return 'Gestor de pistas';
   return role;
 }
 
@@ -5092,11 +5093,13 @@ function applySetupState() {
   roleInputs.forEach((input) => {
     const isPlayerOption = input.value === 'player';
     const isAdminOption = input.value === 'admin';
-    input.disabled = isAdminOption;
+    const isCourtManagerOption = input.value === 'court_manager';
+    const isRestrictedOption = isAdminOption || isCourtManagerOption;
+    input.disabled = isRestrictedOption;
     input.checked = isPlayerOption;
     const wrapper = input.closest('.checkbox-option');
     if (wrapper) {
-      wrapper.hidden = isAdminOption;
+      wrapper.hidden = isRestrictedOption;
     }
   });
   registerRoleWrapper.dataset.locked = 'false';
@@ -16742,6 +16745,16 @@ function buildPlayerPayload(formData, isEditing = false) {
   payload.notifyMatchRequests = formData.has('notifyMatchRequests');
   payload.notifyMatchResults = formData.has('notifyMatchResults');
 
+  const isMember = formData.has('isMember');
+  payload.isMember = isMember;
+
+  const membershipNumber = (formData.get('membershipNumber') || '').trim();
+  if (isMember) {
+    payload.membershipNumber = membershipNumber;
+  } else if (isEditing) {
+    payload.membershipNumber = '';
+  }
+
   const password = formData.get('password');
   if (password) {
     payload.password = password;
@@ -16761,6 +16774,15 @@ async function submitPlayerFormData({ form, playerId, statusElement }) {
       statusElement,
       'error',
       'Nombre, correo, teléfono y fecha de nacimiento son obligatorios.'
+    );
+    return false;
+  }
+
+  if (payload.isMember && !payload.membershipNumber) {
+    setStatusMessage(
+      statusElement,
+      'error',
+      'Indica el número de socio para los usuarios marcados como socios.'
     );
     return false;
   }
@@ -17472,6 +17494,10 @@ function openPlayerModal(playerId = '') {
           Jugador
         </label>
         <label class="checkbox-option">
+          <input type="checkbox" name="roles" value="court_manager" />
+          Gestor de pistas
+        </label>
+        <label class="checkbox-option">
           <input type="checkbox" name="roles" value="admin" />
           Administrador
         </label>
@@ -17494,6 +17520,18 @@ function openPlayerModal(playerId = '') {
       Horario preferido
       <select name="preferredSchedule" required>${scheduleOptions}</select>
     </label>
+    <div class="form-grid">
+      <label class="checkbox-option checkbox-option--stacked">
+        <input type="checkbox" name="isMember" value="true" />
+        Es socio del club
+        <span class="form-hint">Marca esta opción si dispone de número de socio.</span>
+      </label>
+      <label data-membership-wrapper hidden>
+        Nº de socio
+        <input type="text" name="membershipNumber" maxlength="50" />
+        <span class="form-hint">Introduce el número asignado por el club.</span>
+      </label>
+    </div>
     <label>
       Notas
       <textarea name="notes" rows="2" maxlength="500" placeholder="Preferencias adicionales"></textarea>
@@ -17545,6 +17583,30 @@ function openPlayerModal(playerId = '') {
       input.checked = false;
     }
   });
+
+  const membershipCheckbox = form.elements.isMember;
+  const membershipWrapper = form.querySelector('[data-membership-wrapper]');
+  const membershipInput = form.elements.membershipNumber;
+
+  if (membershipCheckbox) {
+    membershipCheckbox.checked = Boolean(player?.isMember);
+  }
+
+  if (membershipInput) {
+    membershipInput.value = player?.membershipNumber || '';
+  }
+
+  if (membershipCheckbox && membershipWrapper) {
+    toggleMembershipField(membershipCheckbox, membershipWrapper, membershipInput, {
+      clearWhenDisabled: !player,
+    });
+
+    membershipCheckbox.addEventListener('change', () => {
+      toggleMembershipField(membershipCheckbox, membershipWrapper, membershipInput, {
+        clearWhenDisabled: false,
+      });
+    });
+  }
 
   const status = document.createElement('p');
   status.className = 'status-message';
