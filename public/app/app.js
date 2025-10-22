@@ -4009,7 +4009,7 @@ function resetData() {
   state.noticeUnreadCount = 0;
   updateCategoryControlsAvailability();
   if (categoryLeagueFilter) {
-    categoryLeagueFilter.innerHTML = '<option value="">Todas las ligas</option>';
+    categoryLeagueFilter.innerHTML = '';
     categoryLeagueFilter.value = '';
     categoryLeagueFilter.disabled = true;
   }
@@ -4824,25 +4824,76 @@ function updateCategoryFilterControls({ renderOnChange = true } = {}) {
   const filters = ensureCategoryFilters();
   const previousValue = filters.league || '';
 
-  categoryLeagueFilter.innerHTML = '<option value="">Todas las ligas</option>';
+  categoryLeagueFilter.innerHTML = '';
 
   const leagues = Array.isArray(state.leagues) ? state.leagues.slice() : [];
-  leagues.sort((a, b) => formatLeagueOptionLabel(a).localeCompare(formatLeagueOptionLabel(b), 'es'));
+
+  const toChronoTimestamp = (value) => {
+    if (!value) {
+      return Number.POSITIVE_INFINITY;
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    const time = date.getTime();
+    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  };
+
+  const getLeagueChronoValue = (league) => {
+    if (!league || typeof league !== 'object') {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const startTimestamp = toChronoTimestamp(league.startDate);
+    if (Number.isFinite(startTimestamp)) {
+      return startTimestamp;
+    }
+
+    const numericYear = Number(league.year);
+    if (Number.isFinite(numericYear)) {
+      const normalizedYear = Math.trunc(numericYear);
+      const yearDate = new Date(normalizedYear, 0, 1);
+      const yearTimestamp = yearDate.getTime();
+      if (Number.isFinite(yearTimestamp)) {
+        return yearTimestamp;
+      }
+    }
+
+    const createdTimestamp = toChronoTimestamp(league.createdAt);
+    if (Number.isFinite(createdTimestamp)) {
+      return createdTimestamp;
+    }
+
+    return Number.POSITIVE_INFINITY;
+  };
+
+  leagues.sort((a, b) => {
+    const chronoDiff = getLeagueChronoValue(a) - getLeagueChronoValue(b);
+    if (chronoDiff !== 0) {
+      return chronoDiff;
+    }
+    return formatLeagueOptionLabel(a).localeCompare(formatLeagueOptionLabel(b), 'es', {
+      sensitivity: 'base',
+    });
+  });
 
   const availableIds = new Set();
+  let defaultLeagueId = '';
   leagues.forEach((league) => {
     const leagueId = normalizeId(league);
     if (!leagueId || availableIds.has(leagueId)) {
       return;
     }
     availableIds.add(leagueId);
+    if (!defaultLeagueId) {
+      defaultLeagueId = leagueId;
+    }
     const option = document.createElement('option');
     option.value = leagueId;
     option.textContent = formatLeagueOptionLabel(league);
     categoryLeagueFilter.appendChild(option);
   });
 
-  const nextValue = previousValue && availableIds.has(previousValue) ? previousValue : '';
+  const nextValue =
+    previousValue && availableIds.has(previousValue) ? previousValue : defaultLeagueId;
   const selectionChanged = nextValue !== previousValue;
 
   filters.league = nextValue;
