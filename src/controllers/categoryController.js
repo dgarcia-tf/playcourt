@@ -155,6 +155,13 @@ async function listCategories(req, res) {
   );
 
   const now = new Date();
+  const toDate = (value) => {
+    if (!value) {
+      return null;
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
 
   const payload = categories.map((category) => {
     const resolvedColor = resolveCategoryColor(category.color);
@@ -166,13 +173,11 @@ async function listCategories(req, res) {
         ? getCategoryReferenceYear(category)
         : null;
     const league = category.league || null;
-    const registrationCloseDate =
-      league?.registrationCloseDate instanceof Date
-        ? league.registrationCloseDate
-        : league?.registrationCloseDate
-        ? new Date(league.registrationCloseDate)
-        : null;
+    const registrationCloseDate = toDate(league?.registrationCloseDate);
+    const leagueStartDate = toDate(league?.startDate);
+    const leagueHasStarted = leagueStartDate ? now >= leagueStartDate : false;
     const registrationWindowOpen =
+      !leagueHasStarted &&
       (!registrationCloseDate || now <= registrationCloseDate) &&
       (!league || league.status !== LEAGUE_STATUS.CLOSED);
     const leagueEnrollmentFee =
