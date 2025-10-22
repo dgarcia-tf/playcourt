@@ -244,14 +244,16 @@ async function getLeagueDashboard(req, res) {
   const now = new Date();
   const userId = req.user.id;
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
+  const activeLeaguesPromise = League.countDocuments({ status: LEAGUE_STATUS.ACTIVE });
 
   let categoryFilter = {};
   if (!isAdmin) {
     const accessibleCategoryIds = await Enrollment.find({ user: userId }).distinct('category');
     if (!accessibleCategoryIds.length) {
+      const activeLeagues = await activeLeaguesPromise;
       return res.json({
-        metrics: { players: 0, categories: 0, upcomingMatches: 0 },
-        categories: [],
+        metrics: { players: 0, categories: 0, upcomingMatches: 0, activeLeagues },
+        leagueRankings: [],
         upcomingMatches: [],
       });
     }
@@ -264,16 +266,17 @@ async function getLeagueDashboard(req, res) {
     .lean();
 
   if (!categories.length) {
+    const activeLeagues = await activeLeaguesPromise;
     return res.json({
-      metrics: { players: 0, categories: 0, upcomingMatches: 0 },
-      categories: [],
+      metrics: { players: 0, categories: 0, upcomingMatches: 0, activeLeagues },
+      leagueRankings: [],
       upcomingMatches: [],
     });
   }
 
   const categoryIds = categories.map((category) => category._id.toString());
 
-  const [enrollments, completedMatches, upcomingMatches] = await Promise.all([
+  const [enrollments, completedMatches, upcomingMatches, activeLeagues] = await Promise.all([
     Enrollment.find({ category: { $in: categoryIds } })
       .populate('user', 'fullName photo')
       .lean(),
@@ -307,6 +310,7 @@ async function getLeagueDashboard(req, res) {
       .sort({ scheduledAt: 1 })
       .limit(20)
       .lean(),
+    activeLeaguesPromise,
   ]);
 
   const enrollmentMap = new Map();
@@ -345,7 +349,9 @@ async function getLeagueDashboard(req, res) {
     upcomingMap.get(categoryId).push(match);
   });
 
-  const categoriesSummary = categories.map((category) => {
+  const leagueRankingsMap = new Map();
+
+  categories.forEach((category) => {
     const categoryId = category._id.toString();
     const ranking = buildRanking(
       enrollmentMap.get(categoryId) || [],
@@ -356,22 +362,35 @@ async function getLeagueDashboard(req, res) {
     );
     const upcomingCount = (upcomingMap.get(categoryId) || []).length;
 
-    return {
-      category: {
-        id: categoryId,
-        name: category.name,
-        color: resolveCategoryColor(category.color),
-      },
-      league: category.league
-        ? {
-            id: normalizeId(category.league),
-            name: category.league.name,
-          }
-        : undefined,
-      playerCount: categoryPlayerIds.size,
-      upcomingMatches: upcomingCount,
-      ranking,
-    };
+    const league = category.league
+      ? {
+          id: normalizeId(category.league),
+          name: category.league.name,
+          status: category.league.status,
+        }
+      : undefined;
+
+    if (league && league.status === LEAGUE_STATUS.ACTIVE) {
+      if (!leagueRankingsMap.has(league.id)) {
+        leagueRankingsMap.set(league.id, {
+          league: {
+            id: league.id,
+            name: league.name,
+          },
+          categories: [],
+        });
+      }
+      leagueRankingsMap.get(league.id).categories.push({
+        category: {
+          id: categoryId,
+          name: category.name,
+          color: resolveCategoryColor(category.color),
+        },
+        playerCount: categoryPlayerIds.size,
+        upcomingMatches: upcomingCount,
+        ranking,
+      });
+    }
   });
 
   return res.json({
@@ -379,8 +398,9 @@ async function getLeagueDashboard(req, res) {
       players: playerIds.size,
       categories: categories.length,
       upcomingMatches: upcomingMatches.length,
+      activeLeagues,
     },
-    categories: categoriesSummary,
+    leagueRankings: Array.from(leagueRankingsMap.values()),
     upcomingMatches: upcomingMatches.map(serializeLeagueMatch),
   });
 }
