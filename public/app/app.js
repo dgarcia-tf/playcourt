@@ -1837,13 +1837,13 @@ function updateLeaguePlayersControls({ resetSelection = false } = {}) {
   const sortedLeagues = leaguesWithCategories
     .slice()
     .sort((a, b) => {
-      if (a.status !== b.status) {
-        return a.status === 'activa' ? -1 : 1;
-      }
       const yearA = Number(a.year) || 0;
       const yearB = Number(b.year) || 0;
       if (yearA !== yearB) {
-        return yearB - yearA;
+        return yearA - yearB;
+      }
+      if (a.status !== b.status) {
+        return a.status === 'activa' ? -1 : 1;
       }
       return (a.name || '').localeCompare(b.name || '', 'es');
     });
