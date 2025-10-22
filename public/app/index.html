@@ -1047,11 +1047,30 @@
                     </div>
 
                     <div class="form-grid">
-                      <label>
-                        Fecha y hora
-                        <input id="admin-match-date" type="datetime-local" name="scheduledAt" />
-                        <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
-                      </label>
+                      <div>
+                        <div id="admin-match-schedule-container" class="form-grid" hidden>
+                          <label>
+                            Día del partido
+                            <input id="admin-match-day" type="date" name="scheduledDate" />
+                          </label>
+                          <label>
+                            Tramo horario
+                            <select id="admin-match-slot" name="scheduledSlot" disabled>
+                              <option value="">Selecciona un día para ver horarios</option>
+                            </select>
+                            <span class="form-hint">
+                              Las franjas provienen de los horarios preferentes configurados en el club. Deja el campo sin
+                              seleccionar para mantener el partido pendiente.
+                            </span>
+                          </label>
+                        </div>
+                        <label id="admin-match-datetime-field">
+                          Fecha y hora
+                          <input id="admin-match-datetime" type="datetime-local" />
+                          <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
+                        </label>
+                        <input type="hidden" id="admin-match-date" name="scheduledAt" />
+                      </div>
                       <label>
                         Pista
                         <select id="admin-match-court" name="court">
