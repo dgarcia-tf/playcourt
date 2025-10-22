@@ -482,42 +482,37 @@ async function listLeagues(req, res) {
     return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
   };
 
-  const resolveChronoValue = (() => {
-    const cache = new WeakMap();
-    return (league) => {
-      if (cache.has(league)) {
-        return cache.get(league);
+  const resolveChronoValue = (league) => {
+    const timestamps = [
+      toTimestamp(league.startDate),
+      toTimestamp(league.endDate),
+      toTimestamp(league.createdAt),
+    ];
+
+    const numericYear = Number(league.year);
+    if (Number.isFinite(numericYear)) {
+      const yearTimestamp = new Date(numericYear, 0, 1).getTime();
+      if (Number.isFinite(yearTimestamp)) {
+        timestamps.push(yearTimestamp);
       }
+    }
 
-      const timestamps = [
-        toTimestamp(league.startDate),
-        toTimestamp(league.endDate),
-        toTimestamp(league.registrationCloseDate),
-        toTimestamp(league.createdAt),
-      ];
-
-      const numericYear = Number(league.year);
-      if (Number.isFinite(numericYear)) {
-        const yearTimestamp = new Date(numericYear, 0, 1).getTime();
-        if (Number.isFinite(yearTimestamp)) {
-          timestamps.push(yearTimestamp);
-        }
-      }
-
-      const chronoValue = timestamps.reduce(
-        (min, value) => (value < min ? value : min),
-        Number.POSITIVE_INFINITY
-      );
-
-      cache.set(league, chronoValue);
-      return chronoValue;
-    };
-  })();
+    return timestamps.reduce(
+      (min, value) => (value < min ? value : min),
+      Number.POSITIVE_INFINITY
+    );
+  };
 
   const compareByName = (a, b) =>
     String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' });
 
-  const compareChronoAsc = (a, b) => {
+  leagues.sort((a, b) => {
+    const aActive = a.status === LEAGUE_STATUS.ACTIVE;
+    const bActive = b.status === LEAGUE_STATUS.ACTIVE;
+    if (aActive !== bActive) {
+      return aActive ? -1 : 1;
+    }
+
     const chronoA = resolveChronoValue(a);
     const chronoB = resolveChronoValue(b);
     if (chronoA !== chronoB) {
@@ -531,30 +526,9 @@ async function listLeagues(req, res) {
     }
 
     return compareByName(a, b);
-  };
-
-  const compareChronoDesc = (a, b) => compareChronoAsc(b, a);
-
-  const sortedLeagues = [...leagues].sort((a, b) => {
-    const aIsActive = a.status === LEAGUE_STATUS.ACTIVE;
-    const bIsActive = b.status === LEAGUE_STATUS.ACTIVE;
-
-    if (aIsActive && !bIsActive) {
-      return -1;
-    }
-
-    if (!aIsActive && bIsActive) {
-      return 1;
-    }
-
-    if (aIsActive && bIsActive) {
-      return compareChronoAsc(a, b);
-    }
-
-    return compareChronoDesc(a, b);
   });
 
-  return res.json(sortedLeagues);
+  return res.json([...activeLeagues, ...otherLeagues]);
 }
 
 async function getLeagueDetail(req, res) {
