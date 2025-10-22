@@ -133,6 +133,7 @@ router.delete(
 router.post(
   '/enroll',
   authenticate,
+  authorizeRoles('admin'),
   [
     body('categoryId').isMongoId().withMessage('Categoría inválida'),
     body('userId').optional().isMongoId(),

@@ -596,6 +596,167 @@ async function getLeagueDetail(req, res) {
   return res.json({ league: result });
 }
 
+async function listLeagueEnrollments(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { leagueId } = req.params;
+
+  const league = await League.findById(leagueId).select(
+    'name year status startDate endDate'
+  );
+
+  if (!league) {
+    return res.status(404).json({ message: 'Liga no encontrada' });
+  }
+
+  const categories = await Category.find({ league: leagueId }).select(
+    'name gender skillLevel color matchFormat status minimumAge'
+  );
+
+  const leagueSummary = {
+    id: league.id,
+    name: league.name,
+    year: league.year || null,
+    status: league.status,
+    startDate: league.startDate || null,
+    endDate: league.endDate || null,
+  };
+
+  const normalizeMinimumAge = (value) => {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  if (!categories.length) {
+    return res.json({
+      league: leagueSummary,
+      totalPlayers: 0,
+      players: [],
+      categories: categories.map((category) => ({
+        id: category._id.toString(),
+        name: category.name,
+        gender: category.gender,
+        skillLevel: category.skillLevel,
+        matchFormat: category.matchFormat,
+        color: resolveCategoryColor(category.color),
+        status: category.status,
+        minimumAge: normalizeMinimumAge(category.minimumAge),
+        enrollmentCount: 0,
+        players: [],
+      })),
+    });
+  }
+
+  const categoryIds = categories.map((category) => category._id);
+
+  const enrollments = await Enrollment.find({ category: { $in: categoryIds } })
+    .populate('user', 'fullName email gender phone photo preferredSchedule birthDate')
+    .populate('category', 'name gender skillLevel color matchFormat status minimumAge');
+
+  const categoryPlayerMap = new Map();
+  const playerMap = new Map();
+
+  enrollments.forEach((enrollment) => {
+    const user = enrollment.user;
+    const category = enrollment.category;
+
+    if (!user || !category) {
+      return;
+    }
+
+    const categoryId = category._id ? category._id.toString() : String(category);
+    const userId = user._id ? user._id.toString() : String(user);
+
+    const categoryPayload = {
+      id: categoryId,
+      name: category.name,
+      gender: category.gender,
+      skillLevel: category.skillLevel,
+      matchFormat: category.matchFormat,
+      color: resolveCategoryColor(category.color),
+      status: category.status,
+      minimumAge: normalizeMinimumAge(category.minimumAge),
+    };
+
+    const userPayload = {
+      id: userId,
+      fullName: user.fullName,
+      email: user.email,
+      gender: user.gender,
+      phone: user.phone,
+      photo: user.photo || null,
+      preferredSchedule: user.preferredSchedule || null,
+      birthDate: user.birthDate || null,
+    };
+
+    if (!playerMap.has(userId)) {
+      playerMap.set(userId, { ...userPayload, categories: [] });
+    }
+
+    const playerEntry = playerMap.get(userId);
+    if (!playerEntry.categories.some((entry) => entry.id === categoryId)) {
+      playerEntry.categories.push(categoryPayload);
+    }
+
+    if (!categoryPlayerMap.has(categoryId)) {
+      categoryPlayerMap.set(categoryId, []);
+    }
+
+    const categoryPlayers = categoryPlayerMap.get(categoryId);
+    if (!categoryPlayers.some((player) => player.id === userId)) {
+      categoryPlayers.push(userPayload);
+    }
+  });
+
+  const sortByName = (a, b) =>
+    String(a.fullName || '').localeCompare(String(b.fullName || ''), 'es', {
+      sensitivity: 'base',
+    });
+
+  const players = Array.from(playerMap.values()).map((player) => ({
+    ...player,
+    categories: player.categories.sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), 'es', {
+        sensitivity: 'base',
+      })
+    ),
+  }));
+
+  players.sort(sortByName);
+
+  const categoriesPayload = categories.map((category) => {
+    const categoryId = category._id.toString();
+    const playersInCategory = categoryPlayerMap.get(categoryId) || [];
+    playersInCategory.sort(sortByName);
+
+    return {
+      id: categoryId,
+      name: category.name,
+      gender: category.gender,
+      skillLevel: category.skillLevel,
+      matchFormat: category.matchFormat,
+      color: resolveCategoryColor(category.color),
+      status: category.status,
+      minimumAge: normalizeMinimumAge(category.minimumAge),
+      enrollmentCount: playersInCategory.length,
+      players: playersInCategory,
+    };
+  });
+
+  return res.json({
+    league: leagueSummary,
+    totalPlayers: players.length,
+    players,
+    categories: categoriesPayload,
+  });
+}
+
 async function addLeaguePaymentRecord(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -940,6 +1101,7 @@ module.exports = {
   getLeagueOverview,
   listLeagues,
   getLeagueDetail,
+  listLeagueEnrollments,
   addLeaguePaymentRecord,
   updateLeaguePaymentRecord,
   uploadLeaguePoster,

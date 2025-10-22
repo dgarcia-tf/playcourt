@@ -5,6 +5,7 @@ const {
   getLeagueOverview,
   listLeagues,
   getLeagueDetail,
+  listLeagueEnrollments,
   updateLeague,
   deleteLeague,
   addLeaguePaymentRecord,
@@ -74,6 +75,13 @@ router.get(
   authenticate,
   [param('leagueId').isMongoId()],
   getLeagueDetail
+);
+
+router.get(
+  '/:leagueId/enrollments',
+  authenticate,
+  [param('leagueId').isMongoId()],
+  listLeagueEnrollments
 );
 
 router.patch(
