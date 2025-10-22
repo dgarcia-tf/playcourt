@@ -8,6 +8,7 @@ const { formatCourtBlock, buildContextLabelMap } = require('./courtBlockControll
 const {
   ensureReservationAvailability,
   DEFAULT_RESERVATION_DURATION_MINUTES,
+  INVALID_RESERVATION_SLOT_MESSAGE,
   normalizeParticipants,
 } = require('../services/courtReservationService');
 
@@ -143,12 +144,23 @@ async function createReservation(req, res) {
   }
 
   let endsAt = toDate(rawEndsAt);
-  const duration = Number.isFinite(Number(durationMinutes))
+  const normalizedDuration = Number.isFinite(Number(durationMinutes))
     ? Number(durationMinutes)
-    : DEFAULT_RESERVATION_DURATION_MINUTES;
+    : null;
+
+  if (normalizedDuration !== null && normalizedDuration !== DEFAULT_RESERVATION_DURATION_MINUTES) {
+    return res.status(400).json({ message: INVALID_RESERVATION_SLOT_MESSAGE });
+  }
+
+  const duration = DEFAULT_RESERVATION_DURATION_MINUTES;
 
   if (!endsAt) {
     endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
+  } else {
+    const diffMinutes = Math.round((endsAt.getTime() - startsAt.getTime()) / (60 * 1000));
+    if (diffMinutes !== duration) {
+      return res.status(400).json({ message: INVALID_RESERVATION_SLOT_MESSAGE });
+    }
   }
 
   if (endsAt <= startsAt) {

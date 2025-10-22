@@ -20,7 +20,7 @@ const {
 const MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado'];
 const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caducado'].includes(status));
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const MIN_MATCH_DURATION_MS = 90 * 60 * 1000;
+const MIN_MATCH_DURATION_MS = 75 * 60 * 1000;
 const MATCH_EXPIRATION_MS = MATCH_EXPIRATION_DAYS * DAY_IN_MS;
 
 function normalizeMatchFormat(value) {
