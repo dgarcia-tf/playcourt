@@ -2439,9 +2439,8 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   item.className = 'league-payment-item';
   const statusValue = entry.status || 'pendiente';
   item.dataset.paymentStatus = statusValue;
-  if (statusValue !== 'pagado') {
-    item.open = true;
-  }
+  // Mostrar todos los pagos contraídos por defecto para resaltar solo la cabecera
+  // y permitir que el usuario expanda manualmente cualquier registro.
 
   const summary = document.createElement('summary');
 
