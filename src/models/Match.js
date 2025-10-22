@@ -153,6 +153,9 @@ const matchSchema = new mongoose.Schema(
   }
 );
 
+matchSchema.set('toJSON', { virtuals: true, flattenMaps: true });
+matchSchema.set('toObject', { virtuals: true, flattenMaps: true });
+
 matchSchema.index({ category: 1, scheduledAt: 1 });
 matchSchema.index({ category: 1, status: 1 });
 matchSchema.index({ status: 1, expiresAt: 1 });

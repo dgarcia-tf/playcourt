@@ -607,7 +607,7 @@ async function createMatch(req, res) {
   }
 
   if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
-    const responseBody = match.toObject({ virtuals: true });
+    const responseBody = match.toObject({ virtuals: true, flattenMaps: true });
     responseBody.calendarLinks = responseCalendarLinks;
     return res.status(201).json(responseBody);
   }
@@ -675,7 +675,10 @@ async function listMatches(req, res) {
       return matchDoc;
     }
 
-    const plainMatch = typeof matchDoc.toObject === 'function' ? matchDoc.toObject({ virtuals: true }) : matchDoc;
+    const plainMatch =
+      typeof matchDoc.toObject === 'function'
+        ? matchDoc.toObject({ virtuals: true, flattenMaps: true })
+        : matchDoc;
 
     if (!plainMatch?.scheduledAt) {
       return plainMatch;
@@ -927,7 +930,7 @@ async function updateMatch(req, res) {
   }
 
   if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
-    const responseBody = updated.toObject({ virtuals: true });
+    const responseBody = updated.toObject({ virtuals: true, flattenMaps: true });
     responseBody.calendarLinks = responseCalendarLinks;
     return res.json(responseBody);
   }
@@ -1759,7 +1762,7 @@ async function respondToProposal(req, res) {
     }
   }
 
-  const responsePayload = populated.toObject({ virtuals: true });
+  const responsePayload = populated.toObject({ virtuals: true, flattenMaps: true });
   if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
     responsePayload.calendarLinks = responseCalendarLinks;
   }
