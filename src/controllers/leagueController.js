@@ -11,6 +11,9 @@ const {
   DEFAULT_CATEGORY_MATCH_FORMAT,
 } = require('../models/Category');
 const { GENDERS } = require('../models/User');
+const { Enrollment } = require('../models/Enrollment');
+const { resolveCategoryColor } = require('../utils/colors');
+const { normalizeId } = require('../utils/ranking');
 
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 const LEAGUE_POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'leagues');
@@ -239,6 +242,197 @@ async function createLeague(req, res) {
   );
 
   return res.status(201).json(league);
+}
+
+async function getLeagueOverview(req, res) {
+  const leagues = await League.find()
+    .sort({ startDate: 1, createdAt: 1 })
+    .lean();
+
+  if (!leagues.length) {
+    return res.json({ active: [], archived: [], rankingFilters: { active: [], finished: [] } });
+  }
+
+  const leagueIds = leagues.map((league) => league._id);
+
+  const categories = await Category.find({ league: { $in: leagueIds } })
+    .select(
+      'name gender skillLevel status matchFormat color league rankingUpdatedAt startDate endDate'
+    )
+    .sort({ name: 1 })
+    .lean();
+
+  const categoryById = new Map();
+  const categoriesByLeague = new Map();
+
+  categories.forEach((category) => {
+    const leagueId = normalizeId(category.league);
+    const categoryId = normalizeId(category);
+    categoryById.set(categoryId, category);
+    if (!categoriesByLeague.has(leagueId)) {
+      categoriesByLeague.set(leagueId, []);
+    }
+    categoriesByLeague.get(leagueId).push(category);
+  });
+
+  const categoryIds = categories.map((category) => category._id);
+
+  const enrollments = categoryIds.length
+    ? await Enrollment.find({ category: { $in: categoryIds } })
+        .populate('user', 'fullName email phone gender photo')
+        .lean()
+    : [];
+
+  const enrollmentCountByCategory = new Map();
+  const playersByLeague = new Map();
+
+  enrollments.forEach((enrollment) => {
+    const categoryId = normalizeId(enrollment.category);
+    const category = categoryById.get(categoryId);
+    if (!category) {
+      return;
+    }
+
+    enrollmentCountByCategory.set(
+      categoryId,
+      (enrollmentCountByCategory.get(categoryId) || 0) + 1
+    );
+
+    const leagueId = normalizeId(category.league);
+    if (!leagueId) {
+      return;
+    }
+
+    if (!playersByLeague.has(leagueId)) {
+      playersByLeague.set(leagueId, new Map());
+    }
+
+    const playerMap = playersByLeague.get(leagueId);
+    const user = enrollment.user;
+    const userId = normalizeId(user);
+
+    if (!userId || playerMap.has(userId)) {
+      return;
+    }
+
+    playerMap.set(userId, {
+      id: userId,
+      fullName: typeof user?.fullName === 'string' ? user.fullName : '',
+      email: user?.email || null,
+      gender: user?.gender || null,
+      phone: user?.phone || null,
+      photo: user?.photo || null,
+    });
+  });
+
+  const toSortableName = (value) => (typeof value === 'string' ? value : '');
+
+  const buildLeaguePayload = (league) => {
+    const leagueId = normalizeId(league);
+    const rawCategories = categoriesByLeague.get(leagueId) || [];
+
+    const categoriesPayload = rawCategories
+      .map((category) => {
+        const categoryId = normalizeId(category);
+        const enrollmentCount = enrollmentCountByCategory.get(categoryId) || 0;
+        const normalizedColor = resolveCategoryColor(category.color);
+
+        return {
+          id: categoryId,
+          name: category.name,
+          gender: category.gender,
+          skillLevel: category.skillLevel,
+          status: category.status,
+          matchFormat: category.matchFormat,
+          color: normalizedColor,
+          startDate: category.startDate || null,
+          endDate: category.endDate || null,
+          rankingUpdatedAt: category.rankingUpdatedAt || null,
+          enrollmentCount,
+        };
+      })
+      .sort((a, b) => toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
+        sensitivity: 'base',
+      }));
+
+    const playerMap = playersByLeague.get(leagueId) || new Map();
+    const players = Array.from(playerMap.values()).sort((a, b) =>
+      toSortableName(a.fullName).localeCompare(toSortableName(b.fullName), 'es', {
+        sensitivity: 'base',
+      })
+    );
+
+    const totalEnrollments = categoriesPayload.reduce(
+      (acc, category) => acc + category.enrollmentCount,
+      0
+    );
+
+    return {
+      id: leagueId,
+      name: league.name,
+      year: league.year || null,
+      status: league.status,
+      startDate: league.startDate || null,
+      endDate: league.endDate || null,
+      registrationCloseDate: league.registrationCloseDate || null,
+      enrollmentFee:
+        typeof league.enrollmentFee === 'number' ? league.enrollmentFee : null,
+      categories: categoriesPayload,
+      categoryCount: categoriesPayload.length,
+      enrollmentCount: totalEnrollments,
+      players,
+      playerCount: players.length,
+    };
+  };
+
+  const activeLeagues = [];
+  const archivedLeagues = [];
+
+  leagues.forEach((league) => {
+    const payload = buildLeaguePayload(league);
+    if (league.status === LEAGUE_STATUS.CLOSED) {
+      payload.players = [];
+      payload.playerCount = 0;
+      archivedLeagues.push(payload);
+    } else {
+      activeLeagues.push(payload);
+    }
+  });
+
+  const sortByStartDate = (a, b) => {
+    const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
+    const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
+    if (dateA === dateB) {
+      return toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
+        sensitivity: 'base',
+      });
+    }
+    return dateA - dateB;
+  };
+
+  activeLeagues.sort(sortByStartDate);
+  archivedLeagues.sort(sortByStartDate);
+
+  const buildRankingFilter = (league) => ({
+    leagueId: league.id,
+    leagueName: league.name,
+    year: league.year,
+    categories: league.categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      gender: category.gender,
+      skillLevel: category.skillLevel,
+      status: category.status,
+      rankingUpdatedAt: category.rankingUpdatedAt,
+    })),
+  });
+
+  const rankingFilters = {
+    active: activeLeagues.map(buildRankingFilter),
+    finished: archivedLeagues.map(buildRankingFilter),
+  };
+
+  return res.json({ active: activeLeagues, archived: archivedLeagues, rankingFilters });
 }
 
 async function listLeagues(req, res) {
@@ -628,6 +822,7 @@ async function deleteLeague(req, res) {
 
 module.exports = {
   createLeague,
+  getLeagueOverview,
   listLeagues,
   getLeagueDetail,
   addLeaguePaymentRecord,

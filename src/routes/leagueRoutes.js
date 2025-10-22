@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, query } = require('express-validator');
 const {
   createLeague,
+  getLeagueOverview,
   listLeagues,
   getLeagueDetail,
   updateLeague,
@@ -17,6 +18,12 @@ const { GENDERS } = require('../models/User');
 const { leaguePosterUpload } = require('../middleware/upload');
 
 const router = express.Router();
+
+router.get(
+  '/overview',
+  authenticate,
+  getLeagueOverview
+);
 
 router.get(
   '/',
