@@ -4860,7 +4860,7 @@ function updateRankingFilterControls({ renderOnChange = true } = {}) {
   const filters = ensureRankingFilters();
   const previousValue = filters.league || '';
 
-  rankingLeagueFilter.innerHTML = '<option value="">Todas las ligas</option>';
+  rankingLeagueFilter.innerHTML = '';
 
   const categories = Array.isArray(state.categories) ? state.categories : [];
   const leagueOptions = new Map();
@@ -4929,7 +4929,12 @@ function updateRankingFilterControls({ renderOnChange = true } = {}) {
   });
 
   const availableIds = new Set(sortedOptions.map(([leagueId]) => leagueId));
-  const nextValue = availableIds.has(previousValue) ? previousValue : '';
+  let nextValue = '';
+  if (availableIds.has(previousValue)) {
+    nextValue = previousValue;
+  } else if (sortedOptions.length) {
+    nextValue = sortedOptions[0][0];
+  }
   const selectionChanged = nextValue !== previousValue;
 
   filters.league = nextValue;
