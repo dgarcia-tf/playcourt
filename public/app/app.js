@@ -1491,6 +1491,8 @@ const state = {
   selectedCategoryId: null,
   rankingFilters: { league: '' },
   needsSetup: false,
+  accountSummary: null,
+  accountSummaryLoading: false,
   enrollments: new Map(),
   enrollmentRequests: new Map(),
   tournaments: [],
@@ -1591,6 +1593,9 @@ const loginPasswordInput = loginForm ? loginForm.querySelector('input[name="pass
 const loginRememberCheckbox = document.getElementById('login-remember');
 const registerStatus = document.getElementById('register-status');
 const registerRoleWrapper = document.getElementById('register-role-wrapper');
+const registerIsMemberCheckbox = document.getElementById('register-is-member');
+const registerMembershipWrapper = document.getElementById('register-membership-wrapper');
+const registerMembershipNumberInput = document.getElementById('register-membership-number');
 const profileName = document.getElementById('profile-name');
 const profileRole = document.getElementById('profile-role');
 const profileAvatar = document.getElementById('profile-avatar');
@@ -1598,14 +1603,41 @@ const profileEditButton = document.getElementById('profile-edit');
 const profileForm = document.getElementById('profile-form');
 const profileCancelButton = document.getElementById('profile-cancel');
 const profileStatus = document.getElementById('profile-status');
+const profileIsMemberCheckbox = document.getElementById('profile-is-member');
+const profileMembershipWrapper = document.getElementById('profile-membership-wrapper');
+const profileMembershipNumberInput = document.getElementById('profile-membership-number');
 const accountOverview = document.getElementById('account-overview');
 const accountPhoto = document.getElementById('account-photo');
+const accountFullName = document.getElementById('account-full-name');
 const accountEmail = document.getElementById('account-email');
 const accountPhone = document.getElementById('account-phone');
+const accountMembershipStatus = document.getElementById('account-membership');
+const accountMembershipNumber = document.getElementById('account-membership-number');
+const accountMembershipNumberRow = document.getElementById('account-membership-number-row');
 const accountBirthDate = document.getElementById('account-birth-date');
 const accountSchedule = document.getElementById('account-schedule');
 const accountNotes = document.getElementById('account-notes');
 const accountPushStatus = document.getElementById('account-push-status');
+const accountDashboardCard = document.getElementById('account-dashboard-card');
+const accountDashboard = document.getElementById('account-dashboard');
+const accountDashboardEmpty = document.getElementById('account-dashboard-empty');
+const accountDashboardStatus = document.getElementById('account-dashboard-status');
+const accountDashboardRefresh = document.getElementById('account-dashboard-refresh');
+const accountEnrollmentsCount = document.getElementById('account-enrollments-count');
+const accountUpcomingCount = document.getElementById('account-upcoming-count');
+const accountRecentCount = document.getElementById('account-recent-count');
+const accountPaymentsCount = document.getElementById('account-payments-count');
+const accountPaymentsPaid = document.getElementById('account-payments-paid');
+const accountPaymentsPending = document.getElementById('account-payments-pending');
+const accountPaymentsTotal = document.getElementById('account-payments-total');
+const accountEnrollmentsList = document.getElementById('account-enrollments-list');
+const accountEnrollmentsEmpty = document.getElementById('account-enrollments-empty');
+const accountUpcomingList = document.getElementById('account-upcoming-list');
+const accountUpcomingEmpty = document.getElementById('account-upcoming-empty');
+const accountRecentList = document.getElementById('account-recent-list');
+const accountRecentEmpty = document.getElementById('account-recent-empty');
+const accountPaymentsList = document.getElementById('account-payments-list');
+const accountPaymentsEmpty = document.getElementById('account-payments-empty');
 const appSections = document.querySelectorAll('.app-section');
 const globalLeaguesCount = document.getElementById('global-leagues-count');
 const globalTournamentsCount = document.getElementById('global-tournaments-count');
@@ -3877,6 +3909,8 @@ function showSection(sectionId) {
     });
   } else if (resolvedSectionId === 'section-tournament-dashboard') {
     loadTournamentDashboard({ force: false });
+  } else if (resolvedSectionId === 'section-account') {
+    loadAccountSummary({ force: false });
   }
 }
 
@@ -4399,12 +4433,31 @@ function updateProfileCard() {
     accountPhoto.style.backgroundImage = photo ? `url('${photo}')` : '';
   }
 
+  if (accountFullName) {
+    accountFullName.textContent = state.user.fullName || '—';
+  }
+
   if (accountEmail) {
     accountEmail.textContent = state.user.email || '—';
   }
 
   if (accountPhone) {
     accountPhone.textContent = state.user.phone || '—';
+  }
+
+  if (accountMembershipStatus) {
+    accountMembershipStatus.textContent = state.user.isMember
+      ? 'Socio del club'
+      : 'No es socio';
+  }
+
+  if (accountMembershipNumber) {
+    accountMembershipNumber.textContent = state.user.membershipNumber || '—';
+  }
+
+  if (accountMembershipNumberRow) {
+    const showMembershipNumber = Boolean(state.user.isMember && state.user.membershipNumber);
+    accountMembershipNumberRow.hidden = !showMembershipNumber;
   }
 
   if (accountBirthDate) {
@@ -4450,6 +4503,12 @@ function fillProfileForm() {
   if (elements.birthDate) {
     elements.birthDate.value = formatDateInput(state.user.birthDate);
   }
+  if (elements.isMember) {
+    elements.isMember.checked = state.user.isMember === true;
+  }
+  if (elements.membershipNumber) {
+    elements.membershipNumber.value = state.user.membershipNumber || '';
+  }
   if (elements.photo) {
     elements.photo.value = '';
   }
@@ -4465,6 +4524,10 @@ function fillProfileForm() {
   if (elements.notifyMatchResults) {
     elements.notifyMatchResults.checked = state.user.notifyMatchResults !== false;
   }
+
+  toggleMembershipField(profileIsMemberCheckbox, profileMembershipWrapper, profileMembershipNumberInput, {
+    clearWhenDisabled: !state.user.isMember,
+  });
 }
 
 function toggleProfileForm(show) {
@@ -4494,11 +4557,20 @@ function toggleProfileForm(show) {
   if (profileForm.elements?.password) {
     profileForm.elements.password.value = '';
   }
+  toggleMembershipField(profileIsMemberCheckbox, profileMembershipWrapper, profileMembershipNumberInput, {
+    clearWhenDisabled: true,
+  });
   setStatusMessage(profileStatus, '', '');
 }
 
 function resetData() {
   toggleProfileForm(false);
+  state.accountSummary = null;
+  state.accountSummaryLoading = false;
+  renderAccountSummary(null);
+  if (accountDashboardStatus) {
+    setStatusMessage(accountDashboardStatus, '', '');
+  }
   state.enrollments.clear();
   state.myMatches = [];
   state.upcomingMatches = [];
@@ -4906,11 +4978,23 @@ function resetData() {
     adminMatchList.innerHTML =
       '<li class="empty-state">Inicia sesión para gestionar los partidos.</li>';
   }
+  if (accountFullName) {
+    accountFullName.textContent = '—';
+  }
   if (accountEmail) {
     accountEmail.textContent = '—';
   }
   if (accountPhone) {
     accountPhone.textContent = '—';
+  }
+  if (accountMembershipStatus) {
+    accountMembershipStatus.textContent = 'No es socio';
+  }
+  if (accountMembershipNumber) {
+    accountMembershipNumber.textContent = '—';
+  }
+  if (accountMembershipNumberRow) {
+    accountMembershipNumberRow.hidden = true;
   }
   if (accountBirthDate) {
     accountBirthDate.textContent = '—';
@@ -5075,6 +5159,403 @@ function formatCurrencyValue(amount, currency = 'EUR') {
     }).format(numericAmount);
   } catch (error) {
     return `${numericAmount.toFixed(2)} ${resolvedCurrency}`.trim();
+  }
+}
+
+function formatCurrencyDisplay(amount) {
+  const formatted = formatCurrencyValue(amount, DEFAULT_LEAGUE_CURRENCY);
+  if (formatted) {
+    return formatted;
+  }
+
+  const numeric = Number(amount) || 0;
+  return `${numeric.toFixed(2)} ${DEFAULT_LEAGUE_CURRENCY}`;
+}
+
+function toggleMembershipField(checkbox, wrapper, input, { clearWhenDisabled = false } = {}) {
+  if (!wrapper || !checkbox) {
+    return;
+  }
+
+  const isMember = checkbox.checked;
+  wrapper.hidden = !isMember;
+
+  if (input) {
+    input.disabled = !isMember;
+    if (!isMember && clearWhenDisabled) {
+      input.value = '';
+    }
+  }
+}
+
+function populateAccountList(listElement, emptyElement, items, renderItem) {
+  if (!listElement) {
+    return;
+  }
+
+  listElement.innerHTML = '';
+  const entries = Array.isArray(items)
+    ? items
+        .map((item) => (typeof renderItem === 'function' ? renderItem(item) : null))
+        .filter(Boolean)
+    : [];
+
+  if (!entries.length) {
+    listElement.hidden = true;
+    if (emptyElement) {
+      emptyElement.hidden = false;
+    }
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  entries.forEach((entry) => {
+    fragment.appendChild(entry);
+  });
+
+  listElement.hidden = false;
+  listElement.appendChild(fragment);
+  if (emptyElement) {
+    emptyElement.hidden = true;
+  }
+}
+
+function createAccountEnrollmentItem(enrollment) {
+  if (!enrollment) {
+    return null;
+  }
+
+  const item = document.createElement('li');
+  const content = document.createElement('div');
+  content.className = 'list-item__content';
+
+  const leagueName = enrollment.league?.name || 'Liga';
+  const leagueYear = enrollment.league?.year;
+  const title = document.createElement('strong');
+  title.textContent = leagueYear ? `${leagueName} · ${leagueYear}` : leagueName;
+  content.appendChild(title);
+
+  if (enrollment.category?.name) {
+    const categorySpan = document.createElement('span');
+    categorySpan.textContent = `Categoría: ${enrollment.category.name}`;
+    content.appendChild(categorySpan);
+  }
+
+  item.appendChild(content);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  if (enrollment.joinedAt) {
+    meta.appendChild(document.createElement('span')).textContent = `Inscripción: ${formatShortDate(
+      enrollment.joinedAt
+    )}`;
+  }
+
+  item.appendChild(meta);
+  return item;
+}
+
+function createAccountMatchItem(match, { variant = 'upcoming' } = {}) {
+  if (!match) {
+    return null;
+  }
+
+  const item = document.createElement('li');
+  const content = document.createElement('div');
+  content.className = 'list-item__content';
+
+  const container = match.scope === 'league' ? match.league : match.tournament;
+  const titleParts = [];
+  if (container?.name) {
+    titleParts.push(container.name);
+  }
+  if (match.category?.name) {
+    titleParts.push(match.category.name);
+  }
+
+  const title = document.createElement('strong');
+  title.textContent = titleParts.length ? titleParts.join(' · ') : 'Partido';
+  content.appendChild(title);
+
+  const participants = Array.isArray(match.players)
+    ? match.players
+        .map((player) => getPlayerDisplayName(player))
+        .filter(Boolean)
+    : [];
+  if (participants.length) {
+    const participantsSpan = document.createElement('span');
+    participantsSpan.textContent = participants.join(' vs ');
+    content.appendChild(participantsSpan);
+  }
+
+  item.appendChild(content);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+
+  if (match.scheduledAt) {
+    meta.appendChild(document.createElement('span')).textContent = formatDate(match.scheduledAt);
+  }
+
+  if (match.court) {
+    meta.appendChild(document.createElement('span')).textContent = `Pista: ${match.court}`;
+  }
+
+  if (match.status) {
+    const statusLabel = STATUS_LABELS[match.status] || match.status;
+    if (statusLabel) {
+      const statusTag = document.createElement('span');
+      statusTag.className = 'tag';
+      statusTag.textContent = statusLabel;
+      meta.appendChild(statusTag);
+    }
+  }
+
+  if (variant === 'recent') {
+    const winnerId = normalizeId(match.result?.winner);
+    if (winnerId) {
+      let winnerName = '';
+      if (Array.isArray(match.players)) {
+        const winner = match.players.find((player) => normalizeId(player) === winnerId);
+        if (winner) {
+          winnerName = getPlayerDisplayName(winner);
+        }
+      }
+      if (winnerName) {
+        meta.appendChild(document.createElement('span')).textContent = `Ganador: ${winnerName}`;
+      }
+    } else if (match.result?.status) {
+      const resultLabel = STATUS_LABELS[match.result.status] || match.result.status;
+      meta.appendChild(document.createElement('span')).textContent = `Resultado: ${resultLabel}`;
+    } else {
+      meta.appendChild(document.createElement('span')).textContent = 'Resultado: pendiente';
+    }
+
+    if (match.updatedAt) {
+      meta.appendChild(document.createElement('span')).textContent = `Actualizado: ${formatShortDate(
+        match.updatedAt
+      )}`;
+    }
+  }
+
+  item.appendChild(meta);
+  return item;
+}
+
+function createAccountPaymentItem(record) {
+  if (!record) {
+    return null;
+  }
+
+  const item = document.createElement('li');
+  const content = document.createElement('div');
+  content.className = 'list-item__content';
+
+  const titleParts = [];
+  if (record.container?.name) {
+    titleParts.push(record.container.name);
+  }
+  if (record.scope === 'league') {
+    titleParts.push('Liga');
+  } else if (record.scope === 'tournament') {
+    titleParts.push('Torneo');
+  }
+
+  const title = document.createElement('strong');
+  title.textContent = titleParts.length ? titleParts.join(' · ') : 'Pago';
+  content.appendChild(title);
+
+  if (record.reference) {
+    const referenceSpan = document.createElement('span');
+    referenceSpan.textContent = `Referencia: ${record.reference}`;
+    content.appendChild(referenceSpan);
+  }
+
+  if (record.notes) {
+    const notesSpan = document.createElement('span');
+    notesSpan.textContent = record.notes;
+    content.appendChild(notesSpan);
+  }
+
+  item.appendChild(content);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+
+  if (record.status) {
+    const statusBadge = document.createElement('span');
+    statusBadge.className = `tag payment-status payment-status--${record.status}`;
+    statusBadge.textContent = PAYMENT_STATUS_LABELS[record.status] || record.status;
+    meta.appendChild(statusBadge);
+  }
+
+  if (typeof record.amount === 'number' && Number.isFinite(record.amount)) {
+    meta.appendChild(document.createElement('span')).textContent = formatCurrencyDisplay(record.amount);
+  }
+
+  if (record.paidAt) {
+    meta.appendChild(document.createElement('span')).textContent = `Pago: ${formatShortDate(record.paidAt)}`;
+  } else if (record.recordedAt) {
+    meta.appendChild(document.createElement('span')).textContent = `Registrado: ${formatShortDate(
+      record.recordedAt
+    )}`;
+  }
+
+  if (record.method) {
+    meta.appendChild(document.createElement('span')).textContent = `Método: ${record.method}`;
+  }
+
+  item.appendChild(meta);
+  return item;
+}
+
+function renderAccountSummary(summary) {
+  state.accountSummary = summary || null;
+
+  if (!accountDashboardCard) {
+    return;
+  }
+
+  if (accountDashboardRefresh) {
+    accountDashboardRefresh.hidden = !state.token;
+  }
+
+  if (summary?.user && state.user) {
+    const summaryUser = summary.user;
+    let updated = false;
+    const nextUser = { ...state.user };
+    if (typeof summaryUser.fullName === 'string' && summaryUser.fullName && summaryUser.fullName !== nextUser.fullName) {
+      nextUser.fullName = summaryUser.fullName;
+      updated = true;
+    }
+    if (typeof summaryUser.email === 'string' && summaryUser.email && summaryUser.email !== nextUser.email) {
+      nextUser.email = summaryUser.email;
+      updated = true;
+    }
+    if (typeof summaryUser.phone === 'string' && summaryUser.phone && summaryUser.phone !== nextUser.phone) {
+      nextUser.phone = summaryUser.phone;
+      updated = true;
+    }
+    if (typeof summaryUser.isMember === 'boolean' && summaryUser.isMember !== nextUser.isMember) {
+      nextUser.isMember = summaryUser.isMember;
+      updated = true;
+    }
+    if (
+      summaryUser.membershipNumber !== undefined &&
+      summaryUser.membershipNumber !== nextUser.membershipNumber
+    ) {
+      nextUser.membershipNumber = summaryUser.membershipNumber;
+      updated = true;
+    }
+
+    if (updated) {
+      state.user = nextUser;
+      persistSession();
+      updateProfileCard();
+    }
+  }
+
+  if (!summary) {
+    if (accountDashboard) {
+      accountDashboard.hidden = true;
+    }
+    if (accountDashboardEmpty) {
+      accountDashboardEmpty.hidden = false;
+      accountDashboardEmpty.textContent = state.token
+        ? 'Tus inscripciones, partidos y pagos aparecerán aquí en cuanto participes en la liga.'
+        : 'Inicia sesión para consultar tu actividad personal.';
+    }
+
+    if (accountEnrollmentsCount) accountEnrollmentsCount.textContent = '0';
+    if (accountUpcomingCount) accountUpcomingCount.textContent = '0';
+    if (accountRecentCount) accountRecentCount.textContent = '0';
+    if (accountPaymentsCount) accountPaymentsCount.textContent = '0';
+    if (accountPaymentsPaid) accountPaymentsPaid.textContent = formatCurrencyDisplay(0);
+    if (accountPaymentsPending) accountPaymentsPending.textContent = formatCurrencyDisplay(0);
+    if (accountPaymentsTotal) accountPaymentsTotal.textContent = formatCurrencyDisplay(0);
+
+    populateAccountList(accountEnrollmentsList, accountEnrollmentsEmpty, [], () => null);
+    populateAccountList(accountUpcomingList, accountUpcomingEmpty, [], () => null);
+    populateAccountList(accountRecentList, accountRecentEmpty, [], () => null);
+    populateAccountList(accountPaymentsList, accountPaymentsEmpty, [], () => null);
+    return;
+  }
+
+  if (accountDashboard) {
+    accountDashboard.hidden = false;
+  }
+  if (accountDashboardEmpty) {
+    accountDashboardEmpty.hidden = true;
+  }
+
+  const enrollments = Array.isArray(summary.enrollments) ? summary.enrollments : [];
+  const upcomingMatches = Array.isArray(summary.matches?.upcoming) ? summary.matches.upcoming : [];
+  const recentMatches = Array.isArray(summary.matches?.recent) ? summary.matches.recent : [];
+  const paymentRecords = Array.isArray(summary.payments?.records) ? summary.payments.records : [];
+  const totals = summary.payments?.totals || { paid: 0, pending: 0, total: 0 };
+
+  if (accountEnrollmentsCount) accountEnrollmentsCount.textContent = enrollments.length.toString();
+  if (accountUpcomingCount) accountUpcomingCount.textContent = upcomingMatches.length.toString();
+  if (accountRecentCount) accountRecentCount.textContent = recentMatches.length.toString();
+  if (accountPaymentsCount) accountPaymentsCount.textContent = paymentRecords.length.toString();
+  if (accountPaymentsPaid) accountPaymentsPaid.textContent = formatCurrencyDisplay(totals.paid);
+  if (accountPaymentsPending) accountPaymentsPending.textContent = formatCurrencyDisplay(totals.pending);
+  if (accountPaymentsTotal) accountPaymentsTotal.textContent = formatCurrencyDisplay(totals.total);
+
+  populateAccountList(accountEnrollmentsList, accountEnrollmentsEmpty, enrollments, createAccountEnrollmentItem);
+  populateAccountList(accountUpcomingList, accountUpcomingEmpty, upcomingMatches, (match) =>
+    createAccountMatchItem(match, { variant: 'upcoming' })
+  );
+  populateAccountList(accountRecentList, accountRecentEmpty, recentMatches, (match) =>
+    createAccountMatchItem(match, { variant: 'recent' })
+  );
+  populateAccountList(accountPaymentsList, accountPaymentsEmpty, paymentRecords, createAccountPaymentItem);
+}
+
+async function loadAccountSummary({ force = true } = {}) {
+  if (!state.token) {
+    renderAccountSummary(null);
+    return null;
+  }
+
+  if (!force && state.accountSummary) {
+    renderAccountSummary(state.accountSummary);
+    return state.accountSummary;
+  }
+
+  if (state.accountSummaryLoading) {
+    return state.accountSummary;
+  }
+
+  state.accountSummaryLoading = true;
+  if (accountDashboardStatus) {
+    setStatusMessage(accountDashboardStatus, 'info', 'Cargando resumen personal...');
+  }
+  if (accountDashboardRefresh) {
+    accountDashboardRefresh.disabled = true;
+  }
+
+  try {
+    const summary = await request('/account/summary');
+    renderAccountSummary(summary);
+    if (accountDashboardStatus) {
+      setStatusMessage(accountDashboardStatus, '', '');
+    }
+    return summary;
+  } catch (error) {
+    console.warn('No se pudo cargar el resumen de cuenta', error);
+    if (accountDashboardStatus) {
+      setStatusMessage(accountDashboardStatus, 'error', error.message);
+    }
+    if (!state.accountSummary) {
+      renderAccountSummary(null);
+    }
+    return null;
+  } finally {
+    state.accountSummaryLoading = false;
+    if (accountDashboardRefresh) {
+      accountDashboardRefresh.disabled = false;
+    }
   }
 }
 
@@ -18212,6 +18693,7 @@ async function loadAllData() {
       loadGlobalOverview(),
       loadLeagueDashboard(),
       loadTournamentDashboard(),
+      loadAccountSummary(),
     ]);
 
     const [
@@ -18366,6 +18848,29 @@ loginForm.addEventListener('submit', async (event) => {
   }
 });
 
+toggleMembershipField(registerIsMemberCheckbox, registerMembershipWrapper, registerMembershipNumberInput, {
+  clearWhenDisabled: true,
+});
+toggleMembershipField(profileIsMemberCheckbox, profileMembershipWrapper, profileMembershipNumberInput, {
+  clearWhenDisabled: true,
+});
+
+registerIsMemberCheckbox?.addEventListener('change', () => {
+  toggleMembershipField(registerIsMemberCheckbox, registerMembershipWrapper, registerMembershipNumberInput, {
+    clearWhenDisabled: true,
+  });
+});
+
+profileIsMemberCheckbox?.addEventListener('change', () => {
+  toggleMembershipField(profileIsMemberCheckbox, profileMembershipWrapper, profileMembershipNumberInput, {
+    clearWhenDisabled: true,
+  });
+});
+
+accountDashboardRefresh?.addEventListener('click', () => {
+  loadAccountSummary({ force: true });
+});
+
 registerForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const formData = new FormData(registerForm);
@@ -18379,6 +18884,17 @@ registerForm.addEventListener('submit', async (event) => {
     preferredSchedule: formData.get('preferredSchedule'),
     notes: formData.get('notes') || undefined,
   };
+
+  const registerIsMember = formData.has('isMember');
+  payload.isMember = registerIsMember;
+  const registerMembershipNumber = (formData.get('membershipNumber') || '').trim();
+  if (registerIsMember) {
+    if (!registerMembershipNumber) {
+      setStatusMessage(registerStatus, 'error', 'Indica tu número de socio para completar el registro.');
+      return;
+    }
+    payload.membershipNumber = registerMembershipNumber;
+  }
 
   const roleInputs = Array.from(registerForm.querySelectorAll('input[name="roles"]'));
   const selectedRoles = roleInputs
@@ -18408,6 +18924,9 @@ registerForm.addEventListener('submit', async (event) => {
     updateAuthUI();
     await loadAllData();
     registerForm.reset();
+    toggleMembershipField(registerIsMemberCheckbox, registerMembershipWrapper, registerMembershipNumberInput, {
+      clearWhenDisabled: true,
+    });
     setStatusMessage(registerStatus, 'success', 'Cuenta creada correctamente.');
   } catch (error) {
     setStatusMessage(registerStatus, 'error', error.message);
@@ -18718,6 +19237,19 @@ profileForm?.addEventListener('submit', async (event) => {
     notifyMatchRequests: formData.has('notifyMatchRequests'),
     notifyMatchResults: formData.has('notifyMatchResults'),
   };
+
+  const isMember = formData.has('isMember');
+  payload.isMember = isMember;
+  const membershipNumberRaw = (formData.get('membershipNumber') || '').trim();
+  if (isMember) {
+    if (!membershipNumberRaw) {
+      setStatusMessage(profileStatus, 'error', 'Indica tu número de socio para continuar.');
+      return;
+    }
+    payload.membershipNumber = membershipNumberRaw;
+  } else {
+    payload.membershipNumber = '';
+  }
 
   const notesRaw = (formData.get('notes') || '').trim();
   payload.notes = notesRaw;
