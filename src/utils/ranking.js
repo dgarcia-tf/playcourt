@@ -6,7 +6,21 @@ function normalizeId(value) {
   if (typeof value === 'string') return value;
   if (typeof value === 'object') {
     if (value.id) {
-      return value.id;
+      if (typeof value.id === 'string' && value.id && value.id !== '[object Object]') {
+        return value.id;
+      }
+      if (value.id instanceof Buffer) {
+        const bufferString = value.id.toString('hex');
+        if (bufferString) {
+          return bufferString;
+        }
+      }
+      if (typeof value.id.toString === 'function') {
+        const normalized = value.id.toString();
+        if (normalized && normalized !== '[object Object]') {
+          return normalized;
+        }
+      }
     }
     if (value._id) {
       const normalized = value._id.toString?.();
