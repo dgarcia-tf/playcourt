@@ -3,9 +3,9 @@ const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 
 const DEFAULT_RESERVATION_DURATION_MINUTES = 75;
 const RESERVATION_DAY_START_MINUTE = 8 * 60 + 30;
-const RESERVATION_DAY_END_MINUTE = 21 * 60;
+const RESERVATION_DAY_END_MINUTE = 22 * 60 + 15;
 const INVALID_RESERVATION_SLOT_MESSAGE =
-  'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 21:00.';
+  'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 22:15.';
 
 function toDate(value) {
   if (!value) {
