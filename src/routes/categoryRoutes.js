@@ -173,7 +173,6 @@ router.patch(
 router.get(
   '/:categoryId/enrollments',
   authenticate,
-  authorizeRoles('admin'),
   [param('categoryId').isMongoId()],
   listEnrollments
 );
