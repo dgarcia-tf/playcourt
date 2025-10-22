@@ -120,8 +120,10 @@ router.post(
     body('winnerId').isMongoId().withMessage('El ganador es obligatorio'),
     body('sets')
       .optional()
-      .isArray({ min: 2, max: 3 })
-      .withMessage('Debes proporcionar entre dos y tres sets'),
+      .isArray({ min: 1, max: 3 })
+      .withMessage(
+        'Si envías sets, el arreglo debe contener entre uno y tres elementos. Recuerda que los formatos al mejor de tres requieren registrar dos o tres sets.'
+      ),
     body('sets.*.number').optional().isInt({ min: 1, max: 3 }),
     body('sets.*.tieBreak').optional().isBoolean(),
     body('sets.*.scores').optional().isObject(),

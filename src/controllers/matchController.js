@@ -181,9 +181,10 @@ function validateSetsForMatchFormat({ matchFormat, sets = [], winnerId, playerId
         }
 
         const winnerEntry = firstScore.value > secondScore.value ? firstScore : secondScore;
+        const totalGames = firstScore.value + secondScore.value;
 
-        if (winnerEntry.value < 10) {
-          throw new Error('El set principal debe alcanzar al menos 10 juegos.');
+        if (totalGames < 10) {
+          throw new Error('El set principal debe acumular al menos 10 juegos entre ambos jugadores.');
         }
 
         const currentWins = setWins.get(winnerEntry.playerId) || 0;
