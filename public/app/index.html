@@ -90,6 +90,18 @@
                 Teléfono de contacto
                 <input type="tel" name="phone" autocomplete="tel" required />
               </label>
+              <div class="form-grid">
+                <label class="checkbox-option checkbox-option--stacked">
+                  <input type="checkbox" name="isMember" id="register-is-member" value="true" />
+                  Soy socio del club
+                  <span class="form-hint">Si marcas esta opción deberás indicar tu número de socio.</span>
+                </label>
+                <label id="register-membership-wrapper" hidden>
+                  Nº de socio
+                  <input type="text" name="membershipNumber" id="register-membership-number" maxlength="50" />
+                  <span class="form-hint">Se utilizará para vincular tu perfil con el club.</span>
+                </label>
+              </div>
               <label>
                 Fotografía de perfil
                 <input type="file" name="photo" accept="image/*" />
@@ -1578,12 +1590,24 @@
                     <div class="account-photo" id="account-photo" aria-hidden="true"></div>
                     <dl class="account-list">
                       <div>
+                        <dt>Nombre completo</dt>
+                        <dd id="account-full-name"></dd>
+                      </div>
+                      <div>
                         <dt>Correo electrónico</dt>
                         <dd id="account-email"></dd>
                       </div>
                       <div>
                         <dt>Teléfono</dt>
                         <dd id="account-phone"></dd>
+                      </div>
+                      <div>
+                        <dt>Socio del club</dt>
+                        <dd id="account-membership"></dd>
+                      </div>
+                      <div id="account-membership-number-row" hidden>
+                        <dt>Nº de socio</dt>
+                        <dd id="account-membership-number"></dd>
                       </div>
                       <div>
                         <dt>Fecha de nacimiento</dt>
@@ -1643,6 +1667,18 @@
                         <input type="date" name="birthDate" required />
                       </label>
                     </div>
+                    <div class="form-grid">
+                      <label class="checkbox-option checkbox-option--stacked">
+                        <input type="checkbox" name="isMember" id="profile-is-member" value="true" />
+                        Soy socio del club
+                        <span class="form-hint">Marca esta opción si dispones de número de socio.</span>
+                      </label>
+                      <label id="profile-membership-wrapper" hidden>
+                        Nº de socio
+                        <input type="text" name="membershipNumber" id="profile-membership-number" maxlength="50" />
+                        <span class="form-hint">Introduce el número asignado por el club.</span>
+                      </label>
+                    </div>
                     <label>
                       Fotografía
                       <input type="file" name="photo" accept="image/*" />
@@ -1695,6 +1731,85 @@
                   Tu navegador no es compatible con las notificaciones push. Prueba en un dispositivo o navegador
                   actualizado.
                 </p>
+              </article>
+              <article class="card" id="account-dashboard-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Resumen de actividad</h3>
+                    <p class="card-subtitle">
+                      Consulta tus inscripciones, partidos programados y pagos registrados en un solo lugar.
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <button type="button" class="ghost" id="account-dashboard-refresh">Actualizar</button>
+                  </div>
+                </div>
+                <div class="account-dashboard" id="account-dashboard" hidden>
+                  <div class="account-dashboard__metrics">
+                    <div class="metric-card">
+                      <span class="metric-label">Inscripciones activas</span>
+                      <strong id="account-enrollments-count">0</strong>
+                    </div>
+                    <div class="metric-card">
+                      <span class="metric-label">Partidos programados</span>
+                      <strong id="account-upcoming-count">0</strong>
+                    </div>
+                    <div class="metric-card">
+                      <span class="metric-label">Resultados recientes</span>
+                      <strong id="account-recent-count">0</strong>
+                    </div>
+                    <div class="metric-card">
+                      <span class="metric-label">Pagos registrados</span>
+                      <strong id="account-payments-count">0</strong>
+                    </div>
+                  </div>
+                  <div class="account-dashboard__totals">
+                    <div class="account-dashboard__total">
+                      <span>Pagado</span>
+                      <strong id="account-payments-paid">0,00&nbsp;EUR</strong>
+                    </div>
+                    <div class="account-dashboard__total">
+                      <span>Pendiente</span>
+                      <strong id="account-payments-pending">0,00&nbsp;EUR</strong>
+                    </div>
+                    <div class="account-dashboard__total">
+                      <span>Total registrado</span>
+                      <strong id="account-payments-total">0,00&nbsp;EUR</strong>
+                    </div>
+                  </div>
+                  <div class="account-dashboard__sections">
+                    <div class="account-dashboard__column">
+                      <section class="account-dashboard__section">
+                        <h4>Inscripciones</h4>
+                        <ul class="list" id="account-enrollments-list" hidden></ul>
+                        <p class="empty-state" id="account-enrollments-empty">
+                          Todavía no te has inscrito en ninguna liga.
+                        </p>
+                      </section>
+                      <section class="account-dashboard__section">
+                        <h4>Próximos partidos</h4>
+                        <ul class="list" id="account-upcoming-list" hidden></ul>
+                        <p class="empty-state" id="account-upcoming-empty">No tienes partidos programados.</p>
+                      </section>
+                    </div>
+                    <div class="account-dashboard__column">
+                      <section class="account-dashboard__section">
+                        <h4>Resultados recientes</h4>
+                        <ul class="list" id="account-recent-list" hidden></ul>
+                        <p class="empty-state" id="account-recent-empty">No hay resultados recientes.</p>
+                      </section>
+                      <section class="account-dashboard__section">
+                        <h4>Pagos registrados</h4>
+                        <ul class="list" id="account-payments-list" hidden></ul>
+                        <p class="empty-state" id="account-payments-empty">Todavía no has registrado pagos.</p>
+                      </section>
+                    </div>
+                  </div>
+                </div>
+                <div class="empty-state" id="account-dashboard-empty" hidden>
+                  Tus inscripciones, partidos y pagos aparecerán aquí en cuanto participes en la liga.
+                </div>
+                <p class="status-message" id="account-dashboard-status"></p>
               </article>
             </section>
           </div>

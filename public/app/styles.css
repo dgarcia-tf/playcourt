@@ -2235,6 +2235,15 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-secondary);
 }
 
+.checkbox-option--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.checkbox-option--stacked input[type='checkbox'] {
+  margin-top: 0.1rem;
+}
+
 .checkbox-group .form-hint {
   margin: 0.25rem 0 0;
 }
@@ -3094,6 +3103,80 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin: 0;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.account-dashboard {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.account-dashboard__metrics {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.account-dashboard__totals {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.account-dashboard__total {
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--text-primary);
+}
+
+.account-dashboard__total span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.account-dashboard__sections {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .account-dashboard__sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.account-dashboard__column {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.account-dashboard__section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.account-dashboard__section h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.account-dashboard .list {
+  background: transparent;
+  box-shadow: none;
+  gap: 0.75rem;
+}
+
+.account-dashboard .list li {
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.account-dashboard .empty-state {
+  margin: 0;
 }
 
 .profile-form {
