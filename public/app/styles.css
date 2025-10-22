@@ -1051,6 +1051,55 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.dashboard-highlight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.05));
+}
+
+.dashboard-highlight__count {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dashboard-highlight__count strong {
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--accent-strong);
+}
+
+.dashboard-highlight__label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.dashboard-highlight__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+}
+
+.dashboard-highlight__list .tag {
+  background: rgba(37, 99, 235, 0.16);
+  color: var(--accent-strong);
+}
+
+.dashboard-highlight__list .empty-state {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
 .metric-card {
   background: rgba(59, 130, 246, 0.08);
   border-radius: var(--radius-sm);
@@ -1079,6 +1128,41 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .card-collection {
   display: grid;
   gap: 1rem;
+}
+
+.league-ranking-group {
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(226, 232, 240, 0.25);
+}
+
+.league-ranking-group__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.league-ranking-group__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.league-ranking-group__meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.league-ranking-group__categories {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .collection-card {
