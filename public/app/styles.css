@@ -3382,14 +3382,14 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .calendar-container {
   margin-top: 1.5rem;
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .calendar-week,
 .calendar-day-list {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .calendar-day {
@@ -3424,6 +3424,16 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .calendar-day-header span {
   font-size: 0.8rem;
   color: var(--text-secondary);
+}
+
+.calendar-day--today {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.28);
+}
+
+.calendar-day--selected {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.32);
 }
 
 .calendar-event {
@@ -3507,6 +3517,10 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   background: rgba(255, 255, 255, 0.55);
 }
 
+.calendar-day-schedule__cell--busy {
+  background: rgba(148, 163, 184, 0.14);
+}
+
 .calendar-day-schedule__cell--time {
   background: rgba(148, 163, 184, 0.14);
   font-weight: 600;
@@ -3556,6 +3570,34 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 
 .calendar-event .meta {
   font-size: 0.8rem;
+}
+
+.calendar-day-schedule__slot-button {
+  width: 100%;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(37, 99, 235, 0.45);
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent-strong);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.calendar-day-schedule__slot-button:hover,
+.calendar-day-schedule__slot-button:focus-visible {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(37, 99, 235, 0.6);
+  color: var(--accent-strong);
+}
+
+.calendar-day-schedule__slot-button:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
 }
 
 .calendar-event-subtitle {
@@ -3938,6 +3980,11 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 
 .courts-management-grid {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+#court-calendar-card,
+#court-block-card {
+  grid-column: 1 / -1;
 }
 
 .court-reservation-item {

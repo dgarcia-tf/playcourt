@@ -1016,6 +1016,37 @@ function populateCourtBlockEntities() {
   }
 
   const contextType = courtBlockContextSelect?.value || 'league';
+
+  if (contextType === 'lesson') {
+    courtBlockEntitySelect.innerHTML = '';
+    const clubId = state.club?._id || state.club?.id || '';
+    if (!clubId) {
+      const option = new Option(
+        'Configura el perfil del club para habilitar los bloqueos de clases.',
+        '',
+        true,
+        true
+      );
+      option.disabled = true;
+      courtBlockEntitySelect.appendChild(option);
+      courtBlockEntitySelect.disabled = true;
+      if (courtBlockSubmit) {
+        courtBlockSubmit.disabled = true;
+      }
+      return;
+    }
+
+    const label = state.club?.name ? `Clases de tenis · ${state.club.name}` : 'Clases de tenis';
+    const option = new Option(label, clubId, true, true);
+    courtBlockEntitySelect.appendChild(option);
+    courtBlockEntitySelect.disabled = false;
+    courtBlockEntitySelect.value = clubId;
+    if (courtBlockSubmit) {
+      courtBlockSubmit.disabled = false;
+    }
+    return;
+  }
+
   const entities =
     contextType === 'league'
       ? Array.isArray(state.leagues)
@@ -1560,6 +1591,7 @@ const state = {
   courtAdminBlocks: [],
   courtCalendarDate: new Date(),
   courtCalendarEvents: [],
+  courtCalendarViewMode: 'month',
   courtBlocks: [],
   push: {
     supported: PUSH_SUPPORTED,
@@ -1706,6 +1738,7 @@ const courtCalendarLabel = document.getElementById('court-calendar-label');
 const courtCalendarPrev = document.getElementById('court-calendar-prev');
 const courtCalendarNext = document.getElementById('court-calendar-next');
 const courtCalendarStatus = document.getElementById('court-calendar-status');
+const courtCalendarViewButtons = document.querySelectorAll('[data-court-calendar-view]');
 const courtBlockForm = document.getElementById('court-block-form');
 const courtBlockContextSelect = document.getElementById('court-block-context');
 const courtBlockEntitySelect = document.getElementById('court-block-entity');
@@ -4611,6 +4644,7 @@ function resetData() {
   state.courtAdminSchedule = [];
   state.courtAdminBlocks = [];
   state.courtCalendarEvents = [];
+  state.courtCalendarViewMode = 'month';
   state.courtBlocks = [];
   state.courtCalendarDate = new Date();
   state.reservationPlayers = [];
@@ -9831,7 +9865,11 @@ function renderCalendarView({
 function setCalendarViewButtonState(buttons, activeView) {
   if (!buttons) return;
   buttons.forEach((button) => {
-    const view = button.dataset.globalCalendarView || button.dataset.calendarView || '';
+    const view =
+      button.dataset.globalCalendarView ||
+      button.dataset.calendarView ||
+      button.dataset.courtCalendarView ||
+      '';
     const isActive = view === activeView;
     button.classList.toggle('is-active', isActive);
     button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
@@ -10836,82 +10874,389 @@ function createCourtCalendarEvent(event) {
   return container;
 }
 
+function getCourtCalendarEventBounds(event) {
+  if (!event) {
+    return { start: null, end: null };
+  }
+
+  const start = parseDateSafe(event.displayStartsAt || event.startsAt);
+  if (!start) {
+    return { start: null, end: null };
+  }
+
+  const rawEnd = parseDateSafe(event.displayEndsAt || event.endsAt);
+  const end = rawEnd && rawEnd > start ? rawEnd : addMinutes(start, COURT_RESERVATION_DEFAULT_DURATION);
+
+  return { start, end };
+}
+
+function getCourtCalendarCourts(events = []) {
+  const seen = new Set();
+  const courts = [];
+
+  const register = (rawName) => {
+    if (!rawName) {
+      return;
+    }
+    const name = String(rawName).trim();
+    if (!name) {
+      return;
+    }
+    const key = normalizeCourtKey(name);
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    courts.push({
+      key,
+      name,
+      label: formatCourtDisplay(name) || name,
+    });
+  };
+
+  getClubCourtNames().forEach(register);
+
+  events.forEach((event) => {
+    if (!event) {
+      return;
+    }
+    if (event.type === 'block') {
+      const blockCourts = Array.isArray(event.courts) ? event.courts : [];
+      blockCourts.forEach(register);
+    } else if (event.court) {
+      register(event.court);
+    }
+  });
+
+  return courts;
+}
+
+function isCourtCalendarEventForCourt(event, courtName) {
+  if (!event || !courtName) {
+    return false;
+  }
+
+  if (event.type === 'block') {
+    if (event.appliesToAllCourts) {
+      return true;
+    }
+    const courts = Array.isArray(event.courts) ? event.courts : [];
+    const normalizedCourt = normalizeCourtKey(courtName);
+    return courts.some((name) => normalizeCourtKey(name) === normalizedCourt);
+  }
+
+  if (!event.court) {
+    return false;
+  }
+
+  return normalizeCourtKey(event.court) === normalizeCourtKey(courtName);
+}
+
+function doesCourtCalendarEventOverlapSlot(entry, slotStart, slotEnd) {
+  if (!entry || !entry.start || !entry.end) {
+    return false;
+  }
+
+  return entry.start < slotEnd && entry.end > slotStart;
+}
+
+function createCourtCalendarDayBlock(date, events = [], { interactive = true } = {}) {
+  const day = startOfDay(date instanceof Date ? date : new Date(date));
+  const container = document.createElement('div');
+  container.className = 'calendar-day';
+
+  const formattedDate = formatDateInput(day);
+  if (formattedDate) {
+    container.dataset.calendarDate = formattedDate;
+    const selectedValue = formatDateInput(state.courtCalendarDate);
+    if (selectedValue && selectedValue === formattedDate) {
+      container.classList.add('calendar-day--selected');
+      container.setAttribute('aria-current', 'date');
+    }
+    const todayValue = formatDateInput(new Date());
+    if (todayValue && todayValue === formattedDate) {
+      container.classList.add('calendar-day--today');
+    }
+  }
+
+  if (interactive) {
+    container.classList.add('calendar-day--actionable');
+    container.tabIndex = 0;
+    container.setAttribute('role', 'button');
+    container.setAttribute('aria-label', `Agenda del ${formatDateOnly(day)}`);
+  }
+
+  const header = document.createElement('div');
+  header.className = 'calendar-day-header';
+  header.innerHTML = `<strong>${day.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
+    weekday: 'short',
+  }).format(day)}</span>`;
+  container.appendChild(header);
+
+  if (!events.length) {
+    const empty = document.createElement('div');
+    empty.className = 'calendar-empty';
+    empty.textContent = '—';
+    container.appendChild(empty);
+    return container;
+  }
+
+  events.forEach((event) => {
+    container.appendChild(createCourtCalendarEvent(event));
+  });
+
+  return container;
+}
+
+function createCourtCalendarDaySchedule(date, events = []) {
+  const dayReference = startOfDay(date instanceof Date ? date : new Date(date));
+  const formattedDate = formatDateInput(dayReference);
+
+  const normalizedEvents = events
+    .map((event) => {
+      const bounds = getCourtCalendarEventBounds(event);
+      if (!bounds.start || !bounds.end) {
+        return null;
+      }
+      return { event, start: bounds.start, end: bounds.end };
+    })
+    .filter(Boolean);
+
+  const courts = getCourtCalendarCourts(events);
+
+  if (!courts.length) {
+    return createCourtCalendarDayBlock(dayReference, events, { interactive: false });
+  }
+
+  const container = document.createElement('div');
+  container.className = 'calendar-day calendar-day--schedule';
+  if (formattedDate) {
+    container.dataset.calendarDate = formattedDate;
+    const selectedValue = formatDateInput(state.courtCalendarDate);
+    if (selectedValue && selectedValue === formattedDate) {
+      container.classList.add('calendar-day--selected');
+      container.setAttribute('aria-current', 'date');
+    }
+    const todayValue = formatDateInput(new Date());
+    if (todayValue && todayValue === formattedDate) {
+      container.classList.add('calendar-day--today');
+    }
+  }
+  container.setAttribute('aria-label', `Agenda detallada del ${formatDateOnly(dayReference)}`);
+
+  const header = document.createElement('div');
+  header.className = 'calendar-day-header calendar-day-schedule__header';
+  header.innerHTML = `<strong>${dayReference.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
+    weekday: 'long',
+  }).format(dayReference)}</span>`;
+  container.appendChild(header);
+
+  const scroller = document.createElement('div');
+  scroller.className = 'calendar-day-schedule';
+  container.appendChild(scroller);
+
+  const grid = document.createElement('div');
+  grid.className = 'calendar-day-schedule__grid';
+  grid.style.setProperty('--calendar-schedule-court-count', courts.length);
+  scroller.appendChild(grid);
+
+  const headerRow = document.createElement('div');
+  headerRow.className = 'calendar-day-schedule__row calendar-day-schedule__row--header';
+  headerRow.style.setProperty('--calendar-schedule-court-count', courts.length);
+  const timeHeaderCell = document.createElement('div');
+  timeHeaderCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
+  timeHeaderCell.textContent = 'Horario';
+  headerRow.appendChild(timeHeaderCell);
+  courts.forEach((court, index) => {
+    const courtCell = document.createElement('div');
+    courtCell.className =
+      'calendar-day-schedule__cell calendar-day-schedule__cell--court calendar-day-schedule__cell--header';
+    courtCell.textContent = court.label;
+    if (index === courts.length - 1) {
+      courtCell.classList.add('calendar-day-schedule__cell--last-column');
+    }
+    headerRow.appendChild(courtCell);
+  });
+  grid.appendChild(headerRow);
+
+  const slots = getReservationSlotStartsForDate(dayReference);
+
+  slots.forEach((slotStart, slotIndex) => {
+    const slotStartDate = new Date(slotStart);
+    const slotEndDate = getReservationSlotEnd(slotStartDate);
+
+    const row = document.createElement('div');
+    row.className = 'calendar-day-schedule__row';
+    row.style.setProperty('--calendar-schedule-court-count', courts.length);
+
+    const timeCell = document.createElement('div');
+    timeCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
+    timeCell.textContent = formatReservationSlotLabel(slotStartDate);
+    if (slotIndex === slots.length - 1) {
+      timeCell.classList.add('calendar-day-schedule__cell--last-row');
+    }
+    row.appendChild(timeCell);
+
+    courts.forEach((court, courtIndex) => {
+      const cell = document.createElement('div');
+      cell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--court';
+      if (slotIndex === slots.length - 1) {
+        cell.classList.add('calendar-day-schedule__cell--last-row');
+      }
+      if (courtIndex === courts.length - 1) {
+        cell.classList.add('calendar-day-schedule__cell--last-column');
+      }
+
+      const slotEvents = normalizedEvents.filter(
+        (entry) =>
+          isCourtCalendarEventForCourt(entry.event, court.name) &&
+          doesCourtCalendarEventOverlapSlot(entry, slotStartDate, slotEndDate)
+      );
+
+      if (!slotEvents.length) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'calendar-day-schedule__slot-button';
+        button.textContent = 'Reservar';
+        button.setAttribute('aria-label', `Reservar ${court.label} · ${formatReservationSlotLabel(slotStartDate)}`);
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          openReservationEditorFromCalendar({
+            startsAt: slotStartDate,
+            endsAt: slotEndDate,
+            court: court.name,
+          });
+        });
+        cell.appendChild(button);
+      } else {
+        cell.classList.add('calendar-day-schedule__cell--busy');
+        slotEvents
+          .sort((a, b) => a.start - b.start)
+          .forEach((entry) => {
+            const eventElement = createCourtCalendarEvent(entry.event);
+            eventElement.classList.add('calendar-schedule-event');
+            cell.appendChild(eventElement);
+          });
+      }
+
+      row.appendChild(cell);
+    });
+
+    grid.appendChild(row);
+  });
+
+  const unassignedSeen = new Set();
+  const unassignedEvents = events.filter((event) => {
+    if (!event) {
+      return false;
+    }
+    if (event.type === 'block') {
+      if (event.appliesToAllCourts) {
+        return false;
+      }
+      const courtsList = Array.isArray(event.courts) ? event.courts.filter(Boolean) : [];
+      if (courtsList.length) {
+        return false;
+      }
+    } else if (event.court) {
+      return false;
+    }
+
+    const key = event.id || `${event.type}:${event.startsAt}`;
+    if (unassignedSeen.has(key)) {
+      return false;
+    }
+    unassignedSeen.add(key);
+    return true;
+  });
+
+  if (unassignedEvents.length) {
+    const unassignedSection = document.createElement('div');
+    unassignedSection.className = 'calendar-day-schedule__unassigned';
+    const title = document.createElement('p');
+    title.className = 'calendar-day-schedule__unassigned-title';
+    title.textContent = 'Eventos sin pista asignada';
+    unassignedSection.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'calendar-day-schedule__unassigned-list';
+    unassignedEvents.forEach((event) => {
+      const eventElement = createCourtCalendarEvent(event);
+      eventElement.classList.add('calendar-schedule-event');
+      list.appendChild(eventElement);
+    });
+    unassignedSection.appendChild(list);
+    container.appendChild(unassignedSection);
+  }
+
+  return container;
+}
+
 function renderCourtCalendar() {
   if (!courtCalendarContainer) {
     return;
   }
 
   const reference = state.courtCalendarDate instanceof Date ? new Date(state.courtCalendarDate) : new Date();
-  const monthStart = startOfMonth(reference);
-  state.courtCalendarDate = monthStart;
+  const normalizedReference = startOfDay(reference);
+  state.courtCalendarDate = normalizedReference;
 
-  if (courtCalendarLabel) {
-    courtCalendarLabel.textContent = formatMonthLabel(monthStart);
-  }
+  const viewMode = state.courtCalendarViewMode === 'day' ? 'day' : 'month';
+  setCalendarViewButtonState(courtCalendarViewButtons, viewMode);
 
   const events = Array.isArray(state.courtCalendarEvents) ? state.courtCalendarEvents : [];
   const grouped = buildCourtCalendarDayMap(events);
 
   courtCalendarContainer.innerHTML = '';
 
-  let cursor = startOfWeek(monthStart);
-  for (let weekIndex = 0; weekIndex < 6; weekIndex += 1) {
-    const weekRow = document.createElement('div');
-    weekRow.className = 'calendar-week';
-
-    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
-      const day = addDays(cursor, dayIndex);
-      const key = startOfDay(day).getTime();
-      const dayEvents = grouped.get(key) || [];
-      const column = document.createElement('div');
-      column.className = 'calendar-day calendar-day--actionable';
-      column.dataset.calendarDate = formatDateInput(day);
-      column.tabIndex = 0;
-      column.setAttribute('role', 'button');
-      column.setAttribute('aria-label', `Agenda del ${formatDateOnly(day)}`);
-
-      if (day.getMonth() !== monthStart.getMonth()) {
-        column.classList.add('calendar-day--muted');
-      }
-
-      const header = document.createElement('div');
-      header.className = 'calendar-day-header';
-      header.innerHTML = `<strong>${day.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
-        weekday: 'short',
-      }).format(day)}</span>`;
-      column.appendChild(header);
-
-      if (!dayEvents.length) {
-        const empty = document.createElement('div');
-        empty.className = 'calendar-empty';
-        empty.textContent = '—';
-        column.appendChild(empty);
-      } else {
-        dayEvents.forEach((event) => {
-          column.appendChild(createCourtCalendarEvent(event));
-        });
-      }
-
-      weekRow.appendChild(column);
+  if (viewMode === 'day') {
+    if (courtCalendarLabel) {
+      courtCalendarLabel.textContent = formatDayLabel(normalizedReference);
     }
-
-    courtCalendarContainer.appendChild(weekRow);
-    cursor = addDays(cursor, 7);
-    if (cursor.getMonth() > monthStart.getMonth() && cursor.getDate() >= 7) {
-      break;
-    }
+    const key = normalizedReference.getTime();
+    const dayEvents = grouped.get(key) || [];
+    courtCalendarContainer.appendChild(createCourtCalendarDaySchedule(normalizedReference, dayEvents));
+    return;
   }
+
+  const monthStart = startOfMonth(normalizedReference);
+  if (courtCalendarLabel) {
+    courtCalendarLabel.textContent = formatMonthLabel(monthStart);
+  }
+
+  const monthEnd = endOfMonth(monthStart);
+  const dayList = document.createElement('div');
+  dayList.className = 'calendar-day-list';
+
+  for (let cursor = new Date(monthStart); cursor < monthEnd; cursor = addDays(cursor, 1)) {
+    const dayKey = startOfDay(cursor).getTime();
+    const dayEvents = grouped.get(dayKey) || [];
+    dayList.appendChild(createCourtCalendarDayBlock(cursor, dayEvents));
+  }
+
+  courtCalendarContainer.appendChild(dayList);
+}
+
+function setCourtCalendarViewMode(view) {
+  const normalized = view === 'day' ? 'day' : 'month';
+  state.courtCalendarViewMode = normalized;
+  setCalendarViewButtonState(courtCalendarViewButtons, normalized);
+  renderCourtCalendar();
 }
 
 function resetCourtCalendarView() {
   if (courtCalendarContainer) {
     courtCalendarContainer.innerHTML =
-      '<p class="empty-state">Selecciona un mes para ver las reservas y bloqueos de pistas.</p>';
+      '<p class="empty-state">Selecciona un periodo para ver las reservas y bloqueos de pistas.</p>';
   }
   if (courtCalendarLabel) {
     const reference = state.courtCalendarDate instanceof Date ? state.courtCalendarDate : new Date();
-    courtCalendarLabel.textContent = formatMonthLabel(startOfMonth(reference));
+    const normalizedReference = startOfDay(reference);
+    courtCalendarLabel.textContent =
+      state.courtCalendarViewMode === 'day'
+        ? formatDayLabel(normalizedReference)
+        : formatMonthLabel(startOfMonth(normalizedReference));
   }
+  setCalendarViewButtonState(courtCalendarViewButtons, state.courtCalendarViewMode === 'day' ? 'day' : 'month');
   if (courtBlocksEmpty) {
     courtBlocksEmpty.hidden = false;
   }
@@ -10958,7 +11303,21 @@ function renderCourtBlocksList() {
 
     const badge = document.createElement('span');
     badge.className = 'tag tag--block';
-    badge.textContent = block.contextType === 'league' ? 'Liga' : 'Torneo';
+    let badgeLabel = 'Bloqueo';
+    switch (block.contextType) {
+      case 'league':
+        badgeLabel = 'Liga';
+        break;
+      case 'tournament':
+        badgeLabel = 'Torneo';
+        break;
+      case 'lesson':
+        badgeLabel = 'Clases';
+        break;
+      default:
+        badgeLabel = 'Bloqueo';
+    }
+    badge.textContent = badgeLabel;
     header.appendChild(badge);
 
     item.appendChild(header);
@@ -11011,9 +11370,10 @@ async function loadCourtCalendarData() {
   }
 
   const reference = state.courtCalendarDate instanceof Date ? new Date(state.courtCalendarDate) : new Date();
-  const monthStart = startOfMonth(reference);
+  const normalizedReference = startOfDay(reference);
+  const monthStart = startOfMonth(normalizedReference);
   const monthEnd = endOfMonth(monthStart);
-  state.courtCalendarDate = monthStart;
+  state.courtCalendarDate = normalizedReference;
 
   if (courtCalendarStatus) {
     setStatusMessage(courtCalendarStatus, 'info', 'Cargando calendario de pistas...');
@@ -11110,23 +11470,37 @@ async function loadCourtCalendarData() {
         return;
       }
       const courts = Array.isArray(block.courts) ? block.courts : [];
+      const appliesToAllCourts = Boolean(block.appliesToAllCourts);
+      const contextType = block.contextType || '';
+      const baseTitle =
+        contextType === 'lesson'
+          ? block.contextName || 'Clases de tenis'
+          : block.contextName
+            ? `Bloqueo · ${block.contextName}`
+            : 'Bloqueo de pistas';
+      const subtitle = appliesToAllCourts
+        ? 'Aplica a todas las pistas'
+        : courts.length
+          ? `Pistas: ${courts.join(', ')}`
+          : 'Pistas por confirmar';
+
       events.push({
         id: block.id,
         type: 'block',
         startsAt: block.startsAt,
         endsAt: block.endsAt,
-        title: block.contextName ? `Bloqueo · ${block.contextName}` : 'Bloqueo de pistas',
-        subtitle: block.appliesToAllCourts
-          ? 'Aplica a todas las pistas'
-          : courts.length
-            ? `Pistas: ${courts.join(', ')}`
-            : 'Pistas por confirmar',
+        title: baseTitle,
+        subtitle,
         notes: block.notes || '',
-        courtLabel: block.appliesToAllCourts
+        courtLabel: appliesToAllCourts
           ? 'Todas las pistas'
           : courts.length
             ? courts.join(', ')
             : 'Pistas por confirmar',
+        appliesToAllCourts,
+        courts,
+        contextType,
+        contextName: block.contextName || '',
       });
     });
 
@@ -11193,6 +11567,8 @@ async function handleCourtCalendarDaySelection(dateValue) {
   if (courtAdminDateInput) {
     courtAdminDateInput.value = formatDateInput(nextDate);
   }
+  state.courtCalendarDate = startOfDay(nextDate);
+  renderCourtCalendar();
   showSection('section-court-admin');
   ensureCourtBlockRangeDefaults(nextDate);
   await refreshCourtAvailability('admin');
@@ -12699,6 +13075,7 @@ function renderClubProfile(club = {}) {
 
   populateCourtReservationCourts();
   populateCourtBlockCourts();
+  populateCourtBlockEntities();
   populateAdminMatchCourtOptions();
   const currentScheduledValue = adminMatchDate?.value || '';
   const currentSlot = currentScheduledValue.includes('T')
@@ -19189,19 +19566,36 @@ courtBlocksList?.addEventListener('click', async (event) => {
   await deleteCourtBlock(blockId, { button });
 });
 
+courtCalendarViewButtons?.forEach((button) => {
+  button.addEventListener('click', () => {
+    const view = button.dataset.courtCalendarView;
+    if (!view) {
+      return;
+    }
+    setCourtCalendarViewMode(view);
+  });
+});
+
 courtCalendarPrev?.addEventListener('click', async () => {
   const reference = state.courtCalendarDate instanceof Date ? state.courtCalendarDate : new Date();
-  state.courtCalendarDate = addMonths(reference, -1);
+  const base = startOfDay(reference);
+  state.courtCalendarDate =
+    state.courtCalendarViewMode === 'day' ? addDays(base, -1) : startOfDay(addMonths(base, -1));
   await loadCourtCalendarData();
 });
 
 courtCalendarNext?.addEventListener('click', async () => {
   const reference = state.courtCalendarDate instanceof Date ? state.courtCalendarDate : new Date();
-  state.courtCalendarDate = addMonths(reference, 1);
+  const base = startOfDay(reference);
+  state.courtCalendarDate =
+    state.courtCalendarViewMode === 'day' ? addDays(base, 1) : startOfDay(addMonths(base, 1));
   await loadCourtCalendarData();
 });
 
 courtCalendarContainer?.addEventListener('click', (event) => {
+  if (state.courtCalendarViewMode === 'day') {
+    return;
+  }
   if (event.target.closest('.calendar-event')) {
     return;
   }
@@ -19220,6 +19614,9 @@ courtCalendarContainer?.addEventListener('click', (event) => {
 });
 
 courtCalendarContainer?.addEventListener('keydown', (event) => {
+  if (state.courtCalendarViewMode === 'day') {
+    return;
+  }
   if (event.target.closest('.calendar-event')) {
     return;
   }

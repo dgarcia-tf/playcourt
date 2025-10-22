@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const COURT_BLOCK_CONTEXTS = {
   LEAGUE: 'league',
   TOURNAMENT: 'tournament',
+  LESSON: 'lesson',
 };
 
 const courtBlockSchema = new mongoose.Schema(
