@@ -55,6 +55,7 @@ const CALENDAR_MATCH_STATUSES = [
 
 const MATCH_EXPIRATION_DAYS = 15;
 const MATCHES_PER_PAGE = 10;
+const MATCH_CALENDAR_DEFAULT_DURATION_MINUTES = 90;
 const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -10008,6 +10009,258 @@ async function loadAdminCourtData() {
   await refreshCourtAvailability('admin');
 }
 
+function getMatchCalendarDurationMinutes(match) {
+  const duration = Number(match?.durationMinutes);
+  if (Number.isFinite(duration) && duration > 0) {
+    return Math.round(duration);
+  }
+  return MATCH_CALENDAR_DEFAULT_DURATION_MINUTES;
+}
+
+function formatCalendarDateTimeUTC(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return date.toISOString().replace(/[-:]|\.\d{3}/g, '');
+}
+
+function escapeICSValue(value = '') {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function buildMatchCalendarSummary(match, playersLabel) {
+  if (playersLabel && playersLabel !== 'Jugadores por definir') {
+    return `Partido: ${playersLabel}`;
+  }
+  if (match?.category?.name) {
+    return `Partido de ${match.category.name}`;
+  }
+  return 'Partido programado';
+}
+
+function buildMatchCalendarDescription(match, playersLabel, startDate) {
+  const descriptionParts = [];
+  if (playersLabel) {
+    descriptionParts.push(`Jugadores: ${playersLabel}.`);
+  }
+  const formattedDate = formatDate(startDate);
+  if (formattedDate && formattedDate !== 'Por confirmar') {
+    descriptionParts.push(`Horario: ${formattedDate}.`);
+  }
+  if (match?.category?.name) {
+    descriptionParts.push(`Categoría: ${match.category.name}.`);
+  }
+  if (typeof match?.notes === 'string') {
+    const trimmedNotes = match.notes.trim();
+    if (trimmedNotes) {
+      descriptionParts.push(trimmedNotes);
+    }
+  }
+  return descriptionParts.join(' ').trim();
+}
+
+function buildMatchCalendarLocation(match) {
+  if (!match) {
+    return '';
+  }
+  const locationParts = [];
+  if (match.court) {
+    locationParts.push(`Pista ${match.court}`);
+  }
+  const facilityName =
+    typeof match.facility?.name === 'string' ? match.facility.name.trim() : '';
+  if (facilityName) {
+    locationParts.push(facilityName);
+  }
+  return locationParts.join(' · ');
+}
+
+function buildGoogleCalendarUrl({ summary, description, location, startDate, endDate }) {
+  const url = new URL('https://calendar.google.com/calendar/render');
+  url.searchParams.set('action', 'TEMPLATE');
+  url.searchParams.set('text', summary);
+  const start = formatCalendarDateTimeUTC(startDate);
+  const end = formatCalendarDateTimeUTC(endDate);
+  if (!start || !end) {
+    return null;
+  }
+  url.searchParams.set('dates', `${start}/${end}`);
+  if (description) {
+    url.searchParams.set('details', description);
+  }
+  if (location) {
+    url.searchParams.set('location', location);
+  }
+  return url.toString();
+}
+
+function buildOutlookCalendarUrl({ summary, description, location, startDate, endDate }) {
+  const url = new URL('https://outlook.live.com/calendar/0/deeplink/compose');
+  url.searchParams.set('path', '/calendar/action/compose');
+  url.searchParams.set('rru', 'addevent');
+  url.searchParams.set('subject', summary);
+  if (description) {
+    url.searchParams.set('body', description);
+  }
+  if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) {
+    return null;
+  }
+  if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+  url.searchParams.set('startdt', startDate.toISOString());
+  url.searchParams.set('enddt', endDate.toISOString());
+  url.searchParams.set('allday', 'false');
+  if (location) {
+    url.searchParams.set('location', location);
+  }
+  return url.toString();
+}
+
+function buildMatchCalendarFileName(match, startDate, playersLabel) {
+  const baseParts = [];
+  if (playersLabel) {
+    baseParts.push(playersLabel);
+  } else if (match?.category?.name) {
+    baseParts.push(match.category.name);
+  } else {
+    baseParts.push('partido');
+  }
+  if (startDate instanceof Date && !Number.isNaN(startDate.getTime())) {
+    const year = startDate.getFullYear();
+    const month = String(startDate.getMonth() + 1).padStart(2, '0');
+    const day = String(startDate.getDate()).padStart(2, '0');
+    const hours = String(startDate.getHours()).padStart(2, '0');
+    const minutes = String(startDate.getMinutes()).padStart(2, '0');
+    baseParts.push(`${year}${month}${day}-${hours}${minutes}`);
+  }
+
+  const combined = baseParts.join(' ');
+  const slug = combined
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+
+  return `${slug || 'partido'}.ics`;
+}
+
+function buildAppleCalendarDataUrl(match, summary, description, location, startDate, endDate, playersLabel) {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'CALSCALE:GREGORIAN',
+    'PRODID:-//Club CN San Marcos//Matches//ES',
+    'BEGIN:VEVENT',
+  ];
+
+  const uidSource = match?._id || match?.id || `${startDate.getTime()}-${endDate.getTime()}`;
+  const dtStart = formatCalendarDateTimeUTC(startDate);
+  const dtEnd = formatCalendarDateTimeUTC(endDate);
+  if (!dtStart || !dtEnd) {
+    return null;
+  }
+  lines.push(`UID:match-${uidSource}@cnsanmarcos`);
+  lines.push(`DTSTAMP:${formatCalendarDateTimeUTC(new Date())}`);
+  lines.push(`DTSTART:${dtStart}`);
+  lines.push(`DTEND:${dtEnd}`);
+  if (summary) {
+    lines.push(`SUMMARY:${escapeICSValue(summary)}`);
+  }
+  if (description) {
+    lines.push(`DESCRIPTION:${escapeICSValue(description)}`);
+  }
+  if (location) {
+    lines.push(`LOCATION:${escapeICSValue(location)}`);
+  }
+  lines.push('END:VEVENT');
+  lines.push('END:VCALENDAR');
+
+  const content = `${lines.join('\r\n')}\r\n`;
+  const encoded = encodeURIComponent(content);
+  const filename = buildMatchCalendarFileName(match, startDate, playersLabel);
+
+  return { url: `data:text/calendar;charset=utf-8,${encoded}`, filename };
+}
+
+function createMatchCalendarActions(match, playersLabel) {
+  if (!match?.scheduledAt || match?.status !== 'programado') {
+    return null;
+  }
+
+  const startDate = new Date(match.scheduledAt);
+  if (Number.isNaN(startDate.getTime())) {
+    return null;
+  }
+
+  const durationMinutes = getMatchCalendarDurationMinutes(match);
+  const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
+
+  const summary = buildMatchCalendarSummary(match, playersLabel);
+  const description = buildMatchCalendarDescription(match, playersLabel, startDate);
+  const location = buildMatchCalendarLocation(match);
+
+  const googleUrl = buildGoogleCalendarUrl({ summary, description, location, startDate, endDate });
+  const outlookUrl = buildOutlookCalendarUrl({ summary, description, location, startDate, endDate });
+  const appleData = buildAppleCalendarDataUrl(
+    match,
+    summary,
+    description,
+    location,
+    startDate,
+    endDate,
+    playersLabel,
+  );
+
+  if (!googleUrl && !outlookUrl && !appleData) {
+    return null;
+  }
+
+  const container = document.createElement('div');
+  container.className = 'match-calendar-actions';
+
+  const label = document.createElement('span');
+  label.className = 'match-calendar-actions__label';
+  label.textContent = 'Añadir a tu calendario:';
+  container.appendChild(label);
+
+  if (googleUrl) {
+    const googleLink = document.createElement('a');
+    googleLink.className = 'ghost match-calendar-actions__link';
+    googleLink.href = googleUrl;
+    googleLink.target = '_blank';
+    googleLink.rel = 'noopener noreferrer';
+    googleLink.textContent = 'Google';
+    container.appendChild(googleLink);
+  }
+
+  if (outlookUrl) {
+    const outlookLink = document.createElement('a');
+    outlookLink.className = 'ghost match-calendar-actions__link';
+    outlookLink.href = outlookUrl;
+    outlookLink.target = '_blank';
+    outlookLink.rel = 'noopener noreferrer';
+    outlookLink.textContent = 'Outlook';
+    container.appendChild(outlookLink);
+  }
+
+  if (appleData) {
+    const appleLink = document.createElement('a');
+    appleLink.className = 'ghost match-calendar-actions__link';
+    appleLink.href = appleData.url;
+    appleLink.download = appleData.filename;
+    appleLink.textContent = 'Apple';
+    container.appendChild(appleLink);
+  }
+
+  return container;
+}
+
 function createMatchListItem(match, { isResultManagementList = false } = {}) {
   const item = document.createElement('li');
   const matchId = match?._id || match?.id;
@@ -10044,6 +10297,11 @@ function createMatchListItem(match, { isResultManagementList = false } = {}) {
     metaPrimary.appendChild(tag);
   }
   item.appendChild(metaPrimary);
+
+  const calendarActions = createMatchCalendarActions(match, players);
+  if (calendarActions) {
+    item.appendChild(calendarActions);
+  }
 
   if (categoryColor) {
     applyCategoryColorStyles(item, categoryColor, { shadowAlpha: 0.18 });
