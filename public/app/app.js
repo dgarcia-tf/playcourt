@@ -16094,16 +16094,48 @@ function openMatchModal(matchId = '') {
   const normalizedId = normalizeId(matchId);
   const match = normalizedId ? findMatchById(normalizedId) : null;
 
-  const categoryOptions = Array.isArray(state.categories)
-    ? state.categories
-        .map((category) => {
-          const id = normalizeId(category);
-          return id
-            ? `<option value="${id}">${category.name || 'Categoría'}</option>`
-            : '';
-        })
-        .join('')
-    : '';
+  const categories = Array.isArray(state.categories) ? [...state.categories] : [];
+  const leagues = Array.isArray(state.leagues) ? [...state.leagues] : [];
+  const stateLeagueMap = new Map();
+  leagues.forEach((league) => {
+    const id = normalizeId(league);
+    if (id && !stateLeagueMap.has(id)) {
+      stateLeagueMap.set(id, league);
+    }
+  });
+
+  const categoriesByLeague = new Map();
+  const leagueDetailsMap = new Map();
+  const UNASSIGNED_LEAGUE_VALUE = '__unassigned__';
+
+  const registerLeague = (league) => {
+    if (!league) return;
+    const id = normalizeId(league);
+    if (!id || leagueDetailsMap.has(id)) return;
+    if (typeof league === 'object') {
+      leagueDetailsMap.set(id, league);
+    } else if (stateLeagueMap.has(id)) {
+      leagueDetailsMap.set(id, stateLeagueMap.get(id));
+    } else {
+      leagueDetailsMap.set(id, { _id: id });
+    }
+  };
+
+  categories.forEach((category) => {
+    const leagueId = normalizeId(category.league);
+    const key = leagueId || UNASSIGNED_LEAGUE_VALUE;
+    if (!categoriesByLeague.has(key)) {
+      categoriesByLeague.set(key, []);
+    }
+    categoriesByLeague.get(key).push(category);
+    if (leagueId) {
+      registerLeague(category.league || stateLeagueMap.get(leagueId));
+    }
+  });
+
+  if (match?.league) {
+    registerLeague(match.league);
+  }
 
   const statusOptions = Object.entries(STATUS_LABELS)
     .map(([value, label]) => `<option value="${value}">${label}</option>`)
@@ -16163,10 +16195,15 @@ function openMatchModal(matchId = '') {
   form.className = 'form';
   form.innerHTML = `
     <label>
+      Liga
+      <select name="leagueId" required>
+        <option value="">Selecciona una liga</option>
+      </select>
+    </label>
+    <label>
       Categoría
-      <select name="categoryId" required>
+      <select name="categoryId" required disabled>
         <option value="">Selecciona una categoría</option>
-        ${categoryOptions}
       </select>
     </label>
     <div class="form-grid">
@@ -16205,6 +16242,7 @@ function openMatchModal(matchId = '') {
   status.className = 'status-message';
   status.style.display = 'none';
 
+  const leagueField = form.elements.leagueId;
   const categoryField = form.elements.categoryId;
   const scheduledField = form.elements.scheduledAt;
   const scheduleDateField = form.elements.scheduledDate;
@@ -16213,13 +16251,141 @@ function openMatchModal(matchId = '') {
   const courtField = form.elements.court;
   const notesField = form.elements.notes;
 
-  const usingSchedulePicker =
-    scheduleTemplates.length > 0 && scheduleDateField && scheduleSlotField && scheduledField;
+  const formatLeagueLabel = (league) => {
+    if (!league || typeof league !== 'object') {
+      return 'Liga';
+    }
+    const parts = [];
+    const name = typeof league.name === 'string' && league.name.trim() ? league.name.trim() : 'Liga';
+    parts.push(name);
+    if (league.year) {
+      parts.push(league.year);
+    }
+    return parts.join(' · ');
+  };
+
+  if (leagueField) {
+    const leagueOptionEntries = [];
+    categoriesByLeague.forEach((list, key) => {
+      if (key === UNASSIGNED_LEAGUE_VALUE) return;
+      if (!Array.isArray(list) || !list.length) return;
+      const info =
+        leagueDetailsMap.get(key) || stateLeagueMap.get(key) || { _id: key };
+      leagueOptionEntries.push({ id: key, info });
+    });
+
+    leagueOptionEntries
+      .sort((a, b) => (a.info?.name || '').localeCompare(b.info?.name || '', 'es'))
+      .forEach(({ id, info }) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = formatLeagueLabel(info);
+        leagueField.appendChild(option);
+      });
+
+    if (categoriesByLeague.has(UNASSIGNED_LEAGUE_VALUE)) {
+      const option = document.createElement('option');
+      option.value = UNASSIGNED_LEAGUE_VALUE;
+      option.textContent = 'Sin liga asignada';
+      leagueField.appendChild(option);
+    }
+  }
+
+  const resolveCategoriesForLeague = (leagueId) => {
+    if (!leagueId) return [];
+    if (leagueId === UNASSIGNED_LEAGUE_VALUE) {
+      return categoriesByLeague.get(UNASSIGNED_LEAGUE_VALUE) || [];
+    }
+    return categoriesByLeague.get(leagueId) || [];
+  };
+
+  const updateCategoryOptions = ({ leagueId, targetCategoryId, preserveSelection = false } = {}) => {
+    if (!categoryField) return '';
+    const previousValue = categoryField.value || '';
+    categoryField.innerHTML = '<option value="">Selecciona una categoría</option>';
+    categoryField.disabled = true;
+
+    const categoryList = resolveCategoriesForLeague(leagueId);
+    if (!categoryList.length) {
+      return '';
+    }
+
+    const normalizedCategories = categoryList
+      .map((entry) => ({ id: normalizeId(entry), category: entry }))
+      .filter((entry) => entry.id)
+      .sort((a, b) => (a.category.name || '').localeCompare(b.category.name || '', 'es'));
+
+    if (!normalizedCategories.length) {
+      return '';
+    }
+
+    normalizedCategories.forEach((entry) => {
+      const option = new Option(entry.category.name || 'Categoría', entry.id);
+      categoryField.appendChild(option);
+    });
+
+    categoryField.disabled = false;
+
+    const desiredValue = targetCategoryId || (preserveSelection ? previousValue : '');
+    if (desiredValue && normalizedCategories.some((entry) => entry.id === desiredValue)) {
+      categoryField.value = desiredValue;
+    } else if (normalizedCategories.length === 1) {
+      categoryField.value = normalizedCategories[0].id;
+    } else {
+      categoryField.value = '';
+    }
+
+    return categoryField.value || '';
+  };
 
   const categoryValue = match ? normalizeId(match.category) : '';
+  let initialLeagueId = '';
   if (categoryValue) {
-    categoryField.value = categoryValue;
+    const categoryEntry = categories.find((item) => normalizeId(item) === categoryValue);
+    if (categoryEntry) {
+      initialLeagueId = normalizeId(categoryEntry.league);
+      if (!initialLeagueId && categoriesByLeague.has(UNASSIGNED_LEAGUE_VALUE)) {
+        initialLeagueId = UNASSIGNED_LEAGUE_VALUE;
+      }
+    }
+  } else if (match?.league) {
+    initialLeagueId = normalizeId(match.league);
   }
+
+  const selectInitialLeague = (desiredLeagueId) => {
+    if (!leagueField) return '';
+    const options = Array.from(leagueField.options || []);
+    if (desiredLeagueId && options.some((option) => option.value === desiredLeagueId)) {
+      leagueField.value = desiredLeagueId;
+    } else if (!leagueField.value) {
+      const availableOptions = options.filter((option) => option.value);
+      if (availableOptions.length === 1) {
+        leagueField.value = availableOptions[0].value;
+      } else {
+        leagueField.value = '';
+      }
+    }
+    return leagueField.value || '';
+  };
+
+  const selectedLeagueId = selectInitialLeague(initialLeagueId);
+  const initialCategorySelection = updateCategoryOptions({
+    leagueId: selectedLeagueId,
+    targetCategoryId: categoryValue,
+  });
+
+  if (leagueField) {
+    leagueField.addEventListener('change', (event) => {
+      setStatusMessage(status, '', '');
+      const nextCategoryId = updateCategoryOptions({ leagueId: event.target.value });
+      populateMatchPlayerSelects(form, nextCategoryId, [], status).catch((error) => {
+        console.warn('No fue posible cargar jugadores inscritos', error);
+      });
+    });
+  }
+
+  const usingSchedulePicker =
+    scheduleTemplates.length > 0 && scheduleDateField && scheduleSlotField && scheduledField;
   if (statusField) {
     statusField.value = match?.status || 'pendiente';
   }
@@ -16293,8 +16459,9 @@ function openMatchModal(matchId = '') {
   const selectedPlayers = Array.isArray(match?.players)
     ? match.players.map((player) => normalizeId(player))
     : [];
+  const initialCategoryId = initialCategorySelection || categoryField.value;
 
-  populateMatchPlayerSelects(form, categoryField.value, selectedPlayers, status).catch((error) => {
+  populateMatchPlayerSelects(form, initialCategoryId, selectedPlayers, status).catch((error) => {
     console.warn('No fue posible cargar jugadores inscritos', error);
   });
 
@@ -16600,23 +16767,74 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
     return;
   }
 
-  const options = state.categories
-    .map((category) => {
-      const id = normalizeId(category);
-      if (!id) return '';
-      const label = category.name || 'Categoría';
-      return `<option value="${id}">${label}</option>`;
-    })
-    .join('');
+  const categories = Array.isArray(state.categories) ? [...state.categories] : [];
+  const leagues = Array.isArray(state.leagues) ? [...state.leagues] : [];
+  const stateLeagueMap = new Map();
+  leagues.forEach((league) => {
+    const id = normalizeId(league);
+    if (id && !stateLeagueMap.has(id)) {
+      stateLeagueMap.set(id, league);
+    }
+  });
+
+  const categoriesByLeague = new Map();
+  const leagueDetailsMap = new Map();
+  const UNASSIGNED_LEAGUE_VALUE = '__unassigned__';
+
+  const registerLeague = (league) => {
+    if (!league) return;
+    const id = normalizeId(league);
+    if (!id || leagueDetailsMap.has(id)) return;
+    if (typeof league === 'object') {
+      leagueDetailsMap.set(id, league);
+    } else if (stateLeagueMap.has(id)) {
+      leagueDetailsMap.set(id, stateLeagueMap.get(id));
+    } else {
+      leagueDetailsMap.set(id, { _id: id });
+    }
+  };
+
+  categories.forEach((category) => {
+    const leagueId = normalizeId(category.league);
+    const key = leagueId || UNASSIGNED_LEAGUE_VALUE;
+    if (!categoriesByLeague.has(key)) {
+      categoriesByLeague.set(key, []);
+    }
+    categoriesByLeague.get(key).push(category);
+    if (leagueId) {
+      registerLeague(category.league || stateLeagueMap.get(leagueId));
+    }
+  });
+
+  const normalizedPreselectedCategoryId = preselectedCategoryId
+    ? normalizeId(preselectedCategoryId)
+    : '';
+  let initialLeagueId = '';
+  if (normalizedPreselectedCategoryId) {
+    const categoryEntry = categories.find(
+      (item) => normalizeId(item) === normalizedPreselectedCategoryId
+    );
+    if (categoryEntry) {
+      initialLeagueId = normalizeId(categoryEntry.league);
+      if (!initialLeagueId && categoriesByLeague.has(UNASSIGNED_LEAGUE_VALUE)) {
+        initialLeagueId = UNASSIGNED_LEAGUE_VALUE;
+      }
+    }
+  }
 
   const form = document.createElement('form');
   form.className = 'form';
   form.innerHTML = `
     <label>
+      Liga
+      <select name="leagueId" required>
+        <option value="">Selecciona una liga</option>
+      </select>
+    </label>
+    <label>
       Categoría
-      <select name="categoryId" required>
+      <select name="categoryId" required disabled>
         <option value="">Selecciona una categoría</option>
-        ${options}
       </select>
     </label>
     <p class="form-hint">
@@ -16632,17 +16850,130 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
   status.className = 'status-message';
   status.style.display = 'none';
 
-  const select = form.elements.categoryId;
-  if (
-    preselectedCategoryId &&
-    Array.from(select.options).some((option) => option.value === preselectedCategoryId)
-  ) {
-    select.value = preselectedCategoryId;
+  const leagueSelect = form.elements.leagueId;
+  const categorySelect = form.elements.categoryId;
+
+  const formatLeagueLabel = (league) => {
+    if (!league || typeof league !== 'object') {
+      return 'Liga';
+    }
+    const parts = [];
+    const name = typeof league.name === 'string' && league.name.trim() ? league.name.trim() : 'Liga';
+    parts.push(name);
+    if (league.year) {
+      parts.push(league.year);
+    }
+    return parts.join(' · ');
+  };
+
+  if (leagueSelect) {
+    const leagueOptionEntries = [];
+    categoriesByLeague.forEach((list, key) => {
+      if (key === UNASSIGNED_LEAGUE_VALUE) return;
+      if (!Array.isArray(list) || !list.length) return;
+      const info = leagueDetailsMap.get(key) || stateLeagueMap.get(key) || { _id: key };
+      leagueOptionEntries.push({ id: key, info });
+    });
+
+    leagueOptionEntries
+      .sort((a, b) => (a.info?.name || '').localeCompare(b.info?.name || '', 'es'))
+      .forEach(({ id, info }) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = formatLeagueLabel(info);
+        leagueSelect.appendChild(option);
+      });
+
+    if (categoriesByLeague.has(UNASSIGNED_LEAGUE_VALUE)) {
+      const option = document.createElement('option');
+      option.value = UNASSIGNED_LEAGUE_VALUE;
+      option.textContent = 'Sin liga asignada';
+      leagueSelect.appendChild(option);
+    }
   }
+
+  const resolveCategoriesForLeague = (leagueId) => {
+    if (!leagueId) return [];
+    if (leagueId === UNASSIGNED_LEAGUE_VALUE) {
+      return categoriesByLeague.get(UNASSIGNED_LEAGUE_VALUE) || [];
+    }
+    return categoriesByLeague.get(leagueId) || [];
+  };
+
+  const updateCategoryOptions = ({ leagueId, targetCategoryId } = {}) => {
+    if (!categorySelect) return '';
+    categorySelect.innerHTML = '<option value="">Selecciona una categoría</option>';
+    categorySelect.disabled = true;
+
+    const categoryList = resolveCategoriesForLeague(leagueId);
+    if (!categoryList.length) {
+      return '';
+    }
+
+    const normalizedCategories = categoryList
+      .map((entry) => ({ id: normalizeId(entry), category: entry }))
+      .filter((entry) => entry.id)
+      .sort((a, b) => (a.category.name || '').localeCompare(b.category.name || '', 'es'));
+
+    if (!normalizedCategories.length) {
+      return '';
+    }
+
+    normalizedCategories.forEach((entry) => {
+      const option = new Option(entry.category.name || 'Categoría', entry.id);
+      categorySelect.appendChild(option);
+    });
+
+    categorySelect.disabled = false;
+
+    const desiredValue = targetCategoryId && normalizedCategories.some((entry) => entry.id === targetCategoryId)
+      ? targetCategoryId
+      : normalizedCategories.length === 1
+      ? normalizedCategories[0].id
+      : '';
+    if (desiredValue) {
+      categorySelect.value = desiredValue;
+    } else {
+      categorySelect.value = '';
+    }
+
+    return categorySelect.value || '';
+  };
+
+  const selectInitialLeague = (desiredLeagueId) => {
+    if (!leagueSelect) return '';
+    const options = Array.from(leagueSelect.options || []);
+    if (desiredLeagueId && options.some((option) => option.value === desiredLeagueId)) {
+      leagueSelect.value = desiredLeagueId;
+    } else if (!leagueSelect.value) {
+      const availableOptions = options.filter((option) => option.value);
+      if (availableOptions.length === 1) {
+        leagueSelect.value = availableOptions[0].value;
+      } else {
+        leagueSelect.value = '';
+      }
+    }
+    return leagueSelect.value || '';
+  };
+
+  const selectedLeagueId = selectInitialLeague(initialLeagueId);
+  updateCategoryOptions({
+    leagueId: selectedLeagueId,
+    targetCategoryId: normalizedPreselectedCategoryId,
+  });
+
+  leagueSelect?.addEventListener('change', (event) => {
+    setStatusMessage(status, '', '');
+    updateCategoryOptions({ leagueId: event.target.value });
+  });
+
+  categorySelect?.addEventListener('change', () => {
+    setStatusMessage(status, '', '');
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const categoryId = select.value;
+    const categoryId = categorySelect ? categorySelect.value : '';
     if (!categoryId) {
       setStatusMessage(status, 'error', 'Selecciona la categoría a generar.');
       return;
