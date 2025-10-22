@@ -1235,6 +1235,11 @@ async function proposeMatch(req, res) {
     return res.status(400).json({ message: 'Fecha inválida.' });
   }
 
+  const proposedCourt = typeof court === 'string' ? court.trim() : '';
+  if (!proposedCourt) {
+    return res.status(400).json({ message: 'Debes seleccionar una pista para proponer la fecha.' });
+  }
+
   match.proposal = {
     requestedBy: requesterId,
     requestedTo: opponentId,
@@ -1246,14 +1251,12 @@ async function proposeMatch(req, res) {
   match.status = 'propuesto';
   match.scheduledAt = undefined;
   match.court = undefined;
-  if (court !== undefined) {
-    try {
-      match.court = await resolveClubCourtSelection(court);
-    } catch (error) {
-      return res.status(error.statusCode || 400).json({
-        message: error.message || 'La pista seleccionada no es válida.',
-      });
-    }
+  try {
+    match.court = await resolveClubCourtSelection(proposedCourt);
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({
+      message: error.message || 'La pista seleccionada no es válida.',
+    });
   }
 
   await match.save();
