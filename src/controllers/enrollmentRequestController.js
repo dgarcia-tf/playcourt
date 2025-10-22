@@ -5,6 +5,7 @@ const { EnrollmentRequest, ENROLLMENT_REQUEST_STATUSES } = require('../models/En
 const { LEAGUE_STATUS } = require('../models/League');
 const { User } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
+const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
 
 async function requestEnrollment(req, res) {
   const errors = validationResult(req);
@@ -41,6 +42,8 @@ async function requestEnrollment(req, res) {
   const now = new Date();
 
   if (league) {
+    await ensureLeagueIsOpen(league, 'La liga está cerrada y no admite nuevas inscripciones.');
+
     if (league.status === LEAGUE_STATUS.CLOSED) {
       return res
         .status(400)
@@ -181,6 +184,13 @@ async function updateEnrollmentRequest(req, res) {
 
     if (!category) {
       return res.status(404).json({ message: 'Categoría no encontrada' });
+    }
+
+    if (category.league) {
+      await ensureLeagueIsOpen(
+        category.league,
+        'La liga está cerrada y no admite nuevas inscripciones.'
+      );
     }
 
     if (category.status !== CATEGORY_STATUSES.REGISTRATION) {

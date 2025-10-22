@@ -10,6 +10,7 @@ const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { refreshCategoryRanking } = require('../services/rankingService');
 const { MATCH_EXPIRATION_DAYS } = require('../services/matchExpirationService');
+const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
 const {
   ensureReservationAvailability: ensureCourtReservationAvailability,
   upsertMatchReservation,
@@ -22,6 +23,34 @@ const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caduc
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MIN_MATCH_DURATION_MS = 75 * 60 * 1000;
 const MATCH_EXPIRATION_MS = MATCH_EXPIRATION_DAYS * DAY_IN_MS;
+
+async function ensureCategoryLeagueAllowsChanges(category, message) {
+  if (!category || !category.league) {
+    return;
+  }
+
+  await ensureLeagueIsOpen(category.league, message);
+}
+
+async function ensureMatchLeagueAllowsChanges(match, message) {
+  if (!match) {
+    return;
+  }
+
+  await match.populate({ path: 'league', select: 'status endDate closedAt' });
+
+  if (match.league) {
+    await ensureLeagueIsOpen(match.league, message);
+    return;
+  }
+
+  if (match.category) {
+    const category = await Category.findById(match.category).select('league');
+    if (category?.league) {
+      await ensureLeagueIsOpen(category.league, message);
+    }
+  }
+}
 
 function normalizeMatchFormat(value) {
   return Object.values(MATCH_FORMATS).includes(value) ? value : DEFAULT_CATEGORY_MATCH_FORMAT;
@@ -419,6 +448,11 @@ async function createMatch(req, res) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
   }
 
+  await ensureCategoryLeagueAllowsChanges(
+    category,
+    'La liga está cerrada y no admite la creación de nuevos partidos.'
+  );
+
   const leagueId = category.league ? category.league.toString() : null;
 
   const enrollments = await Enrollment.find({
@@ -628,6 +662,11 @@ async function updateMatch(req, res) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
 
+  await ensureMatchLeagueAllowsChanges(
+    match,
+    'La liga está cerrada y no permite editar partidos.'
+  );
+
   const existingReservation = await CourtReservation.findOne({ match: matchId });
 
   let targetCategoryId = match.category?.toString();
@@ -636,6 +675,12 @@ async function updateMatch(req, res) {
     if (!category) {
       return res.status(404).json({ message: 'Categoría no encontrada' });
     }
+
+    await ensureCategoryLeagueAllowsChanges(
+      category,
+      'La liga está cerrada y no permite editar partidos.'
+    );
+
     match.category = categoryId;
     targetCategoryId = categoryId;
     match.league = category.league ? category.league : undefined;
@@ -791,6 +836,11 @@ async function deleteMatch(req, res) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
 
+  await ensureMatchLeagueAllowsChanges(
+    match,
+    'La liga está cerrada y no permite eliminar partidos.'
+  );
+
   if (match.status === 'completado') {
     return res
       .status(400)
@@ -827,6 +877,11 @@ async function reportResult(req, res) {
   if (!match) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
+
+  await ensureMatchLeagueAllowsChanges(
+    match,
+    'La liga está cerrada y no permite registrar resultados.'
+  );
 
   const playerIds = match.players.map((player) => player.toString());
   const requesterId = req.user.id;
@@ -991,6 +1046,11 @@ async function confirmResult(req, res) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
 
+  await ensureMatchLeagueAllowsChanges(
+    match,
+    'La liga está cerrada y no permite confirmar resultados.'
+  );
+
   if (!match.result || !match.result.winner) {
     return res.status(400).json({ message: 'Aún no hay un resultado registrado para este partido.' });
   }
@@ -1105,6 +1165,11 @@ async function generateCategoryMatches(req, res) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
   }
 
+  await ensureCategoryLeagueAllowsChanges(
+    category,
+    'La liga está cerrada y no permite generar partidos.'
+  );
+
   const enrollments = await Enrollment.find({ category: categoryId }).select('user').populate('user', 'fullName');
 
   if (enrollments.length < 2) {
@@ -1212,6 +1277,11 @@ async function proposeMatch(req, res) {
   if (!match) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
+
+  await ensureMatchLeagueAllowsChanges(
+    match,
+    'La liga está cerrada y no permite proponer nuevas fechas.'
+  );
 
   const requesterId = req.user.id;
   const playerIds = match.players.map((player) => player.toString());
@@ -1340,6 +1410,11 @@ async function respondToProposal(req, res) {
   if (!match) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
+
+  await ensureMatchLeagueAllowsChanges(
+    match,
+    'La liga está cerrada y no permite gestionar propuestas de partidos.'
+  );
 
   if (!match.proposal || !match.proposal.requestedTo) {
     return res.status(400).json({ message: 'No hay una propuesta pendiente para este partido.' });
