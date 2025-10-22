@@ -3,15 +3,11 @@ const mongoose = require('mongoose');
 const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
-const { CourtBlock } = require('../models/CourtBlock');
-const { formatCourtBlock, buildContextLabelMap } = require('./courtBlockController');
 const {
   ensureReservationAvailability,
   DEFAULT_RESERVATION_DURATION_MINUTES,
   INVALID_RESERVATION_SLOT_MESSAGE,
   normalizeParticipants,
-  RESERVATION_DAY_START_MINUTE,
-  RESERVATION_DAY_END_MINUTE,
 } = require('../services/courtReservationService');
 
 function sanitizeNotes(notes) {
@@ -50,39 +46,6 @@ function buildDayRange(dateInput) {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { start, end };
-}
-
-function buildDailySlots(date) {
-  const day = toDate(date);
-  if (!day) {
-    return [];
-  }
-
-  const slots = [];
-  const dayStart = new Date(day);
-  dayStart.setHours(0, 0, 0, 0);
-
-  const durationMs = DEFAULT_RESERVATION_DURATION_MINUTES * 60 * 1000;
-  const lastStartMinute = RESERVATION_DAY_END_MINUTE - DEFAULT_RESERVATION_DURATION_MINUTES;
-
-  for (
-    let minute = RESERVATION_DAY_START_MINUTE;
-    minute <= lastStartMinute;
-    minute += DEFAULT_RESERVATION_DURATION_MINUTES
-  ) {
-    const slotStart = new Date(dayStart.getTime() + minute * 60 * 1000);
-    const slotEnd = new Date(slotStart.getTime() + durationMs);
-    slots.push({ startsAt: slotStart, endsAt: slotEnd });
-  }
-
-  return slots;
-}
-
-function hasOverlap(startA, endA, startB, endB) {
-  if (!startA || !endA || !startB || !endB) {
-    return false;
-  }
-  return startA < endB && endA > startB;
 }
 
 function hasCourtManagementAccess(user) {
@@ -327,141 +290,6 @@ async function cancelReservation(req, res) {
   return res.json({ message: 'Reserva cancelada correctamente.' });
 }
 
-async function getAvailability(req, res) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  const { date, court: rawCourt } = req.query;
-  const range = buildDayRange(date);
-  if (!range) {
-    return res.status(400).json({ message: 'La fecha es obligatoria para consultar disponibilidad.' });
-  }
-
-  const club = await Club.getSingleton();
-  const allCourts = Array.isArray(club?.courts)
-    ? club.courts.map((court) => court?.name).filter(Boolean)
-    : [];
-
-  let selectedCourts = allCourts;
-  let resolvedCourt;
-  if (rawCourt) {
-    resolvedCourt = await ensureCourtExists(rawCourt);
-    selectedCourts = resolvedCourt ? [resolvedCourt] : [];
-  }
-
-  if (!selectedCourts.length) {
-    return res.json({ date: range.start, courts: [], blocks: [] });
-  }
-
-  const reservations = await CourtReservation.find({
-    court: { $in: selectedCourts },
-    status: { $in: ACTIVE_RESERVATION_STATUSES },
-    startsAt: { $gte: range.start, $lt: range.end },
-  })
-    .sort({ startsAt: 1 })
-    .populate('createdBy', 'fullName email roles')
-    .populate('participants', 'fullName email roles')
-    .populate({
-      path: 'match',
-      select: 'players category league season status scheduledAt court',
-      populate: [
-        { path: 'players', select: 'fullName email' },
-        { path: 'category', select: 'name color' },
-        { path: 'league', select: 'name year status' },
-        { path: 'season', select: 'name year' },
-      ],
-    });
-
-  const blocks = await CourtBlock.find({
-    startsAt: { $lt: range.end },
-    endsAt: { $gt: range.start },
-  })
-    .sort({ startsAt: 1 })
-    .lean();
-
-  const blockLabels = await buildContextLabelMap(blocks);
-  const serializedBlocks = blocks
-    .map((block) => formatCourtBlock(block, blockLabels))
-    .filter(Boolean)
-    .filter((block) => {
-      if (!resolvedCourt) {
-        return true;
-      }
-      const appliesToCourts = block.courts && block.courts.length ? block.courts : allCourts;
-      return appliesToCourts.includes(resolvedCourt);
-    });
-
-  const blocksByCourt = new Map();
-  serializedBlocks.forEach((block) => {
-    const targetCourts = block.courts && block.courts.length ? block.courts : allCourts;
-    targetCourts.forEach((courtName) => {
-      if (!blocksByCourt.has(courtName)) {
-        blocksByCourt.set(courtName, []);
-      }
-      blocksByCourt.get(courtName).push(block);
-    });
-  });
-
-  const slots = buildDailySlots(range.start);
-
-  const grouped = selectedCourts.map((courtName) => ({
-    court: courtName,
-    reservations: [],
-    blocks: (blocksByCourt.get(courtName) || []).filter((block) => {
-      if (!resolvedCourt) {
-        return true;
-      }
-      const target = block.courts && block.courts.length ? block.courts : allCourts;
-      return target.includes(courtName);
-    }),
-    availableSlots: [],
-  }));
-
-  reservations.forEach((reservation) => {
-    const bucket = grouped.find((entry) => entry.court === reservation.court);
-    if (bucket) {
-      bucket.reservations.push(reservation);
-    } else {
-      grouped.push({
-        court: reservation.court,
-        reservations: [reservation],
-        blocks: blocksByCourt.get(reservation.court) || [],
-        availableSlots: [],
-      });
-    }
-  });
-
-  grouped.forEach((entry) => {
-    const courtReservations = entry.reservations || [];
-    const courtBlocks = entry.blocks || [];
-
-    entry.availableSlots = slots.filter((slot) => {
-      const blockedByReservation = courtReservations.some((reservation) =>
-        hasOverlap(slot.startsAt, slot.endsAt, reservation.startsAt, reservation.endsAt)
-      );
-      if (blockedByReservation) {
-        return false;
-      }
-
-      const blockedByCourtBlock = courtBlocks.some((block) => {
-        const blockStart = block.startsAt instanceof Date ? block.startsAt : new Date(block.startsAt);
-        const blockEnd = block.endsAt instanceof Date ? block.endsAt : new Date(block.endsAt);
-        return hasOverlap(slot.startsAt, slot.endsAt, blockStart, blockEnd);
-      });
-      return !blockedByCourtBlock;
-    });
-  });
-
-  return res.json({
-    date: range.start,
-    court: resolvedCourt,
-    courts: grouped,
-    blocks: serializedBlocks,
-  });
-}
-
 async function listReservationPlayers(req, res) {
   const playerFilter = {
     $or: [{ roles: USER_ROLES.PLAYER }, { role: USER_ROLES.PLAYER }],
@@ -501,7 +329,6 @@ module.exports = {
   createReservation,
   listReservations,
   cancelReservation,
-  getAvailability,
   validateCreateReservation,
   validateListReservations,
   listReservationPlayers,

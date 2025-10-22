@@ -4,7 +4,6 @@ const {
   createReservation,
   listReservations,
   cancelReservation,
-  getAvailability,
   validateCreateReservation,
   validateListReservations,
   listReservationPlayers,
@@ -23,7 +22,6 @@ const router = express.Router();
 
 router.get('/reservations/players', authenticate, listReservationPlayers);
 router.get('/reservations', authenticate, validateListReservations, listReservations);
-router.get('/availability', authenticate, validateListReservations, getAvailability);
 router.post('/reservations', authenticate, validateCreateReservation, createReservation);
 router.delete('/reservations/:id', authenticate, cancelReservation);
 router.get(
