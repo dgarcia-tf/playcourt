@@ -11,6 +11,7 @@ const {
   TournamentMatch,
   TOURNAMENT_MATCH_STATUS,
 } = require('../models/TournamentMatch');
+const { resolveMatchScheduledAt } = require('../utils/matchSchedule');
 const { TournamentEnrollment } = require('../models/TournamentEnrollment');
 
 const UPCOMING_LEAGUE_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision'];
@@ -42,11 +43,12 @@ function buildRanking(enrollments = [], matches = []) {
 function serializeLeagueMatch(match) {
   const category = match.category || {};
   const league = category.league || match.league;
+  const scheduledAt = resolveMatchScheduledAt(match);
 
   return {
     id: normalizeId(match),
     scope: 'league',
-    scheduledAt: match.scheduledAt,
+    scheduledAt,
     court: match.court,
     status: match.status,
     category: category
@@ -73,10 +75,12 @@ function serializeLeagueMatch(match) {
 }
 
 function serializeTournamentMatch(match) {
+  const scheduledAt = resolveMatchScheduledAt(match);
+
   return {
     id: normalizeId(match),
     scope: 'tournament',
-    scheduledAt: match.scheduledAt,
+    scheduledAt,
     court: match.court,
     status: match.status,
     category: match.category
