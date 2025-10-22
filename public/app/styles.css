@@ -1631,43 +1631,15 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   border-radius: 0.9rem;
   background: linear-gradient(180deg, rgba(241, 245, 249, 0.6), rgba(248, 250, 252, 0.9));
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.league-payment-item summary {
+.league-payment-header-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.league-payment-item summary:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.league-payment-item summary::-webkit-details-marker,
-.league-payment-item summary::marker {
-  display: none;
-}
-
-.league-payment-item summary::after {
-  content: '';
-  width: 0.65rem;
-  height: 0.65rem;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(-45deg);
-  opacity: 0.5;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  margin-left: auto;
-}
-
-.league-payment-item[open] summary::after {
-  transform: rotate(45deg);
-  opacity: 0.8;
 }
 
 .league-payment-header {

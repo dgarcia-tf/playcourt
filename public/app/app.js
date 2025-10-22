@@ -2447,7 +2447,7 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   const listItem = document.createElement('li');
   listItem.className = 'league-payment-entry';
 
-  const item = document.createElement('details');
+  const item = document.createElement('div');
   item.className = 'league-payment-item';
   const statusValue = entry.status || 'pendiente';
   item.dataset.paymentStatus = statusValue;
@@ -2463,7 +2463,7 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
 
   const playerCell = buildPlayerCell(entry.player || {}, { includeSchedule: false, size: 'sm' });
   header.appendChild(playerCell);
-  summary.appendChild(header);
+  headerRow.appendChild(header);
 
   const headerMeta = document.createElement('div');
   headerMeta.className = 'league-payment-header-meta';
@@ -2494,8 +2494,8 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
     headerMeta.appendChild(noteSpan);
   }
 
-  summary.appendChild(headerMeta);
-  item.appendChild(summary);
+  headerRow.appendChild(headerMeta);
+  item.appendChild(headerRow);
 
   item.addEventListener('toggle', () => {
     summary.setAttribute('aria-expanded', item.open ? 'true' : 'false');
@@ -2503,6 +2503,7 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
 
   const body = document.createElement('div');
   body.className = 'league-payment-body';
+  body.hidden = true;
 
   const categoryNames = Array.isArray(entry.categories)
     ? entry.categories.map((category) => category?.name || '').filter(Boolean)
