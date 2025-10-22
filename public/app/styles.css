@@ -1027,6 +1027,24 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   min-width: 200px;
 }
 
+.categories-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.categories-toolbar .inline-field {
+  margin: 0;
+}
+
+.categories-toolbar__note {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
 .dashboard-metrics {
   display: grid;
   gap: 1rem;

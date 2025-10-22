@@ -1063,6 +1063,9 @@ const state = {
     search: '',
     gender: '',
   },
+  categoryFilters: {
+    league: '',
+  },
   leaguePlayersLoading: false,
   leagueDetails: new Map(),
   leaguePayments: new Map(),
@@ -1207,6 +1210,7 @@ const rankingPrintButton = document.getElementById('ranking-print-button');
 const logoutButtons = Array.from(document.querySelectorAll('[data-action="logout"]'));
 const globalMessage = document.getElementById('global-message');
 const categoriesList = document.getElementById('categories-list');
+const categoryLeagueFilter = document.getElementById('categories-league-filter');
 const leaguesList = document.getElementById('leagues-list');
 const notificationsList = document.getElementById('notifications-list');
 const matchesMenuBadge = document.getElementById('menu-matches-badge');
@@ -1676,6 +1680,15 @@ function updateNotificationCounts(value = 0) {
   }
   updateNotificationsMenuBadge(count);
   return count;
+}
+
+function ensureCategoryFilters() {
+  if (!state.categoryFilters) {
+    state.categoryFilters = { league: '' };
+  } else if (typeof state.categoryFilters.league !== 'string') {
+    state.categoryFilters.league = String(state.categoryFilters.league || '');
+  }
+  return state.categoryFilters;
 }
 
 function ensureLeaguePlayerFilters() {
@@ -3899,6 +3912,7 @@ function resetData() {
   state.pendingApprovalMatches = [];
   state.completedMatches = [];
   state.leagues = [];
+  state.categoryFilters = { league: '' };
   state.globalOverview = null;
   state.leagueDashboard = null;
   if (state.leagueDetails instanceof Map) {
@@ -3940,6 +3954,11 @@ function resetData() {
   state.generalChatMessages = [];
   state.noticeUnreadCount = 0;
   updateCategoryControlsAvailability();
+  if (categoryLeagueFilter) {
+    categoryLeagueFilter.innerHTML = '<option value="">Todas las ligas</option>';
+    categoryLeagueFilter.value = '';
+    categoryLeagueFilter.disabled = true;
+  }
   if (leaguesList) {
     leaguesList.innerHTML =
       '<li class="empty-state">Inicia sesión para revisar las ligas disponibles.</li>';
@@ -4745,6 +4764,42 @@ function updateCategoryControlsAvailability() {
     : 'Crea una liga activa para registrar nuevas categorías.';
 }
 
+function updateCategoryFilterControls({ renderOnChange = true } = {}) {
+  if (!categoryLeagueFilter) return;
+
+  const filters = ensureCategoryFilters();
+  const previousValue = filters.league || '';
+
+  categoryLeagueFilter.innerHTML = '<option value="">Todas las ligas</option>';
+
+  const leagues = Array.isArray(state.leagues) ? state.leagues.slice() : [];
+  leagues.sort((a, b) => formatLeagueOptionLabel(a).localeCompare(formatLeagueOptionLabel(b), 'es'));
+
+  const availableIds = new Set();
+  leagues.forEach((league) => {
+    const leagueId = normalizeId(league);
+    if (!leagueId || availableIds.has(leagueId)) {
+      return;
+    }
+    availableIds.add(leagueId);
+    const option = document.createElement('option');
+    option.value = leagueId;
+    option.textContent = formatLeagueOptionLabel(league);
+    categoryLeagueFilter.appendChild(option);
+  });
+
+  const nextValue = previousValue && availableIds.has(previousValue) ? previousValue : '';
+  const selectionChanged = nextValue !== previousValue;
+
+  filters.league = nextValue;
+  categoryLeagueFilter.value = nextValue;
+  categoryLeagueFilter.disabled = !availableIds.size;
+
+  if (selectionChanged && renderOnChange) {
+    renderCategories(state.categories);
+  }
+}
+
 function renderLeagues(leagues = []) {
   if (!leaguesList) return;
   const { filtersReset } = pruneLeagueCaches();
@@ -4754,6 +4809,7 @@ function renderLeagues(leagues = []) {
   if (!Array.isArray(leagues) || !leagues.length) {
     leaguesList.innerHTML =
       '<li class="empty-state">Crea una liga para iniciar una nueva temporada.</li>';
+    updateCategoryFilterControls();
     return;
   }
 
@@ -4872,29 +4928,93 @@ function renderLeagues(leagues = []) {
 
     leaguesList.appendChild(item);
   });
+
+  updateCategoryFilterControls();
 }
 
 function renderCategories(categories = []) {
   if (!categoriesList) return;
   updateCategoryControlsAvailability();
-  categoriesList.innerHTML = '';
 
-  if (!categories.length) {
-    if (!state.leagues.length) {
-      categoriesList.innerHTML = isAdmin()
-        ? '<li class="empty-state">Crea una liga para comenzar a registrar categorías.</li>'
-        : '<li class="empty-state">Aún no hay ligas disponibles.</li>';
-    } else {
-      categoriesList.innerHTML = '<li class="empty-state">No hay categorías registradas.</li>';
-    }
-    return;
-  }
+  const filters = ensureCategoryFilters();
+  const leagueFilter = filters.league || '';
+  const sourceCategories = Array.isArray(categories)
+    ? categories
+    : Array.isArray(state.categories)
+    ? state.categories
+    : [];
 
   const admin = isAdmin();
   const currentGender = state.user?.gender || '';
-  let pendingRequestTotal = 0;
+  const totalPendingRequests = admin
+    ? sourceCategories.reduce((sum, category) => {
+        const pendingCount = Number(category?.pendingRequestCount || 0);
+        if (Number.isFinite(pendingCount) && pendingCount > 0) {
+          return sum + pendingCount;
+        }
+        return sum;
+      }, 0)
+    : 0;
 
-  categories.forEach((category) => {
+  const filteredCategories = leagueFilter
+    ? sourceCategories.filter((category) => normalizeId(category?.league) === leagueFilter)
+    : sourceCategories;
+
+  categoriesList.innerHTML = '';
+
+  if (!filteredCategories.length) {
+    if (!sourceCategories.length) {
+      categoriesList.innerHTML = state.leagues.length
+        ? '<li class="empty-state">No hay categorías registradas.</li>'
+        : admin
+        ? '<li class="empty-state">Crea una liga para comenzar a registrar categorías.</li>'
+        : '<li class="empty-state">Aún no hay ligas disponibles.</li>';
+    } else if (leagueFilter) {
+      categoriesList.innerHTML =
+        '<li class="empty-state">No hay categorías registradas para la liga seleccionada.</li>';
+    } else {
+      categoriesList.innerHTML = '<li class="empty-state">No hay categorías registradas.</li>';
+    }
+
+    if (admin) {
+      state.pendingEnrollmentRequestCount = totalPendingRequests;
+      if (state.notificationBase !== null) {
+        renderNotifications(state.notificationBase);
+      }
+    } else {
+      state.pendingEnrollmentRequestCount = 0;
+    }
+
+    return;
+  }
+
+  const resolveCategorySortValue = (category) => {
+    if (!category) {
+      return Number.POSITIVE_INFINITY;
+    }
+    const start = category.startDate ? new Date(category.startDate).getTime() : NaN;
+    if (Number.isFinite(start)) {
+      return start;
+    }
+    const created = category.createdAt ? new Date(category.createdAt).getTime() : NaN;
+    if (Number.isFinite(created)) {
+      return created;
+    }
+    return Number.POSITIVE_INFINITY;
+  };
+
+  const sortedCategories = filteredCategories
+    .slice()
+    .sort((a, b) => {
+      const valueA = resolveCategorySortValue(a);
+      const valueB = resolveCategorySortValue(b);
+      if (valueA !== valueB) {
+        return valueA - valueB;
+      }
+      return (a?.name || '').localeCompare(b?.name || '', 'es');
+    });
+
+  sortedCategories.forEach((category) => {
     const item = document.createElement('li');
     const content = document.createElement('div');
     content.className = 'list-item__content';
@@ -5029,9 +5149,6 @@ function renderCategories(categories = []) {
       ? storedEnrollments.length
       : Number(category.enrollmentCount || 0);
     const pendingRequestCount = Number(category.pendingRequestCount || 0);
-    if (admin && Number.isFinite(pendingRequestCount) && pendingRequestCount > 0) {
-      pendingRequestTotal += pendingRequestCount;
-    }
 
     const enrollmentSummary = document.createElement('div');
     enrollmentSummary.className = 'meta meta-enrollment';
@@ -5174,7 +5291,7 @@ function renderCategories(categories = []) {
   });
 
   if (admin) {
-    state.pendingEnrollmentRequestCount = pendingRequestTotal;
+    state.pendingEnrollmentRequestCount = totalPendingRequests;
     if (state.notificationBase !== null) {
       renderNotifications(state.notificationBase);
     }
@@ -16856,6 +16973,12 @@ leaguesList?.addEventListener('click', (event) => {
   if (action === 'edit' && leagueId) {
     openLeagueModal(leagueId);
   }
+});
+
+categoryLeagueFilter?.addEventListener('change', () => {
+  const filters = ensureCategoryFilters();
+  filters.league = categoryLeagueFilter.value || '';
+  renderCategories(state.categories);
 });
 
 categoryCreateButton?.addEventListener('click', () => {
