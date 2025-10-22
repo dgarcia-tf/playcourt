@@ -513,6 +513,233 @@ function getClubCourtNames() {
   return Array.from(new Set(names));
 }
 
+function parseTimeStringToMinutes(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = trimmed.match(/^([0-9]{1,2}):([0-5][0-9])$/);
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  if (hours < 0 || hours > 23) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function getWeekdayValueFromIndex(index) {
+  switch (index) {
+    case 0:
+      return 'sunday';
+    case 1:
+      return 'monday';
+    case 2:
+      return 'tuesday';
+    case 3:
+      return 'wednesday';
+    case 4:
+      return 'thursday';
+    case 5:
+      return 'friday';
+    case 6:
+      return 'saturday';
+    default:
+      return '';
+  }
+}
+
+function normalizeClubScheduleEntry(entry, index) {
+  if (!entry) {
+    return null;
+  }
+
+  const label = typeof entry.label === 'string' ? entry.label.trim() : '';
+  if (!label) {
+    return null;
+  }
+
+  return {
+    id: `${index}`,
+    label,
+    dayValue: getDayValueFromLabel(label),
+    opensMinutes: parseTimeStringToMinutes(entry.opensAt),
+    closesMinutes: parseTimeStringToMinutes(entry.closesAt),
+  };
+}
+
+function getClubMatchScheduleTemplates() {
+  const club = state.club || {};
+  const schedules = Array.isArray(club.schedules) ? club.schedules : [];
+  return schedules.map(normalizeClubScheduleEntry).filter(Boolean);
+}
+
+function buildSlotsForScheduleEntry(entry, baseDate) {
+  if (!entry || !(baseDate instanceof Date) || Number.isNaN(baseDate.getTime())) {
+    return [];
+  }
+
+  const slots = [];
+  const startMinutes = Number.isFinite(entry.opensMinutes)
+    ? Math.max(entry.opensMinutes, COURT_RESERVATION_FIRST_SLOT_MINUTE)
+    : COURT_RESERVATION_FIRST_SLOT_MINUTE;
+  const endMinutes = Number.isFinite(entry.closesMinutes)
+    ? Math.min(entry.closesMinutes, COURT_RESERVATION_LAST_SLOT_END_MINUTE)
+    : COURT_RESERVATION_LAST_SLOT_END_MINUTE;
+
+  const lastStart = endMinutes - COURT_RESERVATION_DEFAULT_DURATION;
+  if (lastStart < startMinutes) {
+    return slots;
+  }
+
+  for (let minute = startMinutes; minute <= lastStart; minute += COURT_RESERVATION_DEFAULT_DURATION) {
+    const start = addMinutes(baseDate, minute);
+    const end = addMinutes(start, COURT_RESERVATION_DEFAULT_DURATION);
+    slots.push({
+      value: formatTimeInputValue(start),
+      label: formatTimeRangeLabel(start, end),
+    });
+  }
+
+  return slots;
+}
+
+function getMatchScheduleSlotOptionsForDate(dateValue, templates = getClubMatchScheduleTemplates()) {
+  if (!dateValue || !Array.isArray(templates) || !templates.length) {
+    return [];
+  }
+
+  const reference = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(reference.getTime())) {
+    return [];
+  }
+
+  const dayValue = getWeekdayValueFromIndex(reference.getDay());
+  const baseDate = startOfDay(reference);
+  const seen = new Set();
+  const slots = [];
+
+  templates.forEach((entry) => {
+    if (entry.dayValue && entry.dayValue !== dayValue) {
+      return;
+    }
+
+    const entrySlots = buildSlotsForScheduleEntry(entry, baseDate);
+    entrySlots.forEach((slot) => {
+      if (seen.has(slot.value)) {
+        return;
+      }
+
+      seen.add(slot.value);
+
+      const weekdayLabel = entry.dayValue ? WEEKDAY_LABEL_BY_VALUE[entry.dayValue] || '' : '';
+      const hasCustomLabel =
+        entry.label && weekdayLabel && entry.label.toLowerCase() !== weekdayLabel.toLowerCase();
+
+      slots.push({
+        value: slot.value,
+        label: slot.label,
+        displayLabel: hasCustomLabel ? `${entry.label} · ${slot.label}` : slot.label,
+      });
+    });
+  });
+
+  return slots.sort((a, b) => a.value.localeCompare(b.value));
+}
+
+function formatScheduleSlotFallbackLabel(dateValue, timeValue) {
+  if (!dateValue || !timeValue) {
+    return `Horario seleccionado (${timeValue || 'manual'})`;
+  }
+
+  const combined = combineDateAndTime(dateValue, timeValue);
+  if (!combined) {
+    return `Horario seleccionado (${timeValue})`;
+  }
+
+  const endsAt = addMinutes(combined, COURT_RESERVATION_DEFAULT_DURATION);
+  return `Horario seleccionado · ${formatTimeRangeLabel(combined, endsAt)}`;
+}
+
+function renderMatchScheduleSlots({
+  select,
+  dateValue,
+  templates = getClubMatchScheduleTemplates(),
+  selectedTime = '',
+} = {}) {
+  if (!select) {
+    return { matched: false, hasOptions: false };
+  }
+
+  select.innerHTML = '';
+  select.disabled = true;
+
+  if (!Array.isArray(templates) || !templates.length) {
+    const option = new Option(
+      'Configura horarios preferentes en el club para habilitar esta lista.',
+      '',
+      true,
+      true
+    );
+    select.appendChild(option);
+    return { matched: false, hasOptions: false };
+  }
+
+  if (!dateValue) {
+    const option = new Option('Selecciona un día para ver horarios disponibles', '', true, true);
+    select.appendChild(option);
+    return { matched: false, hasOptions: false };
+  }
+
+  const options = getMatchScheduleSlotOptionsForDate(dateValue, templates);
+  if (!options.length) {
+    const option = new Option('No hay franjas configuradas para este día', '', true, true);
+    select.appendChild(option);
+    return { matched: false, hasOptions: false };
+  }
+
+  const placeholder = new Option('Sin horario (partido pendiente)', '', !selectedTime, !selectedTime);
+  select.appendChild(placeholder);
+
+  let matched = false;
+  options.forEach((slot) => {
+    const option = new Option(slot.displayLabel || slot.label, slot.value, false, slot.value === selectedTime);
+    if (slot.value === selectedTime) {
+      matched = true;
+    }
+    select.appendChild(option);
+  });
+
+  if (selectedTime && !matched) {
+    const fallbackLabel = formatScheduleSlotFallbackLabel(dateValue, selectedTime);
+    const fallbackOption = new Option(fallbackLabel, selectedTime, true, true);
+    select.appendChild(fallbackOption);
+    matched = true;
+  }
+
+  select.disabled = false;
+
+  if (!matched) {
+    select.value = '';
+  }
+
+  return { matched: Boolean(selectedTime && matched), hasOptions: true };
+}
+
 function populateCourtReservationCourts() {
   if (!courtReservationCourtSelect) {
     return;
@@ -1478,6 +1705,11 @@ const adminMatchCategory = document.getElementById('admin-match-category');
 const adminMatchStatus = document.getElementById('admin-match-status-select');
 const adminMatchPlayer1 = document.getElementById('admin-match-player1');
 const adminMatchPlayer2 = document.getElementById('admin-match-player2');
+const adminMatchScheduleContainer = document.getElementById('admin-match-schedule-container');
+const adminMatchDay = document.getElementById('admin-match-day');
+const adminMatchSlot = document.getElementById('admin-match-slot');
+const adminMatchDatetimeField = document.getElementById('admin-match-datetime-field');
+const adminMatchDatetimeInput = document.getElementById('admin-match-datetime');
 const adminMatchDate = document.getElementById('admin-match-date');
 const adminMatchCourt = document.getElementById('admin-match-court');
 const adminMatchNotes = document.getElementById('admin-match-notes');
@@ -1546,9 +1778,35 @@ const modalClose = document.getElementById('modal-close');
 let activeModalCleanup = null;
 let noticeDraftAttachments = [];
 
-if (adminMatchDate) {
-  adminMatchDate.step = String(CALENDAR_TIME_SLOT_STEP_SECONDS);
+if (adminMatchDatetimeInput) {
+  adminMatchDatetimeInput.step = String(CALENDAR_TIME_SLOT_STEP_SECONDS);
+  const handleAdminManualScheduleChange = () => {
+    if (!getClubMatchScheduleTemplates().length) {
+      syncAdminMatchScheduledValue();
+    }
+  };
+  adminMatchDatetimeInput.addEventListener('change', handleAdminManualScheduleChange);
+  adminMatchDatetimeInput.addEventListener('input', handleAdminManualScheduleChange);
 }
+
+if (adminMatchDay && adminMatchSlot) {
+  const handleAdminScheduleDateChange = () => {
+    renderMatchScheduleSlots({
+      select: adminMatchSlot,
+      dateValue: adminMatchDay.value,
+      templates: getClubMatchScheduleTemplates(),
+    });
+    syncAdminMatchScheduledValue();
+  };
+
+  adminMatchDay.addEventListener('change', handleAdminScheduleDateChange);
+  adminMatchDay.addEventListener('input', handleAdminScheduleDateChange);
+  adminMatchSlot.addEventListener('change', () => {
+    syncAdminMatchScheduledValue();
+  });
+}
+
+updateAdminMatchScheduleVisibility();
 
 function translateGender(value) {
   if (value === 'femenino') return 'Femenino';
@@ -11461,6 +11719,11 @@ function renderClubProfile(club = {}) {
   populateCourtReservationCourts();
   populateCourtBlockCourts();
   populateAdminMatchCourtOptions();
+  const currentScheduledValue = adminMatchDate?.value || '';
+  const currentSlot = currentScheduledValue.includes('T')
+    ? currentScheduledValue.split('T')[1]
+    : '';
+  updateAdminMatchScheduleVisibility({ selectedTime: currentSlot });
 
   renderRules();
 
@@ -13328,10 +13591,88 @@ function populateAdminMatchCourtOptions(selectedValue) {
   }
 }
 
+function syncAdminMatchScheduledValue() {
+  if (!adminMatchDate) {
+    return;
+  }
+
+  const templates = getClubMatchScheduleTemplates();
+  const hasTemplates = Array.isArray(templates) && templates.length > 0;
+
+  if (hasTemplates && adminMatchDay && adminMatchSlot) {
+    const dateValue = adminMatchDay.value || '';
+    const slotValue = adminMatchSlot.value || '';
+    adminMatchDate.value = dateValue && slotValue ? `${dateValue}T${slotValue}` : '';
+    return;
+  }
+
+  if (adminMatchDatetimeInput) {
+    const manualValue = adminMatchDatetimeInput.value ? adminMatchDatetimeInput.value.trim() : '';
+    adminMatchDate.value = manualValue;
+    return;
+  }
+
+  adminMatchDate.value = '';
+}
+
+function updateAdminMatchScheduleVisibility({ selectedTime } = {}) {
+  const templates = getClubMatchScheduleTemplates();
+  const hasTemplates = Array.isArray(templates) && templates.length > 0;
+
+  if (adminMatchScheduleContainer) {
+    adminMatchScheduleContainer.hidden = !hasTemplates;
+  }
+
+  if (adminMatchDay) {
+    adminMatchDay.disabled = !hasTemplates;
+  }
+
+  if (adminMatchSlot) {
+    if (!hasTemplates) {
+      adminMatchSlot.innerHTML =
+        '<option value="">Configura horarios preferentes en el club para habilitar esta lista.</option>';
+      adminMatchSlot.disabled = true;
+    }
+  }
+
+  if (adminMatchDatetimeField) {
+    adminMatchDatetimeField.hidden = hasTemplates;
+  }
+
+  if (adminMatchDatetimeInput) {
+    adminMatchDatetimeInput.disabled = hasTemplates;
+    if (!hasTemplates && adminMatchDate) {
+      adminMatchDatetimeInput.value = adminMatchDate.value || '';
+    }
+  }
+
+  if (hasTemplates && adminMatchSlot) {
+    const dateValue = adminMatchDay?.value || '';
+    renderMatchScheduleSlots({
+      select: adminMatchSlot,
+      dateValue,
+      templates,
+      selectedTime,
+    });
+  }
+
+  syncAdminMatchScheduledValue();
+}
+
 function resetAdminMatchForm() {
   if (!adminMatchForm) return;
   adminMatchForm.reset();
   populateAdminMatchCourtOptions('');
+  if (adminMatchDay) {
+    adminMatchDay.value = '';
+  }
+  if (adminMatchDatetimeInput) {
+    adminMatchDatetimeInput.value = '';
+  }
+  if (adminMatchDate) {
+    adminMatchDate.value = '';
+  }
+  updateAdminMatchScheduleVisibility();
   state.adminMatchEditingId = null;
   if (adminMatchSelect) {
     adminMatchSelect.value = '';
@@ -13389,9 +13730,19 @@ function setAdminMatchEditing(matchId) {
   if (adminMatchStatus) {
     adminMatchStatus.value = match.status || 'pendiente';
   }
+  const scheduledValue = formatDateTimeLocal(match.scheduledAt);
   if (adminMatchDate) {
-    adminMatchDate.value = formatDateTimeLocal(match.scheduledAt);
+    adminMatchDate.value = scheduledValue;
   }
+  if (adminMatchDatetimeInput) {
+    adminMatchDatetimeInput.value = scheduledValue || '';
+  }
+  if (adminMatchDay) {
+    adminMatchDay.value = scheduledValue ? scheduledValue.split('T')[0] : '';
+  }
+  updateAdminMatchScheduleVisibility({
+    selectedTime: scheduledValue ? scheduledValue.split('T')[1] : '',
+  });
   populateAdminMatchCourtOptions(match.court || '');
   if (adminMatchNotes) {
     const notes = match.result?.notes || match.notes || '';
@@ -15662,6 +16013,34 @@ function openMatchModal(matchId = '') {
     </label>
   `;
 
+  const scheduleTemplates = getClubMatchScheduleTemplates();
+  const scheduleFieldMarkup = scheduleTemplates.length
+    ? `
+    <div class="form-grid">
+      <label>
+        Día del partido
+        <input type="date" name="scheduledDate" data-match-schedule="date" />
+      </label>
+      <label>
+        Tramo horario
+        <select name="scheduledSlot" data-match-schedule="slot" disabled>
+          <option value="">Selecciona un día para ver horarios</option>
+        </select>
+        <span class="form-hint">
+          Las franjas provienen de los horarios preferentes del club. Deja la franja vacía para mantener el partido pendiente.
+        </span>
+      </label>
+    </div>
+    <input type="hidden" name="scheduledAt" />
+  `
+    : `
+    <label>
+      Fecha y hora
+      <input type="datetime-local" name="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
+      <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
+    </label>
+  `;
+
   const form = document.createElement('form');
   form.className = 'form';
   form.innerHTML = `
@@ -15692,11 +16071,7 @@ function openMatchModal(matchId = '') {
         ${statusOptions}
       </select>
     </label>
-    <label>
-      Fecha y hora
-      <input type="datetime-local" name="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
-      <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
-    </label>
+    ${scheduleFieldMarkup}
     ${courtFieldMarkup}
     <label>
       Notas internas
@@ -15714,9 +16089,14 @@ function openMatchModal(matchId = '') {
 
   const categoryField = form.elements.categoryId;
   const scheduledField = form.elements.scheduledAt;
+  const scheduleDateField = form.elements.scheduledDate;
+  const scheduleSlotField = form.elements.scheduledSlot;
   const statusField = form.elements.status;
   const courtField = form.elements.court;
   const notesField = form.elements.notes;
+
+  const usingSchedulePicker =
+    scheduleTemplates.length > 0 && scheduleDateField && scheduleSlotField && scheduledField;
 
   const categoryValue = match ? normalizeId(match.category) : '';
   if (categoryValue) {
@@ -15727,6 +16107,52 @@ function openMatchModal(matchId = '') {
   }
   if (scheduledField) {
     scheduledField.value = formatDateTimeLocal(match?.scheduledAt);
+  }
+  if (usingSchedulePicker) {
+    const syncScheduledValue = () => {
+      const dateValue = scheduleDateField.value;
+      const timeValue = scheduleSlotField.value;
+      scheduledField.value = dateValue && timeValue ? `${dateValue}T${timeValue}` : '';
+    };
+
+    const updateScheduleSlotOptions = (selectedTime = '') => {
+      renderMatchScheduleSlots({
+        select: scheduleSlotField,
+        dateValue: scheduleDateField.value,
+        templates: scheduleTemplates,
+        selectedTime,
+      });
+    };
+
+    const handleScheduleDateChange = () => {
+      updateScheduleSlotOptions('');
+      syncScheduledValue();
+    };
+
+    scheduleDateField.addEventListener('change', handleScheduleDateChange);
+    scheduleDateField.addEventListener('input', handleScheduleDateChange);
+    scheduleSlotField.addEventListener('change', () => {
+      syncScheduledValue();
+    });
+
+    const existingScheduledValue = scheduledField.value || '';
+    if (existingScheduledValue) {
+      const [existingDate, existingTime] = existingScheduledValue.split('T');
+      if (existingDate) {
+        scheduleDateField.value = existingDate;
+      }
+      updateScheduleSlotOptions(existingTime || '');
+      if (existingTime) {
+        scheduleSlotField.value = existingTime;
+        if (scheduleSlotField.value !== existingTime) {
+          scheduleSlotField.value = existingTime;
+        }
+      }
+    } else {
+      updateScheduleSlotOptions('');
+    }
+
+    syncScheduledValue();
   }
   if (courtField) {
     const courtValue = match?.court || '';
