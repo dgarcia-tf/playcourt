@@ -6,6 +6,7 @@ const RESERVATION_DAY_START_MINUTE = 8 * 60 + 30;
 const RESERVATION_DAY_END_MINUTE = 22 * 60 + 15;
 const INVALID_RESERVATION_SLOT_MESSAGE =
   'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 22:15.';
+const ACTIVE_RESERVATION_STATUSES = [RESERVATION_STATUS.RESERVED, RESERVATION_STATUS.PRE_RESERVED];
 
 function toDate(value) {
   if (!value) {
@@ -101,7 +102,7 @@ async function ensureReservationAvailability({
 
   const query = {
     court,
-    status: RESERVATION_STATUS.RESERVED,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
     $and: [
       { startsAt: { $lt: endDate } },
       { endsAt: { $gt: startDate } },
@@ -169,12 +170,35 @@ function normalizeParticipants(participants = []) {
   return normalized;
 }
 
+function resolveMatchReservationWindow(match) {
+  if (!match) {
+    return { startsAt: null, endsAt: null };
+  }
+
+  if (match.scheduledAt) {
+    return resolveEndsAt(match.scheduledAt, match.endsAt);
+  }
+
+  const proposedDate = match.proposal?.proposedFor;
+  if (proposedDate) {
+    return resolveEndsAt(proposedDate, match.proposal?.endsAt);
+  }
+
+  return { startsAt: null, endsAt: null };
+}
+
 async function upsertMatchReservation({ match, createdBy }) {
-  if (!match || !match._id || !match.court || !match.scheduledAt) {
+  if (!match || !match._id || !match.court) {
     return null;
   }
 
-  const { startsAt, endsAt } = resolveEndsAt(match.scheduledAt, match.endsAt);
+  const hasScheduledDate = Boolean(match.scheduledAt);
+  const hasProposalDate = Boolean(match.proposal?.proposedFor);
+  if (!hasScheduledDate && !hasProposalDate) {
+    return null;
+  }
+
+  const { startsAt, endsAt } = resolveMatchReservationWindow(match);
   if (!startsAt || !endsAt) {
     return null;
   }
@@ -210,19 +234,30 @@ async function upsertMatchReservation({ match, createdBy }) {
     throw error;
   }
 
+  const reservationStatus = hasScheduledDate
+    ? RESERVATION_STATUS.RESERVED
+    : RESERVATION_STATUS.PRE_RESERVED;
+  const defaultNotes = hasScheduledDate
+    ? 'Reserva automática generada por partido de liga.'
+    : 'Pre-reserva automática generada por propuesta de partido.';
+
   if (existing) {
     existing.court = match.court;
     existing.startsAt = startsAt;
     existing.endsAt = endsAt;
     existing.createdBy = creatorId;
-    existing.status = RESERVATION_STATUS.RESERVED;
+    existing.status = reservationStatus;
     existing.cancelledAt = undefined;
     existing.cancelledBy = undefined;
     existing.match = match._id;
     existing.type = RESERVATION_TYPES.MATCH;
     existing.participants = participants;
-    if (!existing.notes) {
-      existing.notes = 'Reserva automática generada por partido de liga.';
+    if (
+      !existing.notes ||
+      existing.notes.startsWith('Reserva automática generada') ||
+      existing.notes.startsWith('Pre-reserva automática')
+    ) {
+      existing.notes = defaultNotes;
     }
     await existing.save();
     return existing;
@@ -233,11 +268,11 @@ async function upsertMatchReservation({ match, createdBy }) {
     startsAt,
     endsAt,
     createdBy: creatorId,
-    status: RESERVATION_STATUS.RESERVED,
+    status: reservationStatus,
     match: match._id,
     type: RESERVATION_TYPES.MATCH,
     participants,
-    notes: 'Reserva automática generada por partido de liga.',
+    notes: defaultNotes,
   });
 
   return reservation;
@@ -248,7 +283,10 @@ async function cancelMatchReservation(matchId, { cancelledBy } = {}) {
     return null;
   }
 
-  const reservation = await CourtReservation.findOne({ match: matchId, status: RESERVATION_STATUS.RESERVED });
+  const reservation = await CourtReservation.findOne({
+    match: matchId,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
+  });
   if (!reservation) {
     return null;
   }

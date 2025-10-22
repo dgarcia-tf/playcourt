@@ -1,7 +1,7 @@
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 const { Match } = require('../models/Match');
-const { CourtReservation } = require('../models/CourtReservation');
+const { CourtReservation, RESERVATION_STATUS } = require('../models/CourtReservation');
 const { Category, MATCH_FORMATS, DEFAULT_CATEGORY_MATCH_FORMAT } = require('../models/Category');
 const { Enrollment } = require('../models/Enrollment');
 const { Season } = require('../models/Season');
@@ -24,6 +24,7 @@ const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caduc
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MIN_MATCH_DURATION_MS = 75 * 60 * 1000;
 const MATCH_EXPIRATION_MS = MATCH_EXPIRATION_DAYS * DAY_IN_MS;
+const ACTIVE_RESERVATION_STATUSES = [RESERVATION_STATUS.RESERVED, RESERVATION_STATUS.PRE_RESERVED];
 
 async function ensureCategoryLeagueAllowsChanges(category, message) {
   if (!category || !category.league) {
@@ -743,7 +744,10 @@ async function updateMatch(req, res) {
     'La liga está cerrada y no permite editar partidos.'
   );
 
-  const existingReservation = await CourtReservation.findOne({ match: matchId });
+  const existingReservation = await CourtReservation.findOne({
+    match: matchId,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
+  });
 
   let targetCategoryId = match.category?.toString();
   if (categoryId) {
@@ -1437,7 +1441,30 @@ async function proposeMatch(req, res) {
     });
   }
 
+  const existingReservation = await CourtReservation.findOne({
+    match: matchId,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
+  });
+
+  const { startsAt: reservationStart, endsAt: reservationEnd } = resolveEndsAt(proposedDate);
+  try {
+    await ensureCourtReservationAvailability({
+      court: match.court,
+      startsAt: reservationStart,
+      endsAt: reservationEnd,
+      excludeReservationId: existingReservation?._id,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ message: error.message });
+  }
+
   await match.save();
+
+  try {
+    await upsertMatchReservation({ match, createdBy: requesterId });
+  } catch (error) {
+    console.error('No se pudo crear la pre-reserva de pista para la propuesta', error);
+  }
 
   const populated = await Match.findById(matchId)
     .populate('category', 'name gender color matchFormat')
@@ -1534,7 +1561,10 @@ async function respondToProposal(req, res) {
       .json({ message: 'El partido caducó y no admite respuestas a propuestas anteriores.' });
   }
 
-  const existingReservation = await CourtReservation.findOne({ match: matchId });
+  const existingReservation = await CourtReservation.findOne({
+    match: matchId,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
+  });
 
   const userId = req.user.id;
   if (match.proposal.requestedTo.toString() !== userId) {

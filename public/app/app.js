@@ -10363,6 +10363,9 @@ function renderCourtReservations() {
     if (reservation.status === 'cancelada') {
       item.classList.add('court-reservation-item--cancelled');
     }
+    if (reservation.status === 'pre_reservada') {
+      item.classList.add('court-reservation-item--pending');
+    }
 
     const reservationId = reservation._id || reservation.id;
     if (reservationId) {
@@ -10390,6 +10393,12 @@ function renderCourtReservations() {
       manualTag.className = 'tag';
       manualTag.textContent = 'Reserva';
       scheduleRow.appendChild(manualTag);
+    }
+    if (reservation.status === 'pre_reservada') {
+      const pendingTag = document.createElement('span');
+      pendingTag.className = 'tag';
+      pendingTag.textContent = 'Pre-reserva';
+      scheduleRow.appendChild(pendingTag);
     }
     if (reservation.status === 'cancelada') {
       const cancelledTag = document.createElement('span');
@@ -10512,6 +10521,13 @@ function renderCourtAvailability() {
           tag.className = 'tag';
           tag.textContent = 'Partido';
           slot.appendChild(tag);
+        }
+        if (reservation.status === 'pre_reservada') {
+          slot.classList.add('court-availability-slot--pending');
+          const pendingTag = document.createElement('span');
+          pendingTag.className = 'tag';
+          pendingTag.textContent = 'Pre-reserva';
+          slot.appendChild(pendingTag);
         }
         if (reservation.createdBy && reservation.type !== 'partido') {
           slot.appendChild(document.createElement('span')).textContent = `Reserva de ${getPlayerDisplayName(
@@ -10660,6 +10676,9 @@ function renderCourtAdminSchedule() {
             reservation.createdBy
           )}`;
         }
+        if (reservation.status === 'pre_reservada') {
+          info.appendChild(document.createElement('span')).textContent = 'Pre-reserva pendiente de confirmación';
+        }
         if (reservation.notes && reservation.type !== 'partido') {
           info.appendChild(document.createElement('span')).textContent = reservation.notes;
         }
@@ -10757,6 +10776,9 @@ function createCourtCalendarEvent(event) {
   const container = document.createElement('div');
   const type = event.type || 'reservation';
   container.className = `calendar-event calendar-event--${type}`;
+  if (event.status === 'pre_reservada' || event.preReserved) {
+    container.classList.add('calendar-event--pre-reservation');
+  }
   if (event.spansMultipleDays) {
     container.classList.add('calendar-event--spanning');
   }
@@ -11026,6 +11048,10 @@ async function loadCourtCalendarData() {
           ? reservation.match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
           : participantsLabel || 'Partido programado';
         const subtitleParts = ['Partido oficial'];
+        const isPreReserved = reservation.status === 'pre_reservada';
+        if (isPreReserved) {
+          subtitleParts.push('Pre-reserva pendiente de confirmación');
+        }
         if (reservation.match.league?.name) {
           subtitleParts.push(reservation.match.league.name);
         }
@@ -11043,6 +11069,8 @@ async function loadCourtCalendarData() {
           court: reservation.court,
           courtLabel,
           matchId: reservation.match._id || reservation.match.id,
+          status: reservation.status || 'reservada',
+          preReserved: isPreReserved,
         });
         return;
       }
@@ -11063,6 +11091,7 @@ async function loadCourtCalendarData() {
         court: reservation.court,
         courtLabel,
         reservationId: reservation._id || reservation.id,
+        status: reservation.status || 'reservada',
       });
     });
 
