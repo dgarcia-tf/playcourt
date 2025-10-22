@@ -1016,6 +1016,7 @@ const state = {
   pendingApprovalMatches: [],
   completedMatches: [],
   selectedCategoryId: null,
+  rankingFilters: { league: '' },
   needsSetup: false,
   enrollments: new Map(),
   enrollmentRequests: new Map(),
@@ -1206,6 +1207,7 @@ const courtBlockStatus = document.getElementById('court-block-status');
 const courtBlocksList = document.getElementById('court-blocks-list');
 const courtBlocksEmpty = document.getElementById('court-blocks-empty');
 const courtBlockSubmit = courtBlockForm ? courtBlockForm.querySelector('button[type="submit"]') : null;
+const rankingLeagueFilter = document.getElementById('ranking-league-filter');
 const rankingPrintButton = document.getElementById('ranking-print-button');
 const logoutButtons = Array.from(document.querySelectorAll('[data-action="logout"]'));
 const globalMessage = document.getElementById('global-message');
@@ -1680,6 +1682,15 @@ function updateNotificationCounts(value = 0) {
   }
   updateNotificationsMenuBadge(count);
   return count;
+}
+
+function ensureRankingFilters() {
+  if (!state.rankingFilters || typeof state.rankingFilters !== 'object') {
+    state.rankingFilters = { league: '' };
+  } else if (typeof state.rankingFilters.league !== 'string') {
+    state.rankingFilters.league = String(state.rankingFilters.league || '');
+  }
+  return state.rankingFilters;
 }
 
 function ensureCategoryFilters() {
@@ -4843,6 +4854,51 @@ function updateCategoryFilterControls({ renderOnChange = true } = {}) {
   }
 }
 
+function updateRankingFilterControls({ renderOnChange = true } = {}) {
+  if (!rankingLeagueFilter) return;
+
+  const filters = ensureRankingFilters();
+  const previousValue = filters.league || '';
+
+  rankingLeagueFilter.innerHTML = '<option value="">Todas las ligas</option>';
+
+  const categories = Array.isArray(state.categories) ? state.categories : [];
+  const leagueOptions = new Map();
+
+  categories.forEach((category) => {
+    const league = resolveLeague(category.league);
+    const leagueId = league ? normalizeId(league) : normalizeId(category.league);
+    if (!leagueId || leagueOptions.has(leagueId)) {
+      return;
+    }
+    const label = league ? formatLeagueOptionLabel(league) : 'Liga';
+    leagueOptions.set(leagueId, label);
+  });
+
+  const sortedOptions = Array.from(leagueOptions.entries()).sort((a, b) =>
+    a[1].localeCompare(b[1], 'es')
+  );
+
+  sortedOptions.forEach(([leagueId, label]) => {
+    const option = document.createElement('option');
+    option.value = leagueId;
+    option.textContent = label;
+    rankingLeagueFilter.appendChild(option);
+  });
+
+  const availableIds = new Set(sortedOptions.map(([leagueId]) => leagueId));
+  const nextValue = availableIds.has(previousValue) ? previousValue : '';
+  const selectionChanged = nextValue !== previousValue;
+
+  filters.league = nextValue;
+  rankingLeagueFilter.value = nextValue;
+  rankingLeagueFilter.disabled = !availableIds.size;
+
+  if (selectionChanged && renderOnChange) {
+    renderRankingSections();
+  }
+}
+
 function renderLeagues(leagues = []) {
   if (!leaguesList) return;
   const { filtersReset } = pruneLeagueCaches();
@@ -4853,6 +4909,7 @@ function renderLeagues(leagues = []) {
     leaguesList.innerHTML =
       '<li class="empty-state">Crea una liga para iniciar una nueva temporada.</li>';
     updateCategoryFilterControls();
+    updateRankingFilterControls();
     return;
   }
 
@@ -4973,6 +5030,7 @@ function renderLeagues(leagues = []) {
   });
 
   updateCategoryFilterControls();
+  updateRankingFilterControls({ renderOnChange: false });
 }
 
 function renderCategories(categories = []) {
@@ -11048,6 +11106,11 @@ function renderRankingSections() {
   if (!rankingCategoryList) return;
 
   const categories = Array.isArray(state.categories) ? state.categories.slice() : [];
+  const filters = ensureRankingFilters();
+  const leagueFilter = filters.league || '';
+  const filteredCategories = leagueFilter
+    ? categories.filter((category) => normalizeId(category?.league) === leagueFilter)
+    : categories;
   rankingCategoryList.innerHTML = '';
 
   if (!categories.length) {
@@ -11056,6 +11119,15 @@ function renderRankingSections() {
       ? 'Crea una categoría para ver el ranking.'
       : 'Aún no hay categorías registradas.';
     setRankingStatusMessage('', '');
+    state.selectedCategoryId = null;
+    return;
+  }
+
+  if (!filteredCategories.length) {
+    rankingEmpty.hidden = false;
+    rankingEmpty.textContent = 'No hay categorías con ranking para la liga seleccionada.';
+    setRankingStatusMessage('', '');
+    state.selectedCategoryId = null;
     return;
   }
 
@@ -11064,10 +11136,19 @@ function renderRankingSections() {
   let anyLoading = false;
   let anyError = false;
 
-  categories
+  const sortedCategories = filteredCategories
     .slice()
-    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
-    .forEach((category) => {
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+
+  const availableIds = sortedCategories
+    .map((category) => normalizeId(category))
+    .filter(Boolean);
+
+  if (!availableIds.includes(state.selectedCategoryId)) {
+    state.selectedCategoryId = availableIds[0] || null;
+  }
+
+  sortedCategories.forEach((category) => {
       const categoryId = normalizeId(category);
       if (!categoryId) {
         return;
@@ -11288,7 +11369,16 @@ async function refreshAllRankings({ forceReload = false } = {}) {
   if (!rankingCategoryList) return;
 
   const categories = Array.isArray(state.categories) ? state.categories : [];
-  const categoryIds = categories.map((category) => normalizeId(category)).filter(Boolean);
+  const categoryMap = new Map();
+  const categoryIds = categories
+    .map((category) => {
+      const id = normalizeId(category);
+      if (id) {
+        categoryMap.set(id, category);
+      }
+      return id;
+    })
+    .filter(Boolean);
 
   Array.from(state.rankingsByCategory.keys()).forEach((storedId) => {
     if (!categoryIds.includes(storedId)) {
@@ -11304,10 +11394,26 @@ async function refreshAllRankings({ forceReload = false } = {}) {
       ? 'Crea una categoría para ver el ranking.'
       : 'Aún no hay categorías registradas.';
     setRankingStatusMessage('', '');
+    state.selectedCategoryId = null;
     return;
   }
 
-  if (!state.selectedCategoryId || !categoryIds.includes(state.selectedCategoryId)) {
+  const filters = ensureRankingFilters();
+  const leagueFilter = filters.league || '';
+  const filteredCategoryIds = leagueFilter
+    ? categoryIds.filter((categoryId) => {
+        const category = categoryMap.get(categoryId);
+        return normalizeId(category?.league) === leagueFilter;
+      })
+    : categoryIds;
+
+  if (filteredCategoryIds.length) {
+    if (!state.selectedCategoryId || !filteredCategoryIds.includes(state.selectedCategoryId)) {
+      state.selectedCategoryId = filteredCategoryIds[0] || null;
+    }
+  } else if (leagueFilter) {
+    state.selectedCategoryId = null;
+  } else if (!state.selectedCategoryId || !categoryIds.includes(state.selectedCategoryId)) {
     state.selectedCategoryId = categoryIds[0] || null;
   }
 
@@ -15741,6 +15847,7 @@ async function reloadCategories() {
   const categories = await request('/categories');
   const list = Array.isArray(categories) ? categories : [];
   state.categories = list;
+  updateRankingFilterControls({ renderOnChange: false });
   renderCategories(list);
   updateLeaguePlayersControls();
   updateLeaguePaymentControls();
@@ -15784,6 +15891,7 @@ async function loadAllData() {
 
     const categoryList = Array.isArray(categories) ? categories : [];
     state.categories = categoryList;
+    updateRankingFilterControls({ renderOnChange: false });
     renderCategories(categoryList);
     updateLeaguePlayersControls();
     updateLeaguePaymentControls();
@@ -16319,6 +16427,12 @@ profileForm?.addEventListener('submit', async (event) => {
 
 rankingPrintButton?.addEventListener('click', () => {
   openRankingPrintModal();
+});
+
+rankingLeagueFilter?.addEventListener('change', () => {
+  const filters = ensureRankingFilters();
+  filters.league = rankingLeagueFilter.value;
+  renderRankingSections();
 });
 
 calendarPrev?.addEventListener('click', () => {
