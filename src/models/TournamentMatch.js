@@ -192,6 +192,9 @@ const tournamentMatchSchema = new mongoose.Schema(
   }
 );
 
+tournamentMatchSchema.set('toJSON', { virtuals: true, flattenMaps: true });
+tournamentMatchSchema.set('toObject', { virtuals: true, flattenMaps: true });
+
 tournamentMatchSchema.index({ category: 1, round: 1, matchNumber: 1 }, { unique: false });
 tournamentMatchSchema.index({ status: 1, scheduledAt: 1 });
 
