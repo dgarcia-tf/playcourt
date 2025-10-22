@@ -8,6 +8,7 @@ const {
 } = require('../models/EnrollmentRequest');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
+const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
 
 async function enrollPlayer(req, res) {
   const errors = validationResult(req);
@@ -64,6 +65,8 @@ async function enrollPlayer(req, res) {
 
   const league = category.league;
   if (league) {
+    await ensureLeagueIsOpen(league, 'La liga está cerrada y no admite nuevas inscripciones.');
+
     if (league.status === LEAGUE_STATUS.CLOSED) {
       return res
         .status(400)
@@ -128,14 +131,34 @@ async function removeEnrollment(req, res) {
 
   const { categoryId, enrollmentId } = req.params;
 
-  const enrollment = await Enrollment.findOneAndDelete({
+  const enrollment = await Enrollment.findOne({
     _id: enrollmentId,
     category: categoryId,
+  }).populate({
+    path: 'category',
+    select: 'league',
+    populate: { path: 'league', select: 'status endDate closedAt' },
   });
 
   if (!enrollment) {
     return res.status(404).json({ message: 'Inscripción no encontrada' });
   }
+
+  const league = enrollment.category?.league;
+  if (league) {
+    await ensureLeagueIsOpen(
+      league,
+      'La liga está cerrada y no permite gestionar las inscripciones.'
+    );
+
+    if (league.status === LEAGUE_STATUS.CLOSED) {
+      return res
+        .status(400)
+        .json({ message: 'La liga está cerrada y no permite gestionar las inscripciones.' });
+    }
+  }
+
+  await enrollment.deleteOne();
 
   return res.status(204).send();
 }

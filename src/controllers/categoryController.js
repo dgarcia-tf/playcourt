@@ -16,6 +16,7 @@ const {
 const { USER_ROLES, userHasRole } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
 const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
+const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
 
 async function createCategory(req, res) {
   const errors = validationResult(req);
@@ -39,6 +40,8 @@ async function createCategory(req, res) {
   if (!league) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
+
+  await ensureLeagueIsOpen(league, 'La liga está cerrada y no permite crear nuevas categorías.');
 
   const normalizedSkillLevel =
     typeof skillLevel === 'string' && skillLevel.trim()
@@ -246,6 +249,13 @@ async function updateCategory(req, res) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
   }
 
+  if (category.league) {
+    await ensureLeagueIsOpen(
+      category.league,
+      'La liga está cerrada y no permite editar sus categorías.'
+    );
+  }
+
   if (name) {
     category.name = name;
   }
@@ -298,6 +308,11 @@ async function updateCategory(req, res) {
       if (!newLeague) {
         return res.status(404).json({ message: 'Liga no encontrada' });
       }
+
+      await ensureLeagueIsOpen(
+        newLeague,
+        'La liga está cerrada y no permite editar sus categorías.'
+      );
 
       const previousLeagueId = category.league ? category.league.toString() : null;
 
@@ -355,6 +370,13 @@ async function deleteCategory(req, res) {
   const category = await Category.findById(categoryId);
   if (!category) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
+  }
+
+  if (category.league) {
+    await ensureLeagueIsOpen(
+      category.league,
+      'La liga está cerrada y no permite editar sus categorías.'
+    );
   }
 
   const tasks = [
