@@ -4865,6 +4865,42 @@ function updateRankingFilterControls({ renderOnChange = true } = {}) {
   const categories = Array.isArray(state.categories) ? state.categories : [];
   const leagueOptions = new Map();
 
+  const toChronoTimestamp = (value) => {
+    if (!value) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    const time = date.getTime();
+    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  };
+
+  const compareChronologically = (a, b) => {
+    if (!a && !b) {
+      return 0;
+    }
+    if (!a) {
+      return 1;
+    }
+    if (!b) {
+      return -1;
+    }
+
+    const startDiff = toChronoTimestamp(a.startDate) - toChronoTimestamp(b.startDate);
+    if (startDiff !== 0) {
+      return startDiff;
+    }
+
+    const endDiff = toChronoTimestamp(a.endDate) - toChronoTimestamp(b.endDate);
+    if (endDiff !== 0) {
+      return endDiff;
+    }
+
+    const nameA = typeof a.name === 'string' ? a.name : '';
+    const nameB = typeof b.name === 'string' ? b.name : '';
+    return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+  };
+
   categories.forEach((category) => {
     const league = resolveLeague(category.league);
     const leagueId = league ? normalizeId(league) : normalizeId(category.league);
@@ -4872,17 +4908,23 @@ function updateRankingFilterControls({ renderOnChange = true } = {}) {
       return;
     }
     const label = league ? formatLeagueOptionLabel(league) : 'Liga';
-    leagueOptions.set(leagueId, label);
+    leagueOptions.set(leagueId, { label, league });
   });
 
-  const sortedOptions = Array.from(leagueOptions.entries()).sort((a, b) =>
-    a[1].localeCompare(b[1], 'es')
-  );
+  const sortedOptions = Array.from(leagueOptions.entries()).sort((a, b) => {
+    const leagueA = a[1].league;
+    const leagueB = b[1].league;
+    const diff = compareChronologically(leagueA, leagueB);
+    if (diff !== 0) {
+      return diff;
+    }
+    return a[1].label.localeCompare(b[1].label, 'es');
+  });
 
-  sortedOptions.forEach(([leagueId, label]) => {
+  sortedOptions.forEach(([leagueId, data]) => {
     const option = document.createElement('option');
     option.value = leagueId;
-    option.textContent = label;
+    option.textContent = data.label;
     rankingLeagueFilter.appendChild(option);
   });
 
