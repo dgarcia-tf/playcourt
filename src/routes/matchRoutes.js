@@ -147,7 +147,11 @@ router.post(
     param('matchId').isMongoId(),
     body('proposedFor').isISO8601().withMessage('Proporciona una fecha válida.'),
     body('message').optional().isString(),
-    body('court').optional().isString(),
+    body('court')
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('Debes seleccionar una pista para la propuesta.'),
   ],
   proposeMatch
 );
