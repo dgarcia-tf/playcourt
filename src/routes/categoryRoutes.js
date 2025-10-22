@@ -17,7 +17,7 @@ const { getCategoryRanking } = require('../controllers/rankingController');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const { GENDERS } = require('../models/User');
 const { CATEGORY_STATUSES, CATEGORY_SKILL_LEVELS, MATCH_FORMATS } = require('../models/Category');
-const { HEX_COLOR_REGEX, normalizeHexColor } = require('../utils/colors');
+const { CATEGORY_COLOR_PALETTE, isValidCategoryColor, normalizeHexColor } = require('../utils/colors');
 
 const router = express.Router();
 
@@ -57,9 +57,9 @@ router.post(
           return null;
         }
         const normalized = normalizeHexColor(value);
-        return normalized || null;
+        return isValidCategoryColor(normalized) ? normalized : null;
       })
-      .custom((value) => value === null || HEX_COLOR_REGEX.test(value))
+      .custom((value) => value === null || CATEGORY_COLOR_PALETTE.includes(value))
       .withMessage('Color de la categoría inválido'),
     body('leagueId').isMongoId().withMessage('Liga inválida'),
   ],
@@ -113,9 +113,9 @@ router.patch(
           return null;
         }
         const normalized = normalizeHexColor(value);
-        return normalized || null;
+        return isValidCategoryColor(normalized) ? normalized : null;
       })
-      .custom((value) => value === null || HEX_COLOR_REGEX.test(value))
+      .custom((value) => value === null || CATEGORY_COLOR_PALETTE.includes(value))
       .withMessage('Color de la categoría inválido'),
     body('leagueId').optional().isMongoId().withMessage('Liga inválida'),
   ],

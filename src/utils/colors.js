@@ -1,6 +1,14 @@
 const HEX_COLOR_INPUT_REGEX = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
-const DEFAULT_CATEGORY_COLOR = '#2563EB';
+
+const CATEGORY_COLOR_PALETTE = Object.freeze([
+  '#2563EB',
+  '#9333EA',
+  '#F97316',
+  '#059669',
+]);
+
+const DEFAULT_CATEGORY_COLOR = CATEGORY_COLOR_PALETTE[0];
 
 function normalizeHexColor(value) {
   if (typeof value !== 'string') {
@@ -30,12 +38,28 @@ function normalizeHexColor(value) {
 
 function resolveCategoryColor(value, fallback = DEFAULT_CATEGORY_COLOR) {
   const normalized = normalizeHexColor(value);
-  return normalized || fallback;
+  if (normalized && CATEGORY_COLOR_PALETTE.includes(normalized)) {
+    return normalized;
+  }
+
+  const normalizedFallback = normalizeHexColor(fallback);
+  if (normalizedFallback && CATEGORY_COLOR_PALETTE.includes(normalizedFallback)) {
+    return normalizedFallback;
+  }
+
+  return DEFAULT_CATEGORY_COLOR;
+}
+
+function isValidCategoryColor(value) {
+  const normalized = normalizeHexColor(value);
+  return Boolean(normalized) && CATEGORY_COLOR_PALETTE.includes(normalized);
 }
 
 module.exports = {
+  CATEGORY_COLOR_PALETTE,
   DEFAULT_CATEGORY_COLOR,
   HEX_COLOR_REGEX,
+  isValidCategoryColor,
   normalizeHexColor,
   resolveCategoryColor,
 };

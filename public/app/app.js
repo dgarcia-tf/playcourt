@@ -214,7 +214,8 @@ const MOVEMENT_STYLES = {
   new: { color: '#0f766e', background: '#ccfbf1' },
 };
 
-const DEFAULT_CATEGORY_COLOR = '#2563EB';
+const CATEGORY_COLOR_PALETTE = Object.freeze(['#2563EB', '#9333EA', '#F97316', '#059669']);
+const DEFAULT_CATEGORY_COLOR = CATEGORY_COLOR_PALETTE[0];
 const HEX_COLOR_INPUT_REGEX = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const PAYMENT_STATUS_LABELS = {
   pendiente: 'Pendiente',
@@ -286,14 +287,27 @@ function hexToRgba(hexValue, alpha = 1) {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${safeAlpha})`;
 }
 
+function resolveCategoryColor(value, fallback = DEFAULT_CATEGORY_COLOR) {
+  const normalized = normalizeHexColor(value);
+  if (normalized && CATEGORY_COLOR_PALETTE.includes(normalized)) {
+    return normalized;
+  }
+
+  const normalizedFallback = normalizeHexColor(fallback);
+  if (normalizedFallback && CATEGORY_COLOR_PALETTE.includes(normalizedFallback)) {
+    return normalizedFallback;
+  }
+
+  return DEFAULT_CATEGORY_COLOR;
+}
+
 function getCategoryColor(category) {
   if (!category) {
-    return '';
+    return DEFAULT_CATEGORY_COLOR;
   }
 
   const candidate = typeof category === 'string' ? category : category.color;
-  const normalized = normalizeHexColor(candidate);
-  return normalized || DEFAULT_CATEGORY_COLOR;
+  return resolveCategoryColor(candidate);
 }
 
 function applyCategoryColorStyles(
@@ -302,8 +316,7 @@ function applyCategoryColorStyles(
   { backgroundAlpha = 0.12, borderAlpha = 0.28, shadowAlpha } = {}
 ) {
   if (!element) return;
-  const normalized = normalizeHexColor(color);
-  if (!normalized) return;
+  const normalized = resolveCategoryColor(color);
 
   const background = hexToRgba(normalized, backgroundAlpha);
   const border = hexToRgba(normalized, borderAlpha);
@@ -325,8 +338,7 @@ function applyCategoryColorStyles(
 
 function applyCategoryTagColor(tag, color, { backgroundAlpha = 0.18 } = {}) {
   if (!tag) return;
-  const normalized = normalizeHexColor(color);
-  if (!normalized) return;
+  const normalized = resolveCategoryColor(color);
 
   const background = hexToRgba(normalized, backgroundAlpha);
   if (background) {
@@ -336,7 +348,7 @@ function applyCategoryTagColor(tag, color, { backgroundAlpha = 0.18 } = {}) {
 }
 
 function createCategoryColorIndicator(color, label = '') {
-  const normalized = normalizeHexColor(color);
+  const normalized = resolveCategoryColor(color);
   if (!normalized) return null;
 
   const indicator = document.createElement('span');
@@ -349,6 +361,35 @@ function createCategoryColorIndicator(color, label = '') {
     indicator.title = `Color ${normalized}`;
   }
   return indicator;
+}
+
+function renderCategoryColorField({
+  name = 'color',
+  legend = 'Color identificativo',
+  hint = '',
+  selected,
+} = {}) {
+  const activeColor = resolveCategoryColor(selected);
+  const options = CATEGORY_COLOR_PALETTE.map((color) => {
+    const checked = color === activeColor ? 'checked' : '';
+    return `
+      <label class="color-select-option">
+        <input type="radio" name="${name}" value="${color}" ${checked} />
+        <span class="color-swatch" style="--option-color: ${color}" aria-hidden="true"></span>
+        <span class="color-select-label">${color}</span>
+      </label>
+    `;
+  }).join('');
+
+  return `
+    <fieldset class="color-select">
+      <legend>${legend}</legend>
+      <div class="color-select-options">
+        ${options}
+      </div>
+      ${hint ? `<span class="form-hint">${hint}</span>` : ''}
+    </fieldset>
+  `;
 }
 
 function cloneDefaultRegulationSections() {
@@ -13080,11 +13121,9 @@ function buildCategoryPayload(formData, isEditing = false) {
   }
 
   if (formData.has('color')) {
-    const colorValue = (formData.get('color') || '').trim();
+    const colorValue = resolveCategoryColor(formData.get('color'));
     if (colorValue) {
       payload.color = colorValue;
-    } else if (isEditing) {
-      payload.color = null;
     }
   }
 
@@ -13555,7 +13594,7 @@ function buildTournamentCategoryPayload(form) {
 
   const color = formData.get('color');
   if (color) {
-    payload.color = color;
+    payload.color = resolveCategoryColor(color);
   }
 
   const drawSizeValue = (formData.get('drawSize') || '').trim();
@@ -13647,10 +13686,10 @@ async function openTournamentCategoryModal(defaultTournamentId = '') {
         </select>
       </label>
     </div>
-    <label>
-      Color identificativo
-      <input type="color" name="color" value="${DEFAULT_CATEGORY_COLOR}" />
-    </label>
+    ${renderCategoryColorField({
+      name: 'color',
+      selected: DEFAULT_CATEGORY_COLOR,
+    })}
     <label>
       Tamaño de cuadro (opcional)
       <input type="number" name="drawSize" min="0" placeholder="Ej. 16" />
@@ -14649,11 +14688,11 @@ function openCategoryModal(categoryId = '') {
       </select>
       <span class="form-hint">Define cómo se registrarán los resultados de la categoría.</span>
     </label>
-    <label>
-      Color identificativo
-      <input type="color" name="color" value="${DEFAULT_CATEGORY_COLOR}" />
-      <span class="form-hint">Se utilizará para identificar la categoría en listas y calendarios.</span>
-    </label>
+    ${renderCategoryColorField({
+      name: 'color',
+      selected: category ? getCategoryColor(category) : DEFAULT_CATEGORY_COLOR,
+      hint: 'Se utilizará para identificar la categoría en listas y calendarios.',
+    })}
     <label>
       Edad mínima (años)
       <input type="number" name="minimumAge" min="0" step="1" placeholder="Opcional" />
