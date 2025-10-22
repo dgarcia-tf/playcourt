@@ -44,6 +44,7 @@ const { TOURNAMENT_STATUS } = require('../models/Tournament');
 const { GENDERS } = require('../models/User');
 const { CATEGORY_SKILL_LEVELS } = require('../models/Category');
 const { tournamentPosterUpload } = require('../middleware/upload');
+const { CATEGORY_COLOR_PALETTE, isValidCategoryColor, normalizeHexColor } = require('../utils/colors');
 
 const router = express.Router();
 
@@ -155,7 +156,17 @@ router.post(
     body('gender').isIn(Object.values(GENDERS)),
     body('skillLevel').optional().isIn(Object.values(CATEGORY_SKILL_LEVELS)),
     body('menuTitle').optional({ nullable: true }).isString(),
-    body('color').optional({ nullable: true }).isString(),
+    body('color')
+      .optional({ nullable: true })
+      .customSanitizer((value) => {
+        if (value === null || value === undefined || value === '') {
+          return null;
+        }
+        const normalized = normalizeHexColor(value);
+        return isValidCategoryColor(normalized) ? normalized : null;
+      })
+      .custom((value) => value === null || CATEGORY_COLOR_PALETTE.includes(value))
+      .withMessage('Color de categoría inválido'),
     body('drawSize').optional({ nullable: true }).isInt({ min: 0 }),
   ],
   createTournamentCategory
@@ -171,7 +182,17 @@ router.patch(
     body('description').optional({ nullable: true }).isString(),
     body('skillLevel').optional().isIn(Object.values(CATEGORY_SKILL_LEVELS)),
     body('menuTitle').optional({ nullable: true }).isString(),
-    body('color').optional({ nullable: true }).isString(),
+    body('color')
+      .optional({ nullable: true })
+      .customSanitizer((value) => {
+        if (value === null || value === undefined || value === '') {
+          return null;
+        }
+        const normalized = normalizeHexColor(value);
+        return isValidCategoryColor(normalized) ? normalized : null;
+      })
+      .custom((value) => value === null || CATEGORY_COLOR_PALETTE.includes(value))
+      .withMessage('Color de categoría inválido'),
     body('drawSize').optional({ nullable: true }).isInt({ min: 0 }),
   ],
   updateTournamentCategory

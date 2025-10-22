@@ -15,7 +15,7 @@ const {
 } = require('../models/EnrollmentRequest');
 const { USER_ROLES, userHasRole } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
-const { DEFAULT_CATEGORY_COLOR, normalizeHexColor, resolveCategoryColor } = require('../utils/colors');
+const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
 
 async function createCategory(req, res) {
   const errors = validationResult(req);
@@ -46,7 +46,6 @@ async function createCategory(req, res) {
       : CATEGORY_SKILL_LEVELS.INTERMEDIATE;
 
   try {
-    const normalizedColor = normalizeHexColor(color);
     const normalizedMatchFormat = Object.values(MATCH_FORMATS).includes(matchFormat)
       ? matchFormat
       : DEFAULT_CATEGORY_MATCH_FORMAT;
@@ -61,7 +60,7 @@ async function createCategory(req, res) {
       status,
       league: league._id,
       minimumAge: minimumAge === null || minimumAge === undefined ? undefined : minimumAge,
-      color: normalizedColor || undefined,
+      color: isValidCategoryColor(color) ? resolveCategoryColor(color) : undefined,
       matchFormat: normalizedMatchFormat,
     });
 
@@ -275,9 +274,10 @@ async function updateCategory(req, res) {
   if (color !== undefined) {
     if (color === null) {
       category.color = DEFAULT_CATEGORY_COLOR;
+    } else if (isValidCategoryColor(color)) {
+      category.color = resolveCategoryColor(color);
     } else {
-      const normalizedColor = normalizeHexColor(color);
-      category.color = normalizedColor || DEFAULT_CATEGORY_COLOR;
+      category.color = DEFAULT_CATEGORY_COLOR;
     }
   }
 

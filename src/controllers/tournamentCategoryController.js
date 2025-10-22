@@ -9,6 +9,7 @@ const {
   TournamentEnrollment,
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
+const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
 
 function sanitizeDrawRounds(rounds = []) {
   if (!Array.isArray(rounds)) {
@@ -78,7 +79,10 @@ async function createTournamentCategory(req, res) {
     gender,
     skillLevel,
     menuTitle,
-    color,
+    color:
+      color && isValidCategoryColor(color)
+        ? resolveCategoryColor(color)
+        : DEFAULT_CATEGORY_COLOR,
     drawSize,
     tournament: tournament.id,
   };
