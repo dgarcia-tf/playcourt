@@ -528,7 +528,7 @@ async function listLeagues(req, res) {
     return compareByName(a, b);
   });
 
-  return res.json([...activeLeagues, ...otherLeagues]);
+  return res.json(leagues);
 }
 
 async function getLeagueDetail(req, res) {
