@@ -111,6 +111,8 @@ async function ensureCourtExists(courtName) {
   return matched?.name || normalized;
 }
 
+const ACTIVE_RESERVATION_STATUSES = [RESERVATION_STATUS.RESERVED, RESERVATION_STATUS.PRE_RESERVED];
+
 const validateCreateReservation = [
   body('court').isString().withMessage('La pista es obligatoria.'),
   body('startsAt')
@@ -240,7 +242,7 @@ async function listReservations(req, res) {
   const { date, court: rawCourt, start: rawStart, end: rawEnd } = req.query;
 
   const filters = {
-    status: RESERVATION_STATUS.RESERVED,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
   };
 
   if (!hasCourtManagementAccess(req.user)) {
@@ -298,7 +300,7 @@ async function cancelReservation(req, res) {
 
   const reservation = await CourtReservation.findById(id);
 
-  if (!reservation || reservation.status !== RESERVATION_STATUS.RESERVED) {
+  if (!reservation || !ACTIVE_RESERVATION_STATUSES.includes(reservation.status)) {
     return res.status(404).json({ message: 'Reserva no encontrada.' });
   }
 
@@ -355,7 +357,7 @@ async function getAvailability(req, res) {
 
   const reservations = await CourtReservation.find({
     court: { $in: selectedCourts },
-    status: RESERVATION_STATUS.RESERVED,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
     startsAt: { $gte: range.start, $lt: range.end },
   })
     .sort({ startsAt: 1 })

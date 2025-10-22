@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const RESERVATION_STATUS = {
   RESERVED: 'reservada',
+  PRE_RESERVED: 'pre_reservada',
   CANCELLED: 'cancelada',
 };
 
