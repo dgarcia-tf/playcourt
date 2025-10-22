@@ -1725,6 +1725,49 @@ function getLeaguesWithEnrollmentFee() {
     : [];
 }
 
+function compareLeaguesByHistory(leagueA, leagueB) {
+  const yearA = Number.parseInt(leagueA?.year, 10);
+  const yearB = Number.parseInt(leagueB?.year, 10);
+  const hasYearA = Number.isFinite(yearA);
+  const hasYearB = Number.isFinite(yearB);
+  if (hasYearA || hasYearB) {
+    if (!hasYearA) return 1;
+    if (!hasYearB) return -1;
+    if (yearA !== yearB) {
+      return yearA - yearB;
+    }
+  }
+
+  const startA = Date.parse(leagueA?.startDate);
+  const startB = Date.parse(leagueB?.startDate);
+  const hasStartA = Number.isFinite(startA);
+  const hasStartB = Number.isFinite(startB);
+  if (hasStartA || hasStartB) {
+    if (!hasStartA) return 1;
+    if (!hasStartB) return -1;
+    if (startA !== startB) {
+      return startA - startB;
+    }
+  }
+
+  const createdA = Date.parse(leagueA?.createdAt);
+  const createdB = Date.parse(leagueB?.createdAt);
+  const hasCreatedA = Number.isFinite(createdA);
+  const hasCreatedB = Number.isFinite(createdB);
+  if (hasCreatedA || hasCreatedB) {
+    if (!hasCreatedA) return 1;
+    if (!hasCreatedB) return -1;
+    if (createdA !== createdB) {
+      return createdA - createdB;
+    }
+  }
+
+  return formatLeagueOptionLabel(leagueA).localeCompare(
+    formatLeagueOptionLabel(leagueB),
+    'es'
+  );
+}
+
 function getLeagueCategories(leagueId) {
   if (!leagueId) return [];
   const categories = Array.isArray(state.categories) ? state.categories : [];
@@ -1988,7 +2031,7 @@ function updateLeaguePaymentControls({ resetSelection = false } = {}) {
   const leaguesWithFee = getLeaguesWithEnrollmentFee();
   const sorted = leaguesWithFee
     .slice()
-    .sort((a, b) => formatLeagueOptionLabel(a).localeCompare(formatLeagueOptionLabel(b), 'es'));
+    .sort(compareLeaguesByHistory);
 
   const availableIds = new Set();
   leaguePaymentsLeagueSelect.innerHTML = '<option value="">Selecciona una liga con cuota</option>';
