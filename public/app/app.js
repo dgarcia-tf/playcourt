@@ -8873,27 +8873,93 @@ function getResultConfirmation(match, userId) {
   return null;
 }
 
+function getProposalCalendarDate(match) {
+  if (!match || match.status !== 'propuesto') {
+    return null;
+  }
+
+  const proposal = match.proposal || {};
+  const proposalStatus = proposal.status || 'pendiente';
+  if (proposalStatus !== 'pendiente') {
+    return null;
+  }
+
+  const proposedFor = proposal.proposedFor;
+  if (!proposedFor) {
+    return null;
+  }
+
+  const proposedDate = new Date(proposedFor);
+  if (Number.isNaN(proposedDate.getTime())) {
+    return null;
+  }
+
+  return proposedDate;
+}
+
+function getMatchCalendarDate(match) {
+  if (!match) {
+    return null;
+  }
+
+  if (match.scheduledAt) {
+    const scheduledDate = new Date(match.scheduledAt);
+    if (!Number.isNaN(scheduledDate.getTime())) {
+      return scheduledDate;
+    }
+  }
+
+  return getProposalCalendarDate(match);
+}
+
 function buildCalendarDataset(matches = []) {
   const scheduled = [];
   const unscheduled = [];
 
   matches.forEach((match) => {
-    if (match.scheduledAt) {
-      scheduled.push(match);
+    const calendarDate = getMatchCalendarDate(match);
+    if (calendarDate) {
+      if (match.scheduledAt) {
+        scheduled.push(match);
+      } else {
+        scheduled.push({ ...match, scheduledAt: calendarDate.toISOString() });
+      }
     } else {
       unscheduled.push(match);
     }
   });
 
-  scheduled.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+  scheduled.sort((a, b) => {
+    const firstDate = getMatchCalendarDate(a);
+    const secondDate = getMatchCalendarDate(b);
+    if (!firstDate || !secondDate) {
+      return 0;
+    }
+    return firstDate - secondDate;
+  });
 
   const grouped = new Map();
   scheduled.forEach((match) => {
-    const key = startOfDay(new Date(match.scheduledAt)).getTime();
+    const matchDate = getMatchCalendarDate(match);
+    if (!matchDate) {
+      return;
+    }
+    const key = startOfDay(matchDate).getTime();
     if (!grouped.has(key)) {
       grouped.set(key, []);
     }
     grouped.get(key).push(match);
+  });
+
+  grouped.forEach((dayMatches) => {
+    dayMatches.sort((a, b) => {
+      const firstDate = getMatchCalendarDate(a);
+      const secondDate = getMatchCalendarDate(b);
+      if (!firstDate || !secondDate) {
+        return 0;
+      }
+      return firstDate - secondDate;
+    });
   });
 
   return { grouped, unscheduled };
