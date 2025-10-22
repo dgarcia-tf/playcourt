@@ -36,6 +36,37 @@ function mapPlayers(players = []) {
     : [];
 }
 
+function normalizeScoreMap(scores) {
+  if (!scores) return {};
+
+  if (scores instanceof Map || typeof scores?.forEach === 'function') {
+    const entries = [];
+    scores.forEach((value, key) => {
+      entries.push([key, value]);
+    });
+    return Object.fromEntries(entries);
+  }
+
+  if (typeof scores === 'object') {
+    return Object.entries(scores).reduce((acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    }, {});
+  }
+
+  return {};
+}
+
+function normalizeResultSets(sets) {
+  if (!Array.isArray(sets)) return [];
+
+  return sets.map((set) => ({
+    number: set?.number ?? null,
+    tieBreak: Boolean(set?.tieBreak),
+    scores: normalizeScoreMap(set?.scores),
+  }));
+}
+
 function mapLeagueMatch(match) {
   const category = match.category || {};
   const league = (match.league && typeof match.league === 'object'
@@ -70,6 +101,12 @@ function mapLeagueMatch(match) {
           status: match.result.status,
           winner: normalizeId(match.result.winner),
           reportedAt: match.result.reportedAt || null,
+          reportedBy: normalizeId(match.result.reportedBy),
+          confirmedBy: normalizeId(match.result.confirmedBy),
+          confirmedAt: match.result.confirmedAt || null,
+          notes: match.result.notes || null,
+          scores: normalizeScoreMap(match.result.scores),
+          sets: normalizeResultSets(match.result.sets),
         }
       : null,
     createdAt: match.createdAt || null,
@@ -108,6 +145,8 @@ function mapTournamentMatch(match) {
           winner: normalizeId(match.result.winner),
           reportedAt: match.result.reportedAt || null,
           status: match.resultStatus || null,
+          score: match.result.score || null,
+          notes: match.result.notes || null,
         }
       : null,
     createdAt: match.createdAt || null,
