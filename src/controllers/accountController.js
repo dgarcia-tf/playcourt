@@ -4,6 +4,7 @@ const { League } = require('../models/League');
 const { Tournament } = require('../models/Tournament');
 const { TournamentMatch, TOURNAMENT_MATCH_STATUS } = require('../models/TournamentMatch');
 const { resolveCategoryColor } = require('../utils/colors');
+const { resolveMatchScheduledAt } = require('../utils/matchSchedule');
 
 const UPCOMING_LEAGUE_MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision'];
 const COMPLETED_LEAGUE_MATCH_STATUSES = ['completado'];
@@ -40,12 +41,13 @@ function mapLeagueMatch(match) {
   const league = (match.league && typeof match.league === 'object'
     ? match.league
     : category.league) || null;
+  const scheduledAt = resolveMatchScheduledAt(match);
 
   return {
     id: normalizeId(match),
     scope: 'league',
     status: match.status,
-    scheduledAt: match.scheduledAt || null,
+    scheduledAt,
     court: match.court || null,
     category: category
       ? {
@@ -78,12 +80,13 @@ function mapLeagueMatch(match) {
 function mapTournamentMatch(match) {
   const category = match.category || {};
   const tournament = match.tournament || (category.tournament || null);
+  const scheduledAt = resolveMatchScheduledAt(match);
 
   return {
     id: normalizeId(match),
     scope: 'tournament',
     status: match.status,
-    scheduledAt: match.scheduledAt || null,
+    scheduledAt,
     court: match.court || null,
     category: category
       ? {
