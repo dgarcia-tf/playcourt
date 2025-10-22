@@ -1481,14 +1481,38 @@
                         Visualiza partidos, reservas manuales y bloqueos especiales por mes.
                       </p>
                     </div>
-                    <div class="calendar-nav">
-                      <button type="button" class="ghost" id="court-calendar-prev" aria-label="Mes anterior">
-                        ◀
-                      </button>
-                      <span class="calendar-label" id="court-calendar-label">Mes</span>
-                      <button type="button" class="ghost" id="court-calendar-next" aria-label="Mes siguiente">
-                        ▶
-                      </button>
+                    <div class="calendar-actions">
+                      <div
+                        class="calendar-view-toggle"
+                        role="group"
+                        aria-label="Cambiar vista del calendario de pistas"
+                      >
+                        <button
+                          type="button"
+                          class="calendar-view-button"
+                          data-court-calendar-view="day"
+                          aria-pressed="false"
+                        >
+                          Día
+                        </button>
+                        <button
+                          type="button"
+                          class="calendar-view-button is-active"
+                          data-court-calendar-view="month"
+                          aria-pressed="true"
+                        >
+                          Mes
+                        </button>
+                      </div>
+                      <div class="calendar-nav">
+                        <button type="button" class="ghost" id="court-calendar-prev" aria-label="Periodo anterior">
+                          ◀
+                        </button>
+                        <span class="calendar-label" id="court-calendar-label">Mes</span>
+                        <button type="button" class="ghost" id="court-calendar-next" aria-label="Periodo siguiente">
+                          ▶
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <div class="calendar-container" id="court-calendar-container"></div>
@@ -1506,13 +1530,14 @@
                   </div>
                   <form id="court-block-form" class="form">
                     <div class="form-grid">
-                      <label class="inline-field">
-                        Contexto
-                        <select id="court-block-context" name="contextType" required>
-                          <option value="league">Liga</option>
-                          <option value="tournament">Torneo</option>
-                        </select>
-                      </label>
+                    <label class="inline-field">
+                      Contexto
+                      <select id="court-block-context" name="contextType" required>
+                        <option value="league">Liga</option>
+                        <option value="tournament">Torneo</option>
+                        <option value="lesson">Clases de tenis</option>
+                      </select>
+                    </label>
                       <label class="inline-field">
                         Competición
                         <select id="court-block-entity" name="contextId" required></select>

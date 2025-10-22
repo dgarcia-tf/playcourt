@@ -80,6 +80,25 @@ async function resolveBlockContext({ contextType, contextId }) {
     };
   }
 
+  if (contextType === COURT_BLOCK_CONTEXTS.LESSON) {
+    const club = await Club.getSingleton();
+    if (!club?._id) {
+      const error = new Error('No se pudo identificar el club para registrar el bloqueo.');
+      error.statusCode = 500;
+      throw error;
+    }
+    if (contextId && club._id.toString() !== contextId.toString()) {
+      const error = new Error('El identificador seleccionado para las clases no es válido.');
+      error.statusCode = 400;
+      throw error;
+    }
+    const label = club.name ? `Clases de tenis · ${club.name}` : 'Clases de tenis';
+    return {
+      id: club._id,
+      label,
+    };
+  }
+
   const error = new Error('Contexto de bloqueo inválido.');
   error.statusCode = 400;
   throw error;
@@ -88,6 +107,7 @@ async function resolveBlockContext({ contextType, contextId }) {
 function buildContextLabelMap(blocks = []) {
   const leagueIds = new Set();
   const tournamentIds = new Set();
+  const lessonIds = new Set();
 
   blocks.forEach((block) => {
     if (!block?.context) {
@@ -99,6 +119,9 @@ function buildContextLabelMap(blocks = []) {
     if (block.contextType === COURT_BLOCK_CONTEXTS.TOURNAMENT) {
       tournamentIds.add(block.context.toString());
     }
+    if (block.contextType === COURT_BLOCK_CONTEXTS.LESSON) {
+      lessonIds.add(block.context.toString());
+    }
   });
 
   return Promise.all([
@@ -108,7 +131,10 @@ function buildContextLabelMap(blocks = []) {
     tournamentIds.size
       ? Tournament.find({ _id: { $in: Array.from(tournamentIds) } }).select('name year').lean()
       : [],
-  ]).then(([leagues, tournaments]) => {
+    lessonIds.size
+      ? Club.find({ _id: { $in: Array.from(lessonIds) } }).select('name').lean()
+      : [],
+  ]).then(([leagues, tournaments, clubs]) => {
     const labels = new Map();
     leagues.forEach((league) => {
       const id = league?._id?.toString();
@@ -123,6 +149,18 @@ function buildContextLabelMap(blocks = []) {
         ? `${tournament.name} · ${tournament.year}`
         : tournament.name || 'Torneo';
       labels.set(`${COURT_BLOCK_CONTEXTS.TOURNAMENT}:${id}`, label);
+    });
+    clubs.forEach((club) => {
+      const id = club?._id?.toString();
+      if (!id) return;
+      const label = club?.name ? `Clases de tenis · ${club.name}` : 'Clases de tenis';
+      labels.set(`${COURT_BLOCK_CONTEXTS.LESSON}:${id}`, label);
+    });
+    lessonIds.forEach((lessonId) => {
+      const key = `${COURT_BLOCK_CONTEXTS.LESSON}:${lessonId}`;
+      if (!labels.has(key)) {
+        labels.set(key, 'Clases de tenis');
+      }
     });
     return labels;
   });
@@ -160,7 +198,7 @@ const validateCreateBlock = [
   body('contextType')
     .isIn(Object.values(COURT_BLOCK_CONTEXTS))
     .withMessage('El contexto del bloqueo es inválido.'),
-  body('contextId').notEmpty().withMessage('Debes seleccionar una liga o torneo.'),
+  body('contextId').notEmpty().withMessage('Debes seleccionar una liga, torneo o clases.'),
   body('courts')
     .optional()
     .custom((value) => {
