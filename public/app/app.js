@@ -1009,6 +1009,7 @@ const state = {
   token: null,
   user: null,
   categories: [],
+  categoriesLoaded: false,
   leagues: [],
   players: [],
   myMatches: [],
@@ -5000,6 +5001,41 @@ function updateRankingFilterControls({ renderOnChange = true } = {}) {
   }
 }
 
+function getLeagueCategoryAccessSnapshot(leagueId) {
+  if (!leagueId) {
+    return {
+      categories: [],
+      available: [],
+      enrolled: [],
+      pending: [],
+      hasAnyCategory: false,
+    };
+  }
+
+  const categories = Array.isArray(state.categories) ? state.categories : [];
+  const matchingCategories = categories.filter(
+    (category) => normalizeId(category.league) === leagueId
+  );
+
+  const normalized = matchingCategories.map((category) => ({
+    id: normalizeId(category),
+    name: category.name || 'Categoría',
+    gender: category.gender || '',
+    skillLevel: category.skillLevel || '',
+    canRequest: Boolean(category.canRequestEnrollment),
+    isEnrolled: Boolean(category.isEnrolled),
+    hasPendingRequest: Boolean(category.pendingRequestId),
+  }));
+
+  return {
+    categories: normalized,
+    available: normalized.filter((entry) => entry.canRequest),
+    enrolled: normalized.filter((entry) => entry.isEnrolled),
+    pending: normalized.filter((entry) => entry.hasPendingRequest),
+    hasAnyCategory: normalized.length > 0,
+  };
+}
+
 function renderLeagues(leagues = []) {
   if (!leaguesList) return;
   const { filtersReset } = pruneLeagueCaches();
@@ -5029,6 +5065,8 @@ function renderLeagues(leagues = []) {
       const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
       return dateB - dateA;
     });
+
+  const admin = isAdmin();
 
   sorted.forEach((league) => {
     const item = document.createElement('li');
@@ -5099,9 +5137,11 @@ function renderLeagues(leagues = []) {
       content.appendChild(emptyMeta);
     }
 
-    if (isAdmin()) {
-      const actions = document.createElement('div');
-      actions.className = 'actions';
+    const actions = document.createElement('div');
+    actions.className = 'actions league-actions';
+    let hasActions = false;
+
+    if (admin) {
       const editButton = document.createElement('button');
       editButton.type = 'button';
       editButton.className = 'secondary';
@@ -5111,6 +5151,49 @@ function renderLeagues(leagues = []) {
         editButton.dataset.leagueId = leagueId;
       }
       actions.appendChild(editButton);
+      hasActions = true;
+    } else if (leagueId) {
+      const access = getLeagueCategoryAccessSnapshot(leagueId);
+      const isUserEnrolled = access.enrolled.length > 0;
+      const hasPending = access.pending.length > 0;
+      const hasAvailable = access.available.length > 0;
+
+      if (isUserEnrolled) {
+        const enrolledBadge = document.createElement('span');
+        enrolledBadge.className = 'tag tag--success';
+        enrolledBadge.textContent = 'Inscrito';
+        actions.appendChild(enrolledBadge);
+        hasActions = true;
+      } else {
+        if (hasPending) {
+          const pendingBadge = document.createElement('span');
+          pendingBadge.className = 'tag';
+          pendingBadge.textContent =
+            access.pending.length === 1 ? 'Solicitud enviada' : 'Solicitudes enviadas';
+          actions.appendChild(pendingBadge);
+          hasActions = true;
+        }
+
+        if (hasAvailable) {
+          const requestButton = document.createElement('button');
+          requestButton.type = 'button';
+          requestButton.className = 'primary';
+          requestButton.dataset.action = 'request-league-enrollment';
+          requestButton.textContent = 'Solicitar inscripción';
+          requestButton.dataset.leagueId = leagueId;
+          actions.appendChild(requestButton);
+          hasActions = true;
+        } else if (state.categoriesLoaded && access.hasAnyCategory && !hasPending) {
+          const note = document.createElement('span');
+          note.className = 'note';
+          note.textContent = 'No hay categorías disponibles para tu perfil.';
+          actions.appendChild(note);
+          hasActions = true;
+        }
+      }
+    }
+
+    if (hasActions) {
       content.appendChild(actions);
     }
 
@@ -5132,6 +5215,192 @@ function renderLeagues(leagues = []) {
 
   updateCategoryFilterControls();
   updateRankingFilterControls({ renderOnChange: false });
+}
+
+function openLeagueEnrollmentModal(leagueId = '') {
+  const normalizedId = leagueId || '';
+  if (!normalizedId) {
+    return;
+  }
+
+  if (!state.categoriesLoaded) {
+    showGlobalMessage(
+      'La información de las categorías aún se está cargando. Inténtalo en unos instantes.',
+      'info'
+    );
+    return;
+  }
+
+  const league = state.leagues.find((item) => normalizeId(item) === normalizedId);
+  if (!league) {
+    showGlobalMessage('No fue posible encontrar la liga seleccionada.', 'error');
+    return;
+  }
+
+  const access = getLeagueCategoryAccessSnapshot(normalizedId);
+  const availableCategories = access.available
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }));
+
+  if (!availableCategories.length) {
+    const message = access.pending.length
+      ? 'Ya tienes solicitudes pendientes para esta liga.'
+      : 'No hay categorías disponibles para solicitar en esta liga.';
+    showGlobalMessage(message, 'info');
+    return;
+  }
+
+  const form = document.createElement('form');
+  form.className = 'form league-enrollment-form';
+  form.noValidate = true;
+
+  const intro = document.createElement('p');
+  intro.className = 'meta';
+  intro.textContent =
+    'Selecciona las categorías en las que deseas participar. Tu solicitud será revisada por un administrador.';
+  form.appendChild(intro);
+
+  if (typeof league.enrollmentFee === 'number') {
+    const feeInfo = document.createElement('p');
+    feeInfo.className = 'note';
+    feeInfo.textContent = `Cuota de inscripción: ${formatCurrencyValue(league.enrollmentFee)}.`;
+    form.appendChild(feeInfo);
+  }
+
+  if (access.pending.length) {
+    const pendingInfo = document.createElement('p');
+    pendingInfo.className = 'note';
+    const pendingNames = access.pending.map((category) => category.name).filter(Boolean);
+    pendingInfo.textContent =
+      pendingNames.length === 1
+        ? `Tienes una solicitud pendiente para ${pendingNames[0]}.`
+        : `Tienes solicitudes pendientes para ${pendingNames.join(', ')}.`;
+    form.appendChild(pendingInfo);
+  }
+
+  const checkboxGroup = document.createElement('div');
+  checkboxGroup.className = 'checkbox-group';
+
+  availableCategories.forEach((category) => {
+    const option = document.createElement('label');
+    option.className = 'checkbox-option';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.name = 'categoryIds';
+    input.value = category.id;
+    option.appendChild(input);
+
+    const labelText = document.createElement('span');
+    const metaParts = [];
+    if (category.gender) {
+      metaParts.push(translateGender(category.gender));
+    }
+    if (category.skillLevel) {
+      metaParts.push(formatSkillLevelLabel(category.skillLevel));
+    }
+    const metaText = metaParts.join(' · ');
+    labelText.textContent = metaText
+      ? `${category.name} · ${metaText}`
+      : category.name;
+    option.appendChild(labelText);
+
+    checkboxGroup.appendChild(option);
+  });
+
+  form.appendChild(checkboxGroup);
+
+  const status = document.createElement('p');
+  status.className = 'status-message';
+  status.style.display = 'none';
+
+  const actions = document.createElement('div');
+  actions.className = 'form-actions';
+
+  const submitButton = document.createElement('button');
+  submitButton.type = 'submit';
+  submitButton.className = 'primary';
+  submitButton.textContent =
+    availableCategories.length === 1
+      ? 'Solicitar inscripción'
+      : 'Solicitar inscripciones';
+  actions.appendChild(submitButton);
+
+  form.appendChild(actions);
+  form.appendChild(status);
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const selectedIds = Array.from(
+      form.querySelectorAll('input[name="categoryIds"]:checked')
+    )
+      .map((input) => input.value)
+      .filter(Boolean);
+
+    if (!selectedIds.length) {
+      setStatusMessage(status, 'error', 'Selecciona al menos una categoría.');
+      return;
+    }
+
+    const controls = Array.from(form.querySelectorAll('input, button'));
+    controls.forEach((control) => {
+      control.disabled = true;
+    });
+
+    const sendingLabel =
+      selectedIds.length === 1 ? 'Enviando solicitud...' : 'Enviando solicitudes...';
+    setStatusMessage(status, 'info', sendingLabel);
+
+    const processedIds = [];
+    let shouldCloseModal = false;
+
+    try {
+      for (const categoryId of selectedIds) {
+        await request(`/categories/${categoryId}/enrollment-requests`, { method: 'POST' });
+        state.enrollmentRequests.delete(categoryId);
+        processedIds.push(categoryId);
+      }
+
+      await reloadCategories();
+
+      const successMessage =
+        selectedIds.length === 1
+          ? 'Solicitud enviada. Un administrador la revisará en breve.'
+          : 'Solicitudes enviadas. Un administrador las revisará en breve.';
+      showGlobalMessage(successMessage, 'success');
+      shouldCloseModal = true;
+    } catch (error) {
+      if (processedIds.length) {
+        try {
+          await reloadCategories();
+        } catch (reloadError) {
+          console.warn(
+            'No se pudo actualizar las categorías tras enviar la solicitud de liga',
+            reloadError
+          );
+        }
+      }
+
+      setStatusMessage(status, 'error', error.message);
+    } finally {
+      if (shouldCloseModal) {
+        setStatusMessage(status, '', '');
+        closeModal();
+      } else if (document.body.contains(form)) {
+        controls.forEach((control) => {
+          control.disabled = false;
+        });
+      }
+    }
+  });
+
+  openModal({
+    title: league.name ? `Solicitar inscripción · ${league.name}` : 'Solicitar inscripción',
+    content: (body) => {
+      body.appendChild(form);
+    },
+    onClose: () => setStatusMessage(status, '', ''),
+  });
 }
 
 function renderCategories(categories = []) {
@@ -16203,8 +16472,10 @@ async function reloadCategories() {
   const categories = await request('/categories');
   const list = Array.isArray(categories) ? categories : [];
   state.categories = list;
+  state.categoriesLoaded = true;
   updateRankingFilterControls({ renderOnChange: false });
   renderCategories(list);
+  renderLeagues(state.leagues);
   updateLeaguePlayersControls();
   updateLeaguePaymentControls();
   if (state.activeSection === 'section-league-payments') {
@@ -16236,6 +16507,7 @@ async function loadAllData() {
 
     state.enrollments.clear();
     state.enrollmentRequests.clear();
+    state.categoriesLoaded = false;
     const [leagues, categories, tournaments] = await Promise.all([
       request('/leagues'),
       request('/categories'),
@@ -16247,8 +16519,10 @@ async function loadAllData() {
 
     const categoryList = Array.isArray(categories) ? categories : [];
     state.categories = categoryList;
+    state.categoriesLoaded = true;
     updateRankingFilterControls({ renderOnChange: false });
     renderCategories(categoryList);
+    renderLeagues(state.leagues);
     updateLeaguePlayersControls();
     updateLeaguePaymentControls();
     await refreshLeaguePlayers();
@@ -16920,6 +17194,9 @@ logoutButtons.forEach((button) => {
     closeMobileMenu();
     state.token = null;
     state.user = null;
+    state.leagues = [];
+    state.categories = [];
+    state.categoriesLoaded = false;
     state.players = [];
     state.selectedCategoryId = null;
     state.rankingsByCategory.clear();
@@ -17483,6 +17760,10 @@ leaguesList?.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action]');
   if (!button) return;
   const { action, leagueId } = button.dataset;
+  if (action === 'request-league-enrollment' && leagueId) {
+    openLeagueEnrollmentModal(leagueId);
+    return;
+  }
   if (action === 'edit' && leagueId) {
     openLeagueModal(leagueId);
   }
