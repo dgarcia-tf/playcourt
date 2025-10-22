@@ -5723,7 +5723,20 @@ function renderLeagueDashboard(summary) {
     leagueMetricUpcoming.textContent = String(metrics.upcomingMatches ?? 0);
   }
 
-  renderLeagueRankingCards(summary?.categories || []);
+  const rankingCategories = Array.isArray(summary?.categories)
+    ? summary.categories
+    : Array.isArray(summary?.leagueRankings)
+      ? summary.leagueRankings.flatMap((group) =>
+          Array.isArray(group?.categories)
+            ? group.categories.map((categorySummary) => ({
+                ...categorySummary,
+                league: categorySummary?.league || group?.league || null,
+              }))
+            : []
+        )
+      : [];
+
+  renderLeagueRankingCards(rankingCategories);
   renderDashboardMatchList(
     summary?.upcomingMatches || [],
     leagueUpcomingMatchesList,
