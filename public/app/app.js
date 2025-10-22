@@ -8494,6 +8494,254 @@ function createCalendarDayBlock(date, events = [], { weekdayLength = 'short' } =
   return dayBlock;
 }
 
+function normalizeCourtKey(value) {
+  if (!value) return '';
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/^pista\s+/i, '')
+    .trim();
+}
+
+function getCalendarCourtsForDay(events = []) {
+  const configuredCourts = Array.isArray(state.club?.courts) ? state.club.courts : [];
+  const courtMap = new Map();
+
+  const registerCourt = (rawName) => {
+    if (!rawName) return;
+    const key = normalizeCourtKey(rawName);
+    if (!key) return;
+    if (courtMap.has(key)) {
+      return;
+    }
+    const display = formatCourtDisplay(rawName) || rawName;
+    courtMap.set(key, {
+      key,
+      name: rawName,
+      label: display,
+    });
+  };
+
+  configuredCourts.forEach((court) => {
+    if (court?.name) {
+      registerCourt(court.name);
+    }
+  });
+
+  events.forEach((event) => {
+    if (event?.match?.court || event?.court) {
+      registerCourt(event.match?.court || event.court);
+    }
+  });
+
+  return Array.from(courtMap.values());
+}
+
+function createCalendarDaySchedule(date, events = []) {
+  const normalizedDate = startOfDay(date instanceof Date ? date : new Date(date));
+  let slots = getReservationSlotStartsForDate(normalizedDate);
+  const normalizedEvents = events
+    .map((match) => {
+      if (!match?.scheduledAt) {
+        return null;
+      }
+      const scheduledAt = new Date(match.scheduledAt);
+      if (Number.isNaN(scheduledAt.getTime())) {
+        return null;
+      }
+      return {
+        match,
+        scheduledAt,
+        courtKey: normalizeCourtKey(match.court),
+      };
+    })
+    .filter(Boolean);
+
+  const courts = getCalendarCourtsForDay(normalizedEvents);
+  const unassignedMatches = normalizedEvents.filter((item) => !item.courtKey).map((item) => item.match);
+  const matchesByCourt = normalizedEvents.reduce((map, item) => {
+    if (!item.courtKey) {
+      return map;
+    }
+    if (!map.has(item.courtKey)) {
+      map.set(item.courtKey, []);
+    }
+    map.get(item.courtKey).push(item);
+    return map;
+  }, new Map());
+  matchesByCourt.forEach((list) => {
+    list.sort((a, b) => a.scheduledAt - b.scheduledAt);
+  });
+  const scheduledWithCourt = normalizedEvents.filter((item) => item.courtKey);
+
+  if (!slots.length && scheduledWithCourt.length) {
+    const earliestMatchTime = scheduledWithCourt.reduce(
+      (min, item) => Math.min(min, item.scheduledAt.getTime()),
+      scheduledWithCourt[0].scheduledAt.getTime()
+    );
+    slots = [
+      roundDateToInterval(new Date(earliestMatchTime), CALENDAR_TIME_SLOT_MINUTES, 'floor'),
+    ];
+  }
+
+  if (slots.length && scheduledWithCourt.length) {
+    const earliestTime = scheduledWithCourt.reduce(
+      (min, item) => Math.min(min, item.scheduledAt.getTime()),
+      scheduledWithCourt[0].scheduledAt.getTime()
+    );
+    const latestTime = scheduledWithCourt.reduce(
+      (max, item) => Math.max(max, item.scheduledAt.getTime()),
+      scheduledWithCourt[0].scheduledAt.getTime()
+    );
+    const dayStartTime = normalizedDate.getTime();
+    const dayEndTime = addDays(normalizedDate, 1).getTime();
+
+    while (earliestTime < slots[0].getTime() && slots[0].getTime() > dayStartTime) {
+      const previousSlot = addMinutes(slots[0], -COURT_RESERVATION_DEFAULT_DURATION);
+      slots.unshift(previousSlot);
+    }
+
+    let lastSlotEndTime = getReservationSlotEnd(slots[slots.length - 1]).getTime();
+    while (latestTime >= lastSlotEndTime && slots[slots.length - 1].getTime() < dayEndTime) {
+      const nextSlot = addMinutes(slots[slots.length - 1], COURT_RESERVATION_DEFAULT_DURATION);
+      if (nextSlot.getTime() === slots[slots.length - 1].getTime()) {
+        break;
+      }
+      if (nextSlot.getTime() >= dayEndTime) {
+        break;
+      }
+      slots.push(nextSlot);
+      lastSlotEndTime = getReservationSlotEnd(slots[slots.length - 1]).getTime();
+    }
+  }
+
+  if (!courts.length || !slots.length) {
+    const fallbackContainer = document.createElement('div');
+    fallbackContainer.className = 'calendar-day-list';
+    fallbackContainer.appendChild(createCalendarDayBlock(date, events, { weekdayLength: 'long' }));
+    if (unassignedMatches.length) {
+      const unassignedSection = document.createElement('div');
+      unassignedSection.className = 'calendar-day-schedule__unassigned';
+      const title = document.createElement('p');
+      title.className = 'calendar-day-schedule__unassigned-title';
+      title.textContent = 'Partidos sin pista asignada';
+      unassignedSection.appendChild(title);
+      const list = document.createElement('div');
+      list.className = 'calendar-day-schedule__unassigned-list';
+      unassignedMatches.forEach((match) => {
+        const event = createCalendarEvent(match);
+        event.classList.add('calendar-schedule-event');
+        list.appendChild(event);
+      });
+      unassignedSection.appendChild(list);
+      fallbackContainer.appendChild(unassignedSection);
+    }
+    return fallbackContainer;
+  }
+
+  const block = document.createElement('div');
+  block.className = 'calendar-day calendar-day--schedule';
+
+  const header = document.createElement('div');
+  header.className = 'calendar-day-header calendar-day-schedule__header';
+  header.innerHTML = `<strong>${normalizedDate.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
+    weekday: 'long',
+  }).format(normalizedDate)}</span>`;
+  block.appendChild(header);
+
+  const scroller = document.createElement('div');
+  scroller.className = 'calendar-day-schedule';
+  block.appendChild(scroller);
+
+  const grid = document.createElement('div');
+  grid.className = 'calendar-day-schedule__grid';
+  grid.style.setProperty('--calendar-schedule-court-count', courts.length);
+  scroller.appendChild(grid);
+
+  const headerRow = document.createElement('div');
+  headerRow.className = 'calendar-day-schedule__row calendar-day-schedule__row--header';
+  headerRow.style.setProperty('--calendar-schedule-court-count', courts.length);
+  const timeHeaderCell = document.createElement('div');
+  timeHeaderCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
+  timeHeaderCell.textContent = 'Horario';
+  headerRow.appendChild(timeHeaderCell);
+  courts.forEach((court, index) => {
+    const courtCell = document.createElement('div');
+    courtCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--court calendar-day-schedule__cell--header';
+    courtCell.textContent = court.label;
+    if (index === courts.length - 1) {
+      courtCell.classList.add('calendar-day-schedule__cell--last-column');
+    }
+    headerRow.appendChild(courtCell);
+  });
+  grid.appendChild(headerRow);
+
+  slots.forEach((slotStart, slotIndex) => {
+    const slotEnd = getReservationSlotEnd(slotStart);
+    const row = document.createElement('div');
+    row.className = 'calendar-day-schedule__row';
+    row.style.setProperty('--calendar-schedule-court-count', courts.length);
+
+    const timeCell = document.createElement('div');
+    timeCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
+    timeCell.textContent = formatReservationSlotLabel(slotStart);
+    if (slotIndex === slots.length - 1) {
+      timeCell.classList.add('calendar-day-schedule__cell--last-row');
+    }
+    row.appendChild(timeCell);
+
+    courts.forEach((court, courtIndex) => {
+      const cell = document.createElement('div');
+      cell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--court';
+      if (slotIndex === slots.length - 1) {
+        cell.classList.add('calendar-day-schedule__cell--last-row');
+      }
+      if (courtIndex === courts.length - 1) {
+        cell.classList.add('calendar-day-schedule__cell--last-column');
+      }
+      const matchesForCourt = matchesByCourt.get(court.key) || [];
+      const slotMatches = matchesForCourt.filter(
+        (item) => item.scheduledAt >= slotStart && item.scheduledAt < slotEnd
+      );
+      if (!slotMatches.length) {
+        const empty = document.createElement('span');
+        empty.className = 'calendar-day-schedule__empty';
+        empty.textContent = 'Libre';
+        cell.appendChild(empty);
+      } else {
+        slotMatches.forEach((item) => {
+          const event = createCalendarEvent(item.match);
+          event.classList.add('calendar-schedule-event');
+          cell.appendChild(event);
+        });
+      }
+      row.appendChild(cell);
+    });
+
+    grid.appendChild(row);
+  });
+
+  if (unassignedMatches.length) {
+    const unassignedSection = document.createElement('div');
+    unassignedSection.className = 'calendar-day-schedule__unassigned';
+    const title = document.createElement('p');
+    title.className = 'calendar-day-schedule__unassigned-title';
+    title.textContent = 'Partidos sin pista asignada';
+    unassignedSection.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'calendar-day-schedule__unassigned-list';
+    unassignedMatches.forEach((match) => {
+      const event = createCalendarEvent(match);
+      event.classList.add('calendar-schedule-event');
+      list.appendChild(event);
+    });
+    unassignedSection.appendChild(list);
+    block.appendChild(unassignedSection);
+  }
+
+  return block;
+}
+
 function renderCalendarView({
   container,
   labelElement,
@@ -8519,12 +8767,9 @@ function renderCalendarView({
     if (labelElement) {
       labelElement.textContent = formatDayLabel(dayReference);
     }
-    const dayList = document.createElement('div');
-    dayList.className = 'calendar-day-list';
     const key = dayReference.getTime();
     const events = grouped.get(key) || [];
-    dayList.appendChild(createCalendarDayBlock(dayReference, events, { weekdayLength: 'long' }));
-    container.appendChild(dayList);
+    container.appendChild(createCalendarDaySchedule(dayReference, events));
   } else {
     const monthStart = startOfMonth(reference);
     if (labelElement) {
