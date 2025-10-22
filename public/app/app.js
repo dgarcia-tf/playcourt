@@ -2451,7 +2451,7 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   item.className = 'league-payment-item';
   const statusValue = entry.status || 'pendiente';
   item.dataset.paymentStatus = statusValue;
-  if (statusValue !== 'pagado') {
+  if (statusValue === 'pagado') {
     item.open = true;
   }
 
