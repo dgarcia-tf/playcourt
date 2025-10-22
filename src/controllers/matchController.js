@@ -17,6 +17,7 @@ const {
   cancelMatchReservation,
   resolveEndsAt,
 } = require('../services/courtReservationService');
+const { generateCalendarMetadata } = require('../utils/calendarLinks');
 
 const MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado'];
 const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caducado'].includes(status));
@@ -547,10 +548,38 @@ async function createMatch(req, res) {
   }
 
   const match = await Match.create(matchPayload);
+  let responseCalendarLinks = {};
   if (match.scheduledAt) {
     const reminderAt = new Date(match.scheduledAt.getTime() - 60 * 60 * 1000);
     const scheduledReminder = reminderAt > new Date() ? reminderAt : match.scheduledAt;
     const opponentNames = enrollments.map((enrollment) => enrollment.user.fullName).join(' vs ');
+    const { startsAt: eventStart, endsAt: eventEnd } = resolveEndsAt(match.scheduledAt);
+    const calendarMetadata = generateCalendarMetadata({
+      title: opponentNames ? `Partido: ${opponentNames}` : 'Partido programado',
+      description: [
+        opponentNames ? `Partido entre ${opponentNames}.` : 'Partido programado.',
+        category?.name ? `Categoría: ${category.name}.` : null,
+        match.court ? `Pista: ${match.court}.` : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      location: match.court,
+      startsAt: eventStart,
+      endsAt: eventEnd,
+    });
+    responseCalendarLinks = calendarMetadata;
+    const notificationMetadata = {};
+    if (category?.name) {
+      notificationMetadata.categoria = category.name;
+    }
+    if (match.court) {
+      notificationMetadata.pista = match.court;
+    }
+    Object.entries(calendarMetadata).forEach(([key, value]) => {
+      if (value) {
+        notificationMetadata[key] = value;
+      }
+    });
 
     try {
       await Notification.create({
@@ -560,10 +589,7 @@ async function createMatch(req, res) {
         scheduledFor: scheduledReminder,
         recipients: players,
         match: match._id,
-        metadata: {
-          categoria: category.name,
-          pista: match.court,
-        },
+        metadata: notificationMetadata,
         createdBy: req.user.id,
       });
     } catch (error) {
@@ -577,6 +603,12 @@ async function createMatch(req, res) {
         console.error('No se pudo crear la reserva automática del partido', error);
       }
     }
+  }
+
+  if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
+    const responseBody = match.toObject({ virtuals: true });
+    responseBody.calendarLinks = responseCalendarLinks;
+    return res.status(201).json(responseBody);
   }
 
   return res.status(201).json(match);
@@ -637,8 +669,52 @@ async function listMatches(req, res) {
     .populate('proposal.requestedBy', 'fullName email phone')
     .populate('proposal.requestedTo', 'fullName email phone')
     .sort({ scheduledAt: 1, createdAt: 1 });
+  const responsePayload = matches.map((matchDoc) => {
+    if (!matchDoc) {
+      return matchDoc;
+    }
 
-  return res.json(matches);
+    const plainMatch = typeof matchDoc.toObject === 'function' ? matchDoc.toObject({ virtuals: true }) : matchDoc;
+
+    if (!plainMatch?.scheduledAt) {
+      return plainMatch;
+    }
+
+    const { startsAt: eventStart, endsAt: eventEnd } = resolveEndsAt(plainMatch.scheduledAt);
+    if (!eventStart || !eventEnd || eventEnd <= eventStart) {
+      return plainMatch;
+    }
+
+    const opponentNames = Array.isArray(plainMatch.players)
+      ? plainMatch.players
+          .map((player) => player?.fullName || player?.email)
+          .filter(Boolean)
+          .join(' vs ')
+      : '';
+
+    const calendarMetadata = generateCalendarMetadata({
+      title: opponentNames ? `Partido: ${opponentNames}` : 'Partido programado',
+      description: [
+        opponentNames ? `Partido entre ${opponentNames}.` : 'Partido programado.',
+        plainMatch.category?.name ? `Categoría: ${plainMatch.category.name}.` : null,
+        plainMatch.league?.name ? `Liga: ${plainMatch.league.name}.` : null,
+        plainMatch.court ? `Pista: ${plainMatch.court}.` : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      location: plainMatch.court,
+      startsAt: eventStart,
+      endsAt: eventEnd,
+    });
+
+    if (calendarMetadata && Object.keys(calendarMetadata).length) {
+      plainMatch.calendarLinks = calendarMetadata;
+    }
+
+    return plainMatch;
+  });
+
+  return res.json(responsePayload);
 }
 
 async function updateMatch(req, res) {
@@ -805,6 +881,32 @@ async function updateMatch(req, res) {
     .populate('players', 'fullName email gender phone')
     .populate('proposal.requestedBy', 'fullName email phone')
     .populate('proposal.requestedTo', 'fullName email phone');
+  let responseCalendarLinks = {};
+
+  if (updated?.scheduledAt) {
+    const { startsAt: eventStart, endsAt: eventEnd } = resolveEndsAt(updated.scheduledAt);
+    const opponentNames = Array.isArray(updated.players)
+      ? updated.players
+          .map((player) => player?.fullName || player?.email)
+          .filter(Boolean)
+          .join(' vs ')
+      : '';
+
+    responseCalendarLinks = generateCalendarMetadata({
+      title: opponentNames ? `Partido: ${opponentNames}` : 'Partido programado',
+      description: [
+        opponentNames ? `Partido entre ${opponentNames}.` : 'Partido programado.',
+        updated.category?.name ? `Categoría: ${updated.category.name}.` : null,
+        updated.league?.name ? `Liga: ${updated.league.name}.` : null,
+        updated.court ? `Pista: ${updated.court}.` : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      location: updated.court,
+      startsAt: eventStart,
+      endsAt: eventEnd,
+    });
+  }
 
   if (shouldSyncReservation) {
     try {
@@ -818,6 +920,12 @@ async function updateMatch(req, res) {
     } catch (error) {
       console.error('No se pudo cancelar la reserva vinculada al partido', error);
     }
+  }
+
+  if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
+    const responseBody = updated.toObject({ virtuals: true });
+    responseBody.calendarLinks = responseCalendarLinks;
+    return res.json(responseBody);
   }
 
   return res.json(updated);
@@ -1539,6 +1647,7 @@ async function respondToProposal(req, res) {
     .populate('players', 'fullName email phone')
     .populate('proposal.requestedBy', 'fullName email phone')
     .populate('proposal.requestedTo', 'fullName email phone');
+  let responseCalendarLinks = {};
 
   if (decision === 'accept' && match.scheduledAt) {
     const enrollments = await Enrollment.find({
@@ -1574,6 +1683,34 @@ async function respondToProposal(req, res) {
       const messageText = opponentNames
         ? `Se confirmó el partido ${opponentNames} para el ${match.scheduledAt.toISOString()}.`
         : `Se confirmó un partido para el ${match.scheduledAt.toISOString()}.`;
+      const { startsAt: eventStart, endsAt: eventEnd } = resolveEndsAt(match.scheduledAt);
+      const calendarMetadata = generateCalendarMetadata({
+        title: opponentNames ? `Partido: ${opponentNames}` : 'Partido programado',
+        description: [
+          opponentNames ? `Partido entre ${opponentNames}.` : 'Partido programado.',
+          populated.category?.name ? `Categoría: ${populated.category.name}.` : null,
+          populated.league?.name ? `Liga: ${populated.league.name}.` : null,
+          match.court ? `Pista: ${match.court}.` : null,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        location: match.court,
+        startsAt: eventStart,
+        endsAt: eventEnd,
+      });
+      responseCalendarLinks = calendarMetadata;
+      const notificationMetadata = {};
+      if (populated.category?.name) {
+        notificationMetadata.categoria = populated.category.name;
+      }
+      if (match.court) {
+        notificationMetadata.pista = match.court;
+      }
+      Object.entries(calendarMetadata).forEach(([key, value]) => {
+        if (value) {
+          notificationMetadata[key] = value;
+        }
+      });
 
       try {
         await Notification.create({
@@ -1583,10 +1720,7 @@ async function respondToProposal(req, res) {
           scheduledFor: match.scheduledAt,
           recipients: Array.from(recipientSet),
           match: match._id,
-          metadata: {
-            categoria: populated.category?.name,
-            pista: match.court,
-          },
+          metadata: notificationMetadata,
           createdBy: userId,
         });
       } catch (error) {
@@ -1595,7 +1729,12 @@ async function respondToProposal(req, res) {
     }
   }
 
-  return res.json(populated);
+  const responsePayload = populated.toObject({ virtuals: true });
+  if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
+    responsePayload.calendarLinks = responseCalendarLinks;
+  }
+
+  return res.json(responsePayload);
 }
 
 module.exports = {
