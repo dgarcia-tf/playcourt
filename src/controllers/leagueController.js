@@ -246,7 +246,7 @@ async function createLeague(req, res) {
 
 async function getLeagueOverview(req, res) {
   const leagues = await League.find()
-    .sort({ startDate: 1, createdAt: 1 })
+    .sort({ startDate: -1, createdAt: -1 })
     .lean();
 
   if (!leagues.length) {
@@ -259,7 +259,7 @@ async function getLeagueOverview(req, res) {
     .select(
       'name gender skillLevel status matchFormat color league rankingUpdatedAt startDate endDate'
     )
-    .sort({ name: 1 })
+    .sort({ startDate: -1, endDate: -1, createdAt: -1, name: 1 })
     .lean();
 
   const categoryById = new Map();
@@ -351,9 +351,20 @@ async function getLeagueOverview(req, res) {
           enrollmentCount,
         };
       })
-      .sort((a, b) => toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
-        sensitivity: 'base',
-      }));
+      .sort((a, b) => {
+        const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
+        const startDiff = toTimestamp(b.startDate) - toTimestamp(a.startDate);
+        if (startDiff !== 0) {
+          return startDiff;
+        }
+        const endDiff = toTimestamp(b.endDate) - toTimestamp(a.endDate);
+        if (endDiff !== 0) {
+          return endDiff;
+        }
+        return toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
+          sensitivity: 'base',
+        });
+      });
 
     const playerMap = playersByLeague.get(leagueId) || new Map();
     const players = Array.from(playerMap.values()).sort((a, b) =>
@@ -400,14 +411,18 @@ async function getLeagueOverview(req, res) {
   });
 
   const sortByStartDate = (a, b) => {
-    const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
-    const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
-    if (dateA === dateB) {
-      return toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
-        sensitivity: 'base',
-      });
+    const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
+    const diff = toTimestamp(b.startDate) - toTimestamp(a.startDate);
+    if (diff !== 0) {
+      return diff;
     }
-    return dateA - dateB;
+    const endDiff = toTimestamp(b.endDate) - toTimestamp(a.endDate);
+    if (endDiff !== 0) {
+      return endDiff;
+    }
+    return toSortableName(a.name).localeCompare(toSortableName(b.name), 'es', {
+      sensitivity: 'base',
+    });
   };
 
   activeLeagues.sort(sortByStartDate);
@@ -453,7 +468,7 @@ async function listLeagues(req, res) {
   }
 
   const leagues = await League.find(query)
-    .sort({ createdAt: -1, startDate: 1 })
+    .sort({ startDate: -1, createdAt: -1 })
     .populate('categories', 'name gender skillLevel color matchFormat');
 
   return res.json(leagues);
@@ -476,7 +491,16 @@ async function getLeagueDetail(req, res) {
   }
 
   const result = league.toObject();
-  result.payments = Array.isArray(result.payments) ? result.payments : [];
+  const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
+  result.payments = Array.isArray(result.payments)
+    ? [...result.payments].sort((a, b) => {
+        const paidDiff = toTimestamp(b.paidAt) - toTimestamp(a.paidAt);
+        if (paidDiff !== 0) {
+          return paidDiff;
+        }
+        return toTimestamp(b.createdAt) - toTimestamp(a.createdAt);
+      })
+    : [];
 
   return res.json({ league: result });
 }

@@ -95,7 +95,7 @@ async function listCategories(req, res) {
   }
 
   const categories = await Category.find(query)
-    .sort({ name: 1 })
+    .sort({ startDate: -1, endDate: -1, createdAt: -1, name: 1 })
     .populate(
       'league',
       'name year status startDate endDate registrationCloseDate enrollmentFee'
