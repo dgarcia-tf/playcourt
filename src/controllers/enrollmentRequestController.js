@@ -16,7 +16,10 @@ async function requestEnrollment(req, res) {
   const playerId = req.user.id;
 
   const [category, existingEnrollment, pendingRequest, user] = await Promise.all([
-    Category.findById(categoryId).populate('league', 'status registrationCloseDate'),
+    Category.findById(categoryId).populate(
+      'league',
+      'status registrationCloseDate startDate'
+    ),
     Enrollment.findOne({ category: categoryId, user: playerId }),
     EnrollmentRequest.findOne({
       category: categoryId,
@@ -35,6 +38,8 @@ async function requestEnrollment(req, res) {
   }
 
   const league = category.league;
+  const now = new Date();
+
   if (league) {
     if (league.status === LEAGUE_STATUS.CLOSED) {
       return res
@@ -42,10 +47,22 @@ async function requestEnrollment(req, res) {
         .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
     }
 
-    if (league.registrationCloseDate && new Date() > league.registrationCloseDate) {
-      return res
-        .status(400)
-        .json({ message: 'La fecha máxima de inscripción de la liga ya ha pasado.' });
+    if (league.startDate) {
+      const leagueStartDate = new Date(league.startDate);
+      if (!Number.isNaN(leagueStartDate.getTime()) && now >= leagueStartDate) {
+        return res.status(400).json({
+          message: 'La liga ya ha comenzado y no admite nuevas solicitudes de inscripción.',
+        });
+      }
+    }
+
+    if (league.registrationCloseDate) {
+      const registrationCloseDate = new Date(league.registrationCloseDate);
+      if (!Number.isNaN(registrationCloseDate.getTime()) && now > registrationCloseDate) {
+        return res
+          .status(400)
+          .json({ message: 'La fecha máxima de inscripción de la liga ya ha pasado.' });
+      }
     }
   }
 
