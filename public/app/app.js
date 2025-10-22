@@ -10842,8 +10842,8 @@ function openProposalForm(matchId, triggerButton) {
 
   form.innerHTML = `
     <h4>Proponer fecha y hora</h4>
-    ${scheduleFieldMarkup}
     ${courtFieldMarkup}
+    ${scheduleFieldMarkup}
     <div class="proposal-form__field">
       <label for="${messageInputId}">Mensaje (opcional)</label>
       <textarea id="${messageInputId}" name="message" rows="3" placeholder="Mensaje para tu oponente"></textarea>
@@ -11095,7 +11095,9 @@ function openProposalForm(matchId, triggerButton) {
   activeProposalMatchId = matchId;
 
   listItem.appendChild(form);
-  if (hasScheduleTemplates) {
+  if (courtInput && !courtInput.disabled) {
+    courtInput.focus();
+  } else if (hasScheduleTemplates) {
     (proposedDayInput || proposedSlotSelect)?.focus();
   } else {
     proposedInput?.focus();
@@ -15288,12 +15290,12 @@ async function openTournamentDrawModal() {
       </div>
       <div class="form-grid">
         <label>
-          Fecha y hora (opcional)
-          <input type="datetime-local" data-match-field="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
-        </label>
-        <label>
           Pista (opcional)
           <input type="text" data-match-field="court" placeholder="Nombre de la pista" />
+        </label>
+        <label>
+          Fecha y hora (opcional)
+          <input type="datetime-local" data-match-field="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
         </label>
       </div>
       <div class="form-actions">
@@ -16519,8 +16521,8 @@ function openMatchModal(matchId = '') {
         ${statusOptions}
       </select>
     </label>
-    ${scheduleFieldMarkup}
     ${courtFieldMarkup}
+    ${scheduleFieldMarkup}
     <label>
       Notas internas
       <textarea name="notes" rows="3" maxlength="500" placeholder="Comentarios o recordatorios"></textarea>
@@ -16838,6 +16840,12 @@ function openMatchModal(matchId = '') {
     },
     onClose: () => setStatusMessage(status, '', ''),
   });
+
+  if (courtField && !courtField.disabled) {
+    requestAnimationFrame(() => {
+      courtField.focus();
+    });
+  }
 }
 
 function openClubModal() {
