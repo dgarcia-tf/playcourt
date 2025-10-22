@@ -3814,15 +3814,22 @@ if (appMenu) {
     if (button.dataset.submenuToggle === 'true') {
       const menuGroup = collapsibleMenuGroupsByTarget.get(targetId || '');
       const expanded = button.getAttribute('aria-expanded') === 'true';
-      if (expanded) {
-        const isActiveTarget = state.activeSection === targetId;
-        const activeNestedButton = menuGroup?.submenu?.querySelector('.menu-button.active');
-        if (isActiveTarget || activeNestedButton) {
-          return;
-        }
+      const toggleControl = event.target.closest('.menu-button__chevron');
+      if (!expanded && !toggleControl) {
+        setMenuGroupExpanded(menuGroup, true);
+        return;
       }
-      setMenuGroupExpanded(menuGroup, !expanded);
-      return;
+      if (toggleControl) {
+        if (expanded) {
+          const isActiveTarget = state.activeSection === targetId;
+          const activeNestedButton = menuGroup?.submenu?.querySelector('.menu-button.active');
+          if (isActiveTarget || activeNestedButton) {
+            return;
+          }
+        }
+        setMenuGroupExpanded(menuGroup, !expanded);
+        return;
+      }
     }
     showSection(targetId);
   });
