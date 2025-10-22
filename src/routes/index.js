@@ -12,6 +12,7 @@ const chatRoutes = require('./chatRoutes');
 const pushRoutes = require('./pushRoutes');
 const courtRoutes = require('./courtRoutes');
 const tournamentRoutes = require('./tournamentRoutes');
+const accountRoutes = require('./accountRoutes');
 
 const router = express.Router();
 
@@ -28,5 +29,6 @@ router.use('/club', clubRoutes);
 router.use('/push', pushRoutes);
 router.use('/courts', courtRoutes);
 router.use('/tournaments', tournamentRoutes);
+router.use('/account', accountRoutes);
 
 module.exports = router;

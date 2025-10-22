@@ -30,6 +30,8 @@ function serializeUser(user) {
     gender: user.gender,
     birthDate: user.birthDate,
     phone: user.phone,
+    isMember: Boolean(user.isMember),
+    membershipNumber: user.membershipNumber || null,
     photo: user.photo || legacyPhoto,
     preferredSchedule: user.preferredSchedule,
     notes: user.notes,
@@ -58,6 +60,8 @@ async function register(req, res) {
     notes,
     notifyMatchRequests,
     notifyMatchResults,
+    isMember,
+    membershipNumber,
   } = req.body;
 
   const existingUser = await User.findOne({ email });
@@ -89,6 +93,24 @@ async function register(req, res) {
   const normalizedPhoto = typeof photo === 'string' ? photo.trim() : photo;
   const normalizedNotes = typeof notes === 'string' ? notes.trim() : notes;
   const selectedSchedule = normalizePreferredSchedule(preferredSchedule);
+  const memberFlag = typeof isMember === 'boolean' ? isMember : false;
+  const normalizedMembershipNumber =
+    typeof membershipNumber === 'string' ? membershipNumber.trim() : '';
+
+  if (memberFlag && !normalizedMembershipNumber) {
+    return res
+      .status(400)
+      .json({ message: 'El número de socio es obligatorio para los socios' });
+  }
+
+  if (memberFlag && normalizedMembershipNumber) {
+    const membershipExists = await User.exists({ membershipNumber: normalizedMembershipNumber });
+    if (membershipExists) {
+      return res
+        .status(409)
+        .json({ message: 'Ya existe un usuario con el mismo número de socio' });
+    }
+  }
 
   const user = await User.create({
     fullName,
@@ -102,6 +124,8 @@ async function register(req, res) {
     notes: normalizedNotes || undefined,
     roles,
     role: roles.includes(USER_ROLES.ADMIN) ? USER_ROLES.ADMIN : roles[0],
+    isMember: memberFlag,
+    membershipNumber: memberFlag && normalizedMembershipNumber ? normalizedMembershipNumber : undefined,
     notifyMatchRequests: typeof notifyMatchRequests === 'boolean' ? notifyMatchRequests : true,
     notifyMatchResults: typeof notifyMatchResults === 'boolean' ? notifyMatchResults : true,
   });
@@ -167,6 +191,8 @@ async function updateProfile(req, res) {
     birthDate,
     notifyMatchRequests,
     notifyMatchResults,
+    isMember,
+    membershipNumber,
   } = req.body;
 
   const user = await User.findById(req.user.id).select('+password');
@@ -210,6 +236,8 @@ async function updateProfile(req, res) {
     user.notes = notes ? notes.trim() : undefined;
   }
 
+  let nextMemberFlag = typeof isMember === 'boolean' ? isMember : user.isMember;
+
   if (typeof notifyMatchRequests === 'boolean') {
     user.notifyMatchRequests = notifyMatchRequests;
   }
@@ -221,6 +249,41 @@ async function updateProfile(req, res) {
   if (password) {
     user.password = hashPassword(password);
   }
+
+  if (membershipNumber !== undefined) {
+    const normalizedMembershipNumber =
+      typeof membershipNumber === 'string' ? membershipNumber.trim() : '';
+
+    if (nextMemberFlag && !normalizedMembershipNumber) {
+      return res
+        .status(400)
+        .json({ message: 'El número de socio es obligatorio para los socios' });
+    }
+
+    if (
+      nextMemberFlag &&
+      normalizedMembershipNumber &&
+      normalizedMembershipNumber !== user.membershipNumber
+    ) {
+      const duplicateMembership = await User.exists({
+        membershipNumber: normalizedMembershipNumber,
+        _id: { $ne: user.id },
+      });
+      if (duplicateMembership) {
+        return res
+          .status(409)
+          .json({ message: 'Ya existe un usuario con el mismo número de socio' });
+      }
+    }
+
+    user.membershipNumber = nextMemberFlag && normalizedMembershipNumber
+      ? normalizedMembershipNumber
+      : undefined;
+  } else if (typeof isMember === 'boolean' && !isMember) {
+    user.membershipNumber = undefined;
+  }
+
+  user.isMember = Boolean(nextMemberFlag);
 
   await user.save();
 

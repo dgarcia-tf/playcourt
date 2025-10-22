@@ -36,6 +36,25 @@ router.post(
         return values.every((item) => Object.values(USER_ROLES).includes(item));
       })
       .withMessage('Roles inválidos'),
+    body('isMember')
+      .optional()
+      .customSanitizer(sanitizeBoolean)
+      .custom((value) => typeof value === 'boolean')
+      .withMessage('El indicador de socio es inválido'),
+    body('membershipNumber')
+      .optional()
+      .isString()
+      .withMessage('El número de socio debe ser un texto')
+      .bail()
+      .trim()
+      .isLength({ max: 50 })
+      .withMessage('El número de socio es demasiado largo')
+      .custom((value, { req }) => {
+        if (req.body.isMember && !value) {
+          throw new Error('El número de socio es obligatorio para socios');
+        }
+        return true;
+      }),
     body('notifyMatchRequests')
       .optional()
       .customSanitizer(sanitizeBoolean)
@@ -90,6 +109,25 @@ router.patch(
       .optional()
       .isLength({ min: 8 })
       .withMessage('La contraseña debe tener al menos 8 caracteres'),
+    body('isMember')
+      .optional()
+      .customSanitizer(sanitizeBoolean)
+      .custom((value) => typeof value === 'boolean')
+      .withMessage('El indicador de socio es inválido'),
+    body('membershipNumber')
+      .optional()
+      .isString()
+      .withMessage('El número de socio debe ser un texto')
+      .bail()
+      .trim()
+      .isLength({ max: 50 })
+      .withMessage('El número de socio es demasiado largo')
+      .custom((value, { req }) => {
+        if (req.body.isMember && !value) {
+          throw new Error('El número de socio es obligatorio para socios');
+        }
+        return true;
+      }),
     body('notifyMatchRequests')
       .optional()
       .customSanitizer(sanitizeBoolean)
