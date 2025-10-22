@@ -3057,6 +3057,18 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-left: auto;
 }
 
+.account-section__columns {
+  display: grid;
+  gap: 2rem;
+}
+
+@media (min-width: 900px) {
+  .account-section__columns {
+    grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+    align-items: start;
+  }
+}
+
 .account-wrapper {
   display: grid;
   gap: 1.5rem;
