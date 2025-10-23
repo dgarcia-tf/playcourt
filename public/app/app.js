@@ -8098,6 +8098,12 @@ function renderTournamentDetail() {
 
   tournamentDetailBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
+  const layout = document.createElement('div');
+  layout.className = 'tournament-detail__layout';
+
+  const content = document.createElement('div');
+  content.className = 'tournament-detail__content';
+  layout.appendChild(content);
 
   const posterUrl = typeof detail.poster === 'string' ? detail.poster.trim() : '';
   if (posterUrl) {
@@ -8105,7 +8111,7 @@ function renderTournamentDetail() {
     poster.className = 'tournament-detail__poster';
     poster.src = posterUrl;
     poster.alt = detail.name ? `Afiche del torneo ${detail.name}` : 'Afiche del torneo';
-    fragment.appendChild(poster);
+    layout.appendChild(poster);
   }
 
   const header = document.createElement('div');
@@ -8131,7 +8137,7 @@ function renderTournamentDetail() {
     header.appendChild(description);
   }
 
-  fragment.appendChild(header);
+  content.appendChild(header);
 
   const metaItems = [];
   if (detail.startDate) {
@@ -8162,7 +8168,7 @@ function renderTournamentDetail() {
       row.appendChild(valueSpan);
       metaContainer.appendChild(row);
     });
-    fragment.appendChild(metaContainer);
+    content.appendChild(metaContainer);
   }
 
   const fees = Array.isArray(detail.fees)
@@ -8224,7 +8230,7 @@ function renderTournamentDetail() {
     });
 
     feesWrapper.appendChild(feesList);
-    fragment.appendChild(feesWrapper);
+    content.appendChild(feesWrapper);
   }
 
   const categories = getTournamentCategories(tournamentId);
@@ -8346,14 +8352,15 @@ function renderTournamentDetail() {
       });
 
     categoryWrapper.appendChild(categoryList);
-    fragment.appendChild(categoryWrapper);
+    content.appendChild(categoryWrapper);
   } else {
     const emptyNote = document.createElement('p');
     emptyNote.className = 'tournament-section-note';
     emptyNote.textContent = 'Este torneo aún no tiene categorías registradas.';
-    fragment.appendChild(emptyNote);
+    content.appendChild(emptyNote);
   }
 
+  fragment.appendChild(layout);
   tournamentDetailBody.appendChild(fragment);
 }
 
