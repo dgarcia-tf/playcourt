@@ -12,6 +12,10 @@ const enrollmentSchema = new mongoose.Schema(
       ref: 'Category',
       required: true,
     },
+    shirtSize: {
+      type: String,
+      trim: true,
+    },
     joinedAt: {
       type: Date,
       default: Date.now,

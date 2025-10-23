@@ -57,6 +57,9 @@ router.post(
       .toFloat(),
     body('isPrivate').optional().isBoolean().toBoolean(),
     body('status').optional().isIn(Object.values(LEAGUE_STATUS)),
+    body('hasShirt').optional().isBoolean(),
+    body('shirtSizes').optional().isArray(),
+    body('shirtSizes.*').optional().isString(),
     body('categories').optional().isArray(),
     body('categories.*').optional().isMongoId(),
     body('newCategories').optional().isArray(),
@@ -122,6 +125,9 @@ router.patch(
       .toFloat(),
     body('isPrivate').optional().isBoolean().toBoolean(),
     body('status').optional().isIn(Object.values(LEAGUE_STATUS)),
+    body('hasShirt').optional().isBoolean(),
+    body('shirtSizes').optional().isArray(),
+    body('shirtSizes.*').optional().isString(),
     body('categories').optional().isArray(),
     body('categories.*').optional().isMongoId(),
   ],
@@ -158,6 +164,7 @@ router.post(
     body('reference').optional({ nullable: true }).isString(),
     body('notes').optional({ nullable: true }).isString(),
     body('paidAt').optional({ nullable: true }).isISO8601().toDate(),
+    body('shirtDelivered').optional().isBoolean(),
   ],
   addLeaguePaymentRecord
 );
@@ -176,6 +183,7 @@ router.patch(
     body('reference').optional({ nullable: true }).isString(),
     body('notes').optional({ nullable: true }).isString(),
     body('paidAt').optional({ nullable: true }).isISO8601().toDate(),
+    body('shirtDelivered').optional().isBoolean(),
   ],
   updateLeaguePaymentRecord
 );

@@ -17,6 +17,8 @@ async function enrollPlayer(req, res) {
   }
 
   const { categoryId, userId } = req.body;
+  const requestedShirtSize =
+    typeof req.body?.shirtSize === 'string' ? req.body.shirtSize.trim() : '';
 
   if (!userHasRole(req.user, USER_ROLES.ADMIN)) {
     return res
@@ -27,7 +29,10 @@ async function enrollPlayer(req, res) {
   const playerId = userId || req.user.id;
 
   const [category, user] = await Promise.all([
-    Category.findById(categoryId).populate('league', 'status registrationCloseDate isPrivate'),
+    Category.findById(categoryId).populate(
+      'league',
+      'status registrationCloseDate isPrivate hasShirt shirtSizes'
+    ),
     User.findById(playerId),
   ]);
 
@@ -45,6 +50,28 @@ async function enrollPlayer(req, res) {
 
   if (category.gender !== user.gender) {
     return res.status(400).json({ message: 'El género del jugador no coincide con la categoría' });
+  }
+
+  const league = category.league;
+  const leagueHasShirt = Boolean(league?.hasShirt);
+  const availableShirtSizes = Array.isArray(league?.shirtSizes)
+    ? league.shirtSizes
+        .map((size) => (typeof size === 'string' ? size.trim() : ''))
+        .filter((size) => size.length)
+    : [];
+
+  if (leagueHasShirt) {
+    if (!requestedShirtSize) {
+      return res
+        .status(400)
+        .json({ message: 'Debe indicar la talla de camiseta para completar la inscripción' });
+    }
+
+    if (availableShirtSizes.length && !availableShirtSizes.includes(requestedShirtSize)) {
+      return res
+        .status(400)
+        .json({ message: 'La talla de camiseta seleccionada no es válida para esta liga' });
+    }
   }
 
   const minimumAge = Number(category.minimumAge);
@@ -93,9 +120,20 @@ async function enrollPlayer(req, res) {
     const enrollment = await Enrollment.create({
       category: category.id,
       user: user.id,
+      shirtSize: leagueHasShirt ? requestedShirtSize || undefined : undefined,
     });
 
     await enrollment.populate('user', 'fullName email gender phone photo preferredSchedule birthDate');
+
+    const enrollmentRequestUpdate = {
+      status: ENROLLMENT_REQUEST_STATUSES.APPROVED,
+      decisionBy: req.user.id,
+      decisionAt: new Date(),
+    };
+
+    if (leagueHasShirt) {
+      enrollmentRequestUpdate.shirtSize = requestedShirtSize || undefined;
+    }
 
     await EnrollmentRequest.findOneAndUpdate(
       {
@@ -103,11 +141,7 @@ async function enrollPlayer(req, res) {
         user: user.id,
         status: ENROLLMENT_REQUEST_STATUSES.PENDING,
       },
-      {
-        status: ENROLLMENT_REQUEST_STATUSES.APPROVED,
-        decisionBy: req.user.id,
-        decisionAt: new Date(),
-      }
+      enrollmentRequestUpdate
     );
 
     return res.status(201).json(enrollment);
