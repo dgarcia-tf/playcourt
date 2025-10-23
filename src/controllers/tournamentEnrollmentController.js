@@ -7,6 +7,7 @@ const {
 } = require('../models/TournamentEnrollment');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { canAccessPrivateContent } = require('../utils/accessControl');
+const { categoryAllowsGender } = require('../utils/gender');
 
 async function ensureTournamentAndCategory(tournamentId, categoryId) {
   const [tournament, category] = await Promise.all([
@@ -76,7 +77,7 @@ async function createTournamentEnrollment(req, res) {
     return res.status(403).json({ message: 'Solo los socios pueden inscribirse en este torneo.' });
   }
 
-  if (user.gender && category.gender && user.gender !== category.gender) {
+  if (user.gender && category.gender && !categoryAllowsGender(category.gender, user.gender)) {
     return res.status(400).json({ message: 'El género del jugador no coincide con la categoría' });
   }
 
