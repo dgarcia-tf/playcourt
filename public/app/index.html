@@ -124,10 +124,22 @@
                   </select>
                 </label>
                 <label>
-                  Notas adicionales
-                  <textarea name="notes" rows="3" maxlength="500" placeholder="Háblanos de tu disponibilidad, club habitual, etc."></textarea>
+                  Talla de camiseta
+                  <select name="shirtSize" required>
+                    <option value="">Selecciona</option>
+                    <option value="XS">XS</option>
+                    <option value="S">S</option>
+                    <option value="M">M</option>
+                    <option value="L">L</option>
+                    <option value="XL">XL</option>
+                    <option value="XXL">XXL</option>
+                  </select>
                 </label>
               </div>
+              <label>
+                Notas adicionales
+                <textarea name="notes" rows="3" maxlength="500" placeholder="Háblanos de tu disponibilidad, club habitual, etc."></textarea>
+              </label>
               <button type="submit" class="primary">Crear cuenta</button>
               <p class="status-message" id="register-status"></p>
             </form>
@@ -1879,6 +1891,10 @@
                           <dd id="account-membership-number"></dd>
                         </div>
                         <div>
+                          <dt>Talla de camiseta</dt>
+                          <dd id="account-shirt-size"></dd>
+                        </div>
+                        <div>
                           <dt>Fecha de nacimiento</dt>
                           <dd id="account-birth-date"></dd>
                         </div>
@@ -1923,6 +1939,18 @@
                           </select>
                         </label>
                       </div>
+                      <label>
+                        Talla de camiseta
+                        <select name="shirtSize" required>
+                          <option value="">Selecciona</option>
+                          <option value="XS">XS</option>
+                          <option value="S">S</option>
+                          <option value="M">M</option>
+                          <option value="L">L</option>
+                          <option value="XL">XL</option>
+                          <option value="XXL">XXL</option>
+                        </select>
+                      </label>
                       <div class="form-grid">
                         <label>
                           Género
