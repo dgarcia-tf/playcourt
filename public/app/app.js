@@ -6490,6 +6490,15 @@ function renderLeagues(leagues = []) {
       editButton.dataset.action = 'edit';
       editButton.dataset.leagueId = leagueId;
       actions.appendChild(editButton);
+
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'danger';
+      deleteButton.textContent = 'Eliminar';
+      deleteButton.dataset.action = 'delete';
+      deleteButton.dataset.leagueId = leagueId;
+      actions.appendChild(deleteButton);
+
       hasActions = true;
     } else {
       const access = getLeagueCategoryAccessSnapshot(leagueId);
@@ -16064,6 +16073,40 @@ async function submitLeagueFormData({ form, leagueId, statusElement }) {
   }
 }
 
+async function deleteLeagueById(leagueId, { button } = {}) {
+  if (!leagueId || !isAdmin()) {
+    return false;
+  }
+
+  const league = state.leagues.find((item) => normalizeId(item) === leagueId);
+  const leagueName = league?.name ? ` "${league.name}"` : '';
+  const confirmed = window.confirm(
+    `¿Seguro que deseas eliminar la liga${leagueName}? Esta acción no se puede deshacer.`
+  );
+
+  if (!confirmed) {
+    return false;
+  }
+
+  if (button) {
+    button.disabled = true;
+  }
+
+  try {
+    await request(`/leagues/${leagueId}`, { method: 'DELETE' });
+    showGlobalMessage('Liga eliminada correctamente.', 'success');
+    await loadAllData();
+    return true;
+  } catch (error) {
+    showGlobalMessage(error.message, 'error');
+    return false;
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
 function buildTournamentPayload(form, { isEditing = false } = {}) {
   const formData = new FormData(form);
   const payload = {
@@ -21266,6 +21309,11 @@ leaguesList?.addEventListener('click', (event) => {
     }
     if (action === 'edit' && leagueId) {
       openLeagueModal(leagueId);
+      return;
+    }
+    if (action === 'delete' && leagueId) {
+      deleteLeagueById(leagueId, { button: actionButton });
+      return;
     }
     return;
   }
