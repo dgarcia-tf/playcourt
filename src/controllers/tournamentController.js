@@ -121,27 +121,6 @@ function normalizeShirtSizes(sizes, hasShirt) {
   return normalized;
 }
 
-function parseBoolean(value) {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) {
-      return false;
-    }
-
-    return ['true', '1', 'yes', 'on', 'si', 'sí'].includes(normalized);
-  }
-
-  if (typeof value === 'number') {
-    return value !== 0;
-  }
-
-  return Boolean(value);
-}
-
 async function createTournament(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -692,7 +671,7 @@ async function addPaymentRecord(req, res) {
   }
 
   const { tournamentId } = req.params;
-  const { user, amount, status, method, reference, notes, paidAt, shirtDelivered } = req.body;
+  const { user, amount, status, method, reference, notes, paidAt } = req.body;
 
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) {
@@ -710,7 +689,6 @@ async function addPaymentRecord(req, res) {
     notes: typeof notes === 'string' ? notes.trim() || undefined : undefined,
     paidAt: paidAt ? new Date(paidAt) : undefined,
     recordedBy: req.user.id,
-    shirtDelivered: parseBoolean(shirtDelivered),
   };
 
   tournament.payments.push(record);
@@ -771,10 +749,6 @@ async function updatePaymentRecord(req, res) {
 
   if (Object.prototype.hasOwnProperty.call(updates, 'paidAt')) {
     payment.paidAt = updates.paidAt ? new Date(updates.paidAt) : undefined;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(updates, 'shirtDelivered')) {
-    payment.shirtDelivered = parseBoolean(updates.shirtDelivered);
   }
 
   payment.recordedBy = req.user.id;

@@ -213,7 +213,6 @@ function mapPaymentRecord(record, container, scope, currentUser) {
     recordedAt: record.createdAt || null,
     recordedBy,
     user: userInfo,
-    shirtDelivered: Boolean(record.shirtDelivered),
     container: {
       id: normalizeId(container),
       name: container.name,

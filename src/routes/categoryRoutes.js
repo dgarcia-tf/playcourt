@@ -137,7 +137,6 @@ router.post(
   [
     body('categoryId').isMongoId().withMessage('Categoría inválida'),
     body('userId').optional().isMongoId(),
-    body('shirtSize').optional({ nullable: true }).isString(),
   ],
   enrollPlayer
 );
@@ -145,7 +144,7 @@ router.post(
 router.post(
   '/:categoryId/enrollment-requests',
   authenticate,
-  [param('categoryId').isMongoId(), body('shirtSize').optional({ nullable: true }).isString()],
+  [param('categoryId').isMongoId()],
   requestEnrollment
 );
 
@@ -167,7 +166,6 @@ router.patch(
     body('action')
       .isIn(['approve', 'reject'])
       .withMessage('Acción inválida para la solicitud de inscripción'),
-    body('shirtSize').optional({ nullable: true }).isString(),
   ],
   updateEnrollmentRequest
 );

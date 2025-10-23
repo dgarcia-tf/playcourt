@@ -409,7 +409,6 @@ router.post(
     body('reference').optional({ nullable: true }).isString(),
     body('notes').optional({ nullable: true }).isString(),
     body('paidAt').optional({ nullable: true }).isISO8601().toDate(),
-    body('shirtDelivered').optional().isBoolean(),
   ],
   addPaymentRecord
 );
@@ -427,7 +426,6 @@ router.patch(
     body('reference').optional({ nullable: true }).isString(),
     body('notes').optional({ nullable: true }).isString(),
     body('paidAt').optional({ nullable: true }).isISO8601().toDate(),
-    body('shirtDelivered').optional().isBoolean(),
   ],
   updatePaymentRecord
 );

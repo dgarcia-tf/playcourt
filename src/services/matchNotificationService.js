@@ -139,7 +139,7 @@ async function notifyResultConfirmed(matchDoc, actorId, options = {}) {
       .map((user) => user._id.toString());
 
     const adminRecipients = await User.find({
-      $or: [{ roles: USER_ROLES.ADMIN }, { role: USER_ROLES.ADMIN }],
+      roles: USER_ROLES.ADMIN,
       notifyMatchResults: { $ne: false },
     })
       .select('_id')
