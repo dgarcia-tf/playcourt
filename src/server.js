@@ -3,6 +3,7 @@ const http = require('http');
 const { connectDatabase } = require('./config/db');
 const { createApp } = require('./app');
 const { scheduleMatchExpirationChecks } = require('./services/matchExpirationService');
+const { scheduleMatchResultAutoConfirmChecks } = require('./services/matchResultAutoConfirmService');
 const { configurePushNotifications } = require('./services/pushNotificationService');
 const { configureMailTransport } = require('./config/mail');
 
@@ -17,6 +18,7 @@ async function start() {
 
   const app = createApp();
   scheduleMatchExpirationChecks();
+  scheduleMatchResultAutoConfirmChecks();
   const server = http.createServer(app);
 
   server.listen(port, () => {
