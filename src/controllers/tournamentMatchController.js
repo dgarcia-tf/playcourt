@@ -56,6 +56,22 @@ function resolveConsolationRoundName(roundIndex, totalRounds) {
   return `Consolación - ${baseName}`;
 }
 
+function toObjectId(value) {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value;
+  }
+
+  try {
+    return new mongoose.Types.ObjectId(value);
+  } catch (error) {
+    return undefined;
+  }
+}
+
 function createConfirmationEntries(playerIds = []) {
   return playerIds.reduce((acc, playerId) => {
     acc[playerId] = { status: 'pendiente' };
@@ -702,6 +718,184 @@ async function autoGenerateTournamentBracket(req, res) {
   return res.status(201).json(matches);
 }
 
+async function recalculateTournamentBracket(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId, categoryId } = req.params;
+
+  let context;
+  try {
+    context = await ensureTournamentContext(tournamentId, categoryId);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
+
+  const matches = await TournamentMatch.find({
+    tournament: tournamentId,
+    category: categoryId,
+    bracketType: { $in: [TOURNAMENT_BRACKETS.MAIN, TOURNAMENT_BRACKETS.CONSOLATION] },
+  }).sort({ roundOrder: 1, matchNumber: 1, createdAt: 1 });
+
+  if (!matches.length) {
+    return res
+      .status(404)
+      .json({ message: 'No hay partidos de cuadro generados para esta categoría.' });
+  }
+
+  const matchMap = new Map();
+  const outcomes = matches.map((match) => {
+    const players = Array.isArray(match.players)
+      ? match.players.map((player) => (player ? player.toString() : undefined)).filter(Boolean)
+      : [];
+    let winnerId = match.result?.winner ? match.result.winner.toString() : '';
+    if (!winnerId && players.length === 1) {
+      [winnerId] = players;
+    }
+    const loserId = players.find((playerId) => playerId && playerId !== winnerId);
+    matchMap.set(match._id.toString(), match);
+    return { match, players, winnerId, loserId };
+  });
+
+  matches.forEach((match) => {
+    const keepPlayers =
+      match.bracketType === TOURNAMENT_BRACKETS.MAIN && Number(match.roundOrder) === 1;
+    if (!keepPlayers) {
+      match.players = [];
+    }
+    const confirmationPlayers = Array.isArray(match.players)
+      ? match.players.map((player) => (player ? player.toString() : undefined)).filter(Boolean)
+      : [];
+    match.confirmations = createConfirmationEntries(confirmationPlayers);
+    match.markModified('confirmations');
+  });
+
+  outcomes.forEach(({ match, winnerId, loserId }) => {
+    if (match.nextMatch && winnerId) {
+      const target = matchMap.get(match.nextMatch.toString());
+      if (target) {
+        const players = Array.isArray(target.players)
+          ? target.players.map((player) => (player ? player.toString() : undefined))
+          : [];
+        if (typeof match.nextMatchSlot === 'number') {
+          while (players.length <= match.nextMatchSlot) {
+            players.push(undefined);
+          }
+          players[match.nextMatchSlot] = winnerId;
+        } else if (!players.includes(winnerId)) {
+          players.push(winnerId);
+        }
+        target.players = players
+          .filter(Boolean)
+          .map((playerId) => new mongoose.Types.ObjectId(playerId));
+        target.confirmations = createConfirmationEntries(target.players.map(String));
+        target.markModified('confirmations');
+        if (target.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
+          target.status = TOURNAMENT_MATCH_STATUS.PENDING;
+        }
+      }
+    }
+
+    if (match.loserNextMatch && loserId) {
+      const target = matchMap.get(match.loserNextMatch.toString());
+      if (target) {
+        const players = Array.isArray(target.players)
+          ? target.players.map((player) => (player ? player.toString() : undefined))
+          : [];
+        if (typeof match.loserNextMatchSlot === 'number') {
+          while (players.length <= match.loserNextMatchSlot) {
+            players.push(undefined);
+          }
+          players[match.loserNextMatchSlot] = loserId;
+        } else if (!players.includes(loserId)) {
+          players.push(loserId);
+        }
+        target.players = players
+          .filter(Boolean)
+          .map((playerId) => new mongoose.Types.ObjectId(playerId));
+        target.confirmations = createConfirmationEntries(target.players.map(String));
+        target.markModified('confirmations');
+        if (target.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
+          target.status = TOURNAMENT_MATCH_STATUS.PENDING;
+        }
+      }
+    }
+  });
+
+  await Promise.all(matches.map((match) => match.save()));
+
+  const { category } = context;
+  const drawRounds = Array.isArray(category.draw) ? category.draw : [];
+  const consolationRounds = Array.isArray(category.consolationDraw) ? category.consolationDraw : [];
+
+  const mainLookup = new Map();
+  drawRounds.forEach((round) => {
+    const order = Number(round.order) || 0;
+    const matchesInRound = Array.isArray(round.matches) ? round.matches : [];
+    matchesInRound.forEach((entry) => {
+      const key = `${order}:${Number(entry.matchNumber) || 0}`;
+      mainLookup.set(key, entry);
+    });
+  });
+
+  const consolationLookup = new Map();
+  consolationRounds.forEach((round) => {
+    const order = Number(round.order) || 0;
+    const matchesInRound = Array.isArray(round.matches) ? round.matches : [];
+    matchesInRound.forEach((entry) => {
+      const key = `${order}:${Number(entry.matchNumber) || 0}`;
+      consolationLookup.set(key, entry);
+    });
+  });
+
+  matches.forEach((match) => {
+    const key = `${Number(match.roundOrder) || 0}:${Number(match.matchNumber) || 0}`;
+    const targetMap =
+      match.bracketType === TOURNAMENT_BRACKETS.MAIN ? mainLookup : consolationLookup;
+    const entry = targetMap.get(key);
+    if (!entry) {
+      return;
+    }
+
+    const players = Array.isArray(match.players)
+      ? match.players.map((player) => (player ? player.toString() : undefined))
+      : [];
+    const [playerA, playerB] = players;
+    if (playerA) {
+      entry.playerA = toObjectId(playerA);
+    } else {
+      delete entry.playerA;
+    }
+    if (playerB) {
+      entry.playerB = toObjectId(playerB);
+    } else {
+      delete entry.playerB;
+    }
+
+    const winnerId = match.result?.winner ? match.result.winner.toString() : '';
+    if (winnerId) {
+      entry.winner = toObjectId(winnerId);
+    } else {
+      delete entry.winner;
+    }
+  });
+
+  category.markModified('draw');
+  category.markModified('consolationDraw');
+  await category.save();
+
+  const populatedMatches = await TournamentMatch.find({
+    tournament: tournamentId,
+    category: categoryId,
+  })
+    .populate('players', 'fullName gender rating photo')
+    .sort({ roundOrder: 1, matchNumber: 1, createdAt: 1 });
+
+  return res.json(populatedMatches);
+}
+
 async function updateTournamentMatch(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -1018,6 +1212,7 @@ module.exports = {
   listTournamentMatches,
   generateTournamentMatches,
   autoGenerateTournamentBracket,
+  recalculateTournamentBracket,
   updateTournamentMatch,
   submitTournamentMatchResult,
   approveTournamentMatchResult,

@@ -361,6 +361,14 @@
                   <button
                     type="button"
                     class="menu-button menu-button--nested menu-button--subnested"
+                    data-target="section-tournament-brackets"
+                    data-parent-target="section-tournaments"
+                  >
+                    Cuadros de juego
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested menu-button--subnested"
                     data-target="section-tournament-enrollments"
                     data-parent-target="section-tournaments"
                   >
@@ -980,6 +988,86 @@
                     Selecciona un torneo para consultar sus categorías.
                   </p>
               </article>
+            </section>
+
+            <section id="section-tournament-brackets" class="app-section" hidden>
+              <article class="card" id="tournament-brackets-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Cuadros de juego</h3>
+                    <p class="card-subtitle">
+                      Gestiona las siembras y visualiza el avance del cuadro principal.
+                    </p>
+                  </div>
+                </div>
+                <div class="tournament-bracket-controls">
+                  <label class="inline-field">
+                    Torneo
+                    <select id="tournament-bracket-tournament"></select>
+                  </label>
+                  <label class="inline-field">
+                    Categoría
+                    <select id="tournament-bracket-category" disabled></select>
+                  </label>
+                  <label
+                    class="inline-field"
+                    id="tournament-bracket-size-wrapper"
+                    data-admin-visible="toggle"
+                    hidden
+                  >
+                    Tamaño del cuadro
+                    <select id="tournament-bracket-size"></select>
+                  </label>
+                  <div
+                    class="tournament-bracket-actions"
+                    data-admin-visible="toggle"
+                    hidden
+                  >
+                    <button type="button" class="secondary" id="tournament-bracket-save-seeds" disabled>
+                      Guardar cabezas de serie
+                    </button>
+                    <button type="button" class="primary" id="tournament-bracket-generate" disabled>
+                      Generar cuadro
+                    </button>
+                    <button type="button" class="ghost" id="tournament-bracket-recalculate" disabled>
+                      Recalcular cuadro
+                    </button>
+                  </div>
+                </div>
+                <p class="status-message" id="tournament-bracket-status"></p>
+              </article>
+              <div class="tournament-bracket-layout">
+                <article class="card tournament-seeds-card" id="tournament-bracket-seeds-card">
+                  <div class="card-header">
+                    <div>
+                      <h4>Cabezas de serie</h4>
+                      <p class="card-subtitle">
+                        Selecciona los jugadores que se ubicarán en posiciones clave del cuadro.
+                      </p>
+                    </div>
+                  </div>
+                  <div id="tournament-bracket-seeds" class="tournament-seed-list">
+                    <p class="empty-state">
+                      Selecciona un torneo y categoría para configurar las siembras.
+                    </p>
+                  </div>
+                </article>
+                <article class="card tournament-bracket-card" id="tournament-bracket-view-card">
+                  <div class="card-header">
+                    <div>
+                      <h4>Cuadro principal</h4>
+                      <p class="card-subtitle">
+                        Consulta el avance por rondas y los resultados registrados.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="tournament-bracket-view" id="tournament-bracket-view">
+                    <p class="empty-state" id="tournament-bracket-empty">
+                      Selecciona una categoría para visualizar su cuadro de juego.
+                    </p>
+                  </div>
+                </article>
+              </div>
             </section>
 
             <section id="section-tournament-enrollments" class="app-section" hidden>

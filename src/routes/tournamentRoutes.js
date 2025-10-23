@@ -34,6 +34,7 @@ const {
   listTournamentMatches,
   generateTournamentMatches,
   autoGenerateTournamentBracket,
+  recalculateTournamentBracket,
   updateTournamentMatch,
   confirmTournamentMatch,
   rejectTournamentMatch,
@@ -253,6 +254,13 @@ router.post(
   authorizeRoles('admin'),
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
   autoGenerateTournamentBracket
+);
+
+router.post(
+  '/:tournamentId/categories/:categoryId/brackets/recalculate',
+  authorizeRoles('admin'),
+  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
+  recalculateTournamentBracket
 );
 
 // Enrollments
