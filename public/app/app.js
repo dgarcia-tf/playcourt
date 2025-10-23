@@ -1521,6 +1521,7 @@ const state = {
   pendingApprovalMatches: [],
   completedMatches: [],
   selectedCategoryId: null,
+  selectedApp: 'tennis',
   rankingFilters: { league: '' },
   needsSetup: false,
   accountSummary: null,
@@ -1617,6 +1618,10 @@ const mobileMenuBackdrop = document.getElementById('mobile-menu-backdrop');
 const mobileMenuClose = document.getElementById('mobile-menu-close');
 const mobileTopbarLogo = document.getElementById('mobile-topbar-logo');
 const mobileTopbarTitle = document.getElementById('mobile-topbar-title');
+const appSwitcher = document.getElementById('app-switcher');
+const appSwitcherButtons = appSwitcher
+  ? Array.from(appSwitcher.querySelectorAll('.app-switcher__button'))
+  : [];
 const authDescription = document.getElementById('auth-description');
 const loginForm = document.getElementById('login-form');
 const registerForm = document.getElementById('register-form');
@@ -4438,6 +4443,11 @@ function switchTab(target) {
   });
 }
 
+if (appSwitcher) {
+  appSwitcher.addEventListener('click', handleAppSwitcherClick);
+}
+updateAppSwitcherButtons();
+
 tabButtons.forEach((button) => {
   button.addEventListener('click', () => switchTab(button.dataset.target));
 });
@@ -4639,8 +4649,39 @@ function toggleProfileForm(show) {
   setStatusMessage(profileStatus, '', '');
 }
 
+function updateAppSwitcherButtons() {
+  if (!appSwitcherButtons.length) return;
+
+  appSwitcherButtons.forEach((button) => {
+    const isActive = button.dataset.app === state.selectedApp;
+    button.classList.toggle('app-switcher__button--active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function handleAppSwitcherClick(event) {
+  const button = event.target.closest('.app-switcher__button');
+  if (!button) return;
+
+  const { app } = button.dataset;
+  if (!app || app === state.selectedApp) {
+    return;
+  }
+
+  if (app === 'padel') {
+    window.alert('La aplicación de Pádel estará disponible próximamente.');
+    updateAppSwitcherButtons();
+    return;
+  }
+
+  state.selectedApp = app;
+  updateAppSwitcherButtons();
+}
+
 function resetData() {
   toggleProfileForm(false);
+  state.selectedApp = 'tennis';
+  updateAppSwitcherButtons();
   state.accountSummary = null;
   state.accountSummaryLoading = false;
   renderAccountSummary(null);
