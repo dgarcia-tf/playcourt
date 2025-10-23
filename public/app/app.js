@@ -10029,6 +10029,7 @@ function renderTournamentCategories({ loading = false } = {}) {
     return;
   }
 
+  const admin = isAdmin();
   tournamentCategoriesEmpty.hidden = true;
 
   categories
@@ -10036,19 +10037,33 @@ function renderTournamentCategories({ loading = false } = {}) {
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
     .forEach((category) => {
       const item = document.createElement('li');
+      const content = document.createElement('div');
+      content.className = 'list-item__content';
+      item.appendChild(content);
+
       const categoryId = normalizeId(category);
+      if (categoryId) {
+        item.dataset.categoryId = categoryId;
+      }
+
+      const categoryColor = getCategoryColor(category);
+      if (categoryColor) {
+        applyCategoryColorStyles(item, categoryColor, { backgroundAlpha: 0.14, borderAlpha: 0.3 });
+      }
+
       const title = document.createElement('strong');
       title.textContent = category.name || 'Categoría';
-      item.appendChild(title);
+      if (categoryColor) {
+        const indicator = createCategoryColorIndicator(categoryColor, category.name);
+        if (indicator) {
+          title.classList.add('with-category-color');
+          title.prepend(indicator);
+        }
+      }
+      content.appendChild(title);
 
       const meta = document.createElement('div');
-      meta.className = 'meta';
-
-      const statusValue = category.status || 'inscripcion';
-      const statusTag = document.createElement('span');
-      statusTag.className = `tag status-${statusValue}`;
-      statusTag.textContent = formatTournamentCategoryStatusLabel(statusValue);
-      meta.appendChild(statusTag);
+      meta.className = 'meta meta-category';
 
       if (category.gender) {
         const genderSpan = document.createElement('span');
@@ -10068,6 +10083,20 @@ function renderTournamentCategories({ loading = false } = {}) {
         meta.appendChild(formatSpan);
       }
 
+      const statusValue = category.status || 'inscripcion';
+      const statusTag = document.createElement('span');
+      statusTag.className = `tag category-status category-status--${statusValue}`;
+      statusTag.textContent = formatTournamentCategoryStatusLabel(statusValue);
+      meta.appendChild(statusTag);
+
+      content.appendChild(meta);
+
+      if (category.description) {
+        const description = document.createElement('p');
+        description.textContent = category.description;
+        content.appendChild(description);
+      }
+
       const enrollmentStats = category.enrollmentStats || {};
       const totalEnrollments = Number.isFinite(Number(enrollmentStats.total))
         ? Number(enrollmentStats.total)
@@ -10077,21 +10106,39 @@ function renderTournamentCategories({ loading = false } = {}) {
       const confirmedEnrollments = Number.isFinite(Number(enrollmentStats.confirmed))
         ? Number(enrollmentStats.confirmed)
         : 0;
-      const enrollmentSpan = document.createElement('span');
-      enrollmentSpan.textContent = `${confirmedEnrollments}/${totalEnrollments} confirmadas`;
-      meta.appendChild(enrollmentSpan);
+      const pendingEnrollments = Number.isFinite(Number(enrollmentStats.pending))
+        ? Number(enrollmentStats.pending)
+        : Number(category.pendingEnrollmentCount || 0);
+
+      const enrollmentSummary = document.createElement('div');
+      enrollmentSummary.className = 'meta meta-enrollment';
+      enrollmentSummary.textContent = `Inscripciones confirmadas: ${confirmedEnrollments}/${totalEnrollments}`;
+      content.appendChild(enrollmentSummary);
+
+      if (admin && pendingEnrollments > 0) {
+        const pendingSummary = document.createElement('div');
+        pendingSummary.className = 'meta meta-enrollment';
+        pendingSummary.textContent =
+          pendingEnrollments === 1
+            ? '1 solicitud pendiente'
+            : `${pendingEnrollments} solicitudes pendientes`;
+        content.appendChild(pendingSummary);
+      }
 
       const matches = Number.isFinite(Number(category.matches)) ? Number(category.matches) : 0;
-      const matchesSpan = document.createElement('span');
-      matchesSpan.textContent = `${matches} ${matches === 1 ? 'partido' : 'partidos'}`;
-      meta.appendChild(matchesSpan);
+      const matchesMeta = document.createElement('div');
+      matchesMeta.className = 'meta meta-matches';
+      matchesMeta.textContent = `${matches} ${matches === 1 ? 'partido' : 'partidos'}`;
+      content.appendChild(matchesMeta);
 
-      item.appendChild(meta);
+      const actions = document.createElement('div');
+      actions.className = 'actions category-actions';
+      let hasActions = false;
 
-      if (isAdmin() && categoryId) {
-        const actions = document.createElement('div');
-        actions.className = 'actions category-actions';
+      const detailId = normalizeId(category?.tournament) || tournamentId;
+      const userEnrollment = category.userEnrollment || null;
 
+      if (admin) {
         const editButton = document.createElement('button');
         editButton.type = 'button';
         editButton.className = 'secondary';
@@ -10100,6 +10147,26 @@ function renderTournamentCategories({ loading = false } = {}) {
         editButton.dataset.categoryId = categoryId;
         editButton.textContent = 'Editar';
         actions.appendChild(editButton);
+        hasActions = true;
+
+        if (categoryId) {
+          const manageButton = document.createElement('button');
+          manageButton.type = 'button';
+          manageButton.dataset.tournamentCategoryAction = 'enrollments';
+          manageButton.dataset.tournamentId = tournamentId;
+          manageButton.dataset.categoryId = categoryId;
+          if (pendingEnrollments > 0) {
+            manageButton.className = 'primary';
+            manageButton.textContent =
+              pendingEnrollments === 1
+                ? 'Revisar solicitud'
+                : `Revisar ${pendingEnrollments} solicitudes`;
+          } else {
+            manageButton.className = 'ghost';
+            manageButton.textContent = 'Gestionar inscripciones';
+          }
+          actions.appendChild(manageButton);
+        }
 
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
@@ -10109,8 +10176,46 @@ function renderTournamentCategories({ loading = false } = {}) {
         deleteButton.dataset.categoryId = categoryId;
         deleteButton.textContent = 'Eliminar';
         actions.appendChild(deleteButton);
+      } else if (categoryId) {
+        if (userEnrollment?.status) {
+          const enrollmentStatus = userEnrollment.status;
+          const statusClass = enrollmentStatus === 'confirmada' ? 'tag tag--success' : 'tag';
+          const enrollmentTag = document.createElement('span');
+          enrollmentTag.className = statusClass;
+          enrollmentTag.textContent = formatTournamentEnrollmentStatusLabel(enrollmentStatus);
+          actions.appendChild(enrollmentTag);
+          hasActions = true;
+        }
 
-        item.appendChild(actions);
+        if (category.canRequestEnrollment) {
+          const requestButton = document.createElement('button');
+          requestButton.type = 'button';
+          requestButton.className = 'primary';
+          requestButton.dataset.tournamentAction = 'request-enrollment';
+          requestButton.dataset.tournamentId = detailId;
+          requestButton.dataset.categoryId = categoryId;
+          requestButton.textContent = 'Solicitar inscripción';
+          actions.appendChild(requestButton);
+          hasActions = true;
+        } else if (!userEnrollment) {
+          const note = document.createElement('span');
+          note.className = 'note';
+          note.textContent = 'Inscripciones cerradas';
+          actions.appendChild(note);
+          hasActions = true;
+        }
+      }
+
+      if (!admin && userEnrollment?.status === 'cancelada') {
+        const cancelledTag = document.createElement('span');
+        cancelledTag.className = 'tag';
+        cancelledTag.textContent = 'Inscripción cancelada';
+        actions.appendChild(cancelledTag);
+        hasActions = true;
+      }
+
+      if (hasActions || admin) {
+        content.appendChild(actions);
       }
 
       tournamentCategoriesList.appendChild(item);
@@ -18331,6 +18436,462 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
   });
 }
 
+async function openTournamentCategoryEnrollmentModal(tournamentId, categoryId) {
+  if (!isAdmin()) return;
+
+  const resolvedTournamentId = normalizeId(tournamentId) || state.selectedTournamentCategoriesId;
+  const resolvedCategoryId = normalizeId(categoryId);
+
+  if (!resolvedTournamentId || !resolvedCategoryId) {
+    showGlobalMessage('Selecciona un torneo y una categoría válidos.', 'error');
+    return;
+  }
+
+  if (!state.tournamentDetails.has(resolvedTournamentId)) {
+    try {
+      await refreshTournamentDetail(resolvedTournamentId);
+    } catch (error) {
+      showGlobalMessage(error.message || 'No fue posible cargar el detalle del torneo.', 'error');
+      return;
+    }
+  }
+
+  const categories = getTournamentCategories(resolvedTournamentId);
+  const category = categories.find((item) => normalizeId(item) === resolvedCategoryId);
+  if (!category) {
+    showGlobalMessage('Categoría de torneo no encontrada.', 'error');
+    return;
+  }
+
+  try {
+    await ensurePlayersLoaded();
+  } catch (error) {
+    showGlobalMessage(error.message || 'No fue posible cargar la lista de jugadores.', 'error');
+    return;
+  }
+
+  const cacheKey = `${resolvedTournamentId}:${resolvedCategoryId}`;
+  let enrollments = [];
+
+  const container = document.createElement('div');
+  container.className = 'enrollment-modal';
+
+  const status = document.createElement('p');
+  status.className = 'status-message';
+  status.style.display = 'none';
+
+  const header = document.createElement('p');
+  header.className = 'meta';
+  header.textContent = `Jugadores inscritos en ${category.name || 'Categoría'}`;
+  container.appendChild(header);
+
+  const pendingHeader = document.createElement('p');
+  pendingHeader.className = 'meta';
+  pendingHeader.textContent = 'Solicitudes de inscripción pendientes';
+  container.appendChild(pendingHeader);
+
+  const pendingList = document.createElement('ul');
+  pendingList.className = 'list compact';
+  pendingList.innerHTML = '<li class="empty-state">Cargando solicitudes...</li>';
+  container.appendChild(pendingList);
+
+  const enrolledHeader = document.createElement('p');
+  enrolledHeader.className = 'meta';
+  enrolledHeader.textContent = 'Jugadores confirmados';
+  container.appendChild(enrolledHeader);
+
+  const enrolledList = document.createElement('ul');
+  enrolledList.className = 'list compact';
+  enrolledList.innerHTML = '<li class="empty-state">Cargando inscripciones...</li>';
+  container.appendChild(enrolledList);
+
+  const form = document.createElement('form');
+  form.className = 'form';
+  form.innerHTML = `
+    <label>
+      Añadir jugador
+      <select name="playerId" required>
+        <option value="">Selecciona un jugador</option>
+      </select>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary" disabled>Inscribir</button>
+    </div>
+  `;
+  container.appendChild(form);
+  container.appendChild(status);
+
+  const playerSelect = form.elements.playerId;
+  const submitButton = form.querySelector('button[type="submit"]');
+
+  function renderEnrollmentLists() {
+    const pendingEntries = enrollments.filter((entry) => entry?.status === 'pendiente');
+    const confirmedEntries = enrollments.filter((entry) => entry?.status === 'confirmada');
+    const cancelledEntries = enrollments.filter((entry) => entry?.status === 'cancelada');
+
+    pendingList.innerHTML = '';
+    if (!pendingEntries.length) {
+      pendingList.innerHTML = '<li class="empty-state">No hay solicitudes pendientes.</li>';
+    } else {
+      pendingEntries.forEach((entry) => {
+        const item = document.createElement('li');
+        const name = document.createElement('strong');
+        name.textContent = entry?.user?.fullName || entry?.user?.email || 'Jugador';
+        item.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+
+        const statusValue = entry?.status || 'pendiente';
+        const statusTag = document.createElement('span');
+        statusTag.className = `tag status-${statusValue}`;
+        statusTag.textContent = formatTournamentEnrollmentStatusLabel(statusValue);
+        meta.appendChild(statusTag);
+
+        if (entry?.user?.email) {
+          const emailSpan = document.createElement('span');
+          emailSpan.textContent = entry.user.email;
+          meta.appendChild(emailSpan);
+        }
+
+        if (entry?.user?.phone) {
+          const phoneSpan = document.createElement('span');
+          phoneSpan.textContent = entry.user.phone;
+          meta.appendChild(phoneSpan);
+        }
+
+        if (entry?.shirtSize) {
+          const shirtSpan = document.createElement('span');
+          shirtSpan.textContent = `Talla: ${entry.shirtSize}`;
+          meta.appendChild(shirtSpan);
+        }
+
+        item.appendChild(meta);
+
+        const confirmButton = document.createElement('button');
+        confirmButton.type = 'button';
+        confirmButton.className = 'primary';
+        confirmButton.dataset.enrollmentAction = 'update-status';
+        confirmButton.dataset.enrollmentId = normalizeId(entry);
+        confirmButton.dataset.targetStatus = 'confirmada';
+        confirmButton.textContent = 'Confirmar';
+        item.appendChild(confirmButton);
+
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'ghost';
+        cancelButton.dataset.enrollmentAction = 'update-status';
+        cancelButton.dataset.enrollmentId = normalizeId(entry);
+        cancelButton.dataset.targetStatus = 'cancelada';
+        cancelButton.textContent = 'Marcar como cancelada';
+        item.appendChild(cancelButton);
+
+        pendingList.appendChild(item);
+      });
+    }
+
+    enrolledList.innerHTML = '';
+    if (!confirmedEntries.length && !cancelledEntries.length) {
+      enrolledList.innerHTML = '<li class="empty-state">Aún no hay jugadores inscritos en esta categoría.</li>';
+    } else {
+      confirmedEntries.forEach((entry) => {
+        const item = document.createElement('li');
+        const name = document.createElement('strong');
+        name.textContent = entry?.user?.fullName || entry?.user?.email || 'Jugador';
+        item.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+
+        const statusValue = entry?.status || 'confirmada';
+        const statusTag = document.createElement('span');
+        statusTag.className = `tag status-${statusValue}`;
+        statusTag.textContent = formatTournamentEnrollmentStatusLabel(statusValue);
+        meta.appendChild(statusTag);
+
+        if (entry?.user?.email) {
+          meta.appendChild(document.createElement('span')).textContent = entry.user.email;
+        }
+
+        if (entry?.user?.phone) {
+          meta.appendChild(document.createElement('span')).textContent = entry.user.phone;
+        }
+
+        if (entry?.shirtSize) {
+          meta.appendChild(document.createElement('span')).textContent = `Talla: ${entry.shirtSize}`;
+        }
+
+        item.appendChild(meta);
+
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'ghost';
+        cancelButton.dataset.enrollmentAction = 'update-status';
+        cancelButton.dataset.enrollmentId = normalizeId(entry);
+        cancelButton.dataset.targetStatus = 'cancelada';
+        cancelButton.textContent = 'Marcar como cancelada';
+        item.appendChild(cancelButton);
+
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'ghost';
+        removeButton.dataset.enrollmentAction = 'remove';
+        removeButton.dataset.enrollmentId = normalizeId(entry);
+        removeButton.textContent = 'Quitar';
+        item.appendChild(removeButton);
+
+        enrolledList.appendChild(item);
+      });
+
+      cancelledEntries.forEach((entry) => {
+        const item = document.createElement('li');
+        const name = document.createElement('strong');
+        name.textContent = entry?.user?.fullName || entry?.user?.email || 'Jugador';
+        item.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+
+        const statusValue = entry?.status || 'cancelada';
+        const statusTag = document.createElement('span');
+        statusTag.className = `tag status-${statusValue}`;
+        statusTag.textContent = formatTournamentEnrollmentStatusLabel(statusValue);
+        meta.appendChild(statusTag);
+
+        if (entry?.user?.email) {
+          meta.appendChild(document.createElement('span')).textContent = entry.user.email;
+        }
+
+        if (entry?.user?.phone) {
+          meta.appendChild(document.createElement('span')).textContent = entry.user.phone;
+        }
+
+        if (entry?.shirtSize) {
+          meta.appendChild(document.createElement('span')).textContent = `Talla: ${entry.shirtSize}`;
+        }
+
+        item.appendChild(meta);
+
+        const restoreButton = document.createElement('button');
+        restoreButton.type = 'button';
+        restoreButton.className = 'ghost';
+        restoreButton.dataset.enrollmentAction = 'update-status';
+        restoreButton.dataset.enrollmentId = normalizeId(entry);
+        restoreButton.dataset.targetStatus = 'pendiente';
+        restoreButton.textContent = 'Reactivar';
+        item.appendChild(restoreButton);
+
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'ghost';
+        removeButton.dataset.enrollmentAction = 'remove';
+        removeButton.dataset.enrollmentId = normalizeId(entry);
+        removeButton.textContent = 'Eliminar';
+        item.appendChild(removeButton);
+
+        enrolledList.appendChild(item);
+      });
+    }
+  }
+
+  function refreshPlayerOptions() {
+    const enrolledIds = new Set(
+      enrollments.map((entry) => normalizeId(entry?.user)).filter((value) => Boolean(value))
+    );
+
+    const availablePlayers = state.players
+      .filter((player) => entityHasRole(player, 'player'))
+      .filter((player) => !enrolledIds.has(normalizeId(player)))
+      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+
+    playerSelect.innerHTML = '';
+    if (!availablePlayers.length) {
+      playerSelect.innerHTML = '<option value="">Sin jugadores disponibles</option>';
+      playerSelect.disabled = true;
+      submitButton.disabled = true;
+      return;
+    }
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Selecciona un jugador';
+    playerSelect.appendChild(placeholder);
+
+    availablePlayers.forEach((player) => {
+      const option = document.createElement('option');
+      option.value = normalizeId(player);
+      option.textContent = player.fullName || player.email || 'Jugador';
+      playerSelect.appendChild(option);
+    });
+
+    playerSelect.disabled = false;
+    submitButton.disabled = !playerSelect.value;
+  }
+
+  async function loadEnrollmentData({ force = false } = {}) {
+    try {
+      const list = await fetchTournamentEnrollments(resolvedTournamentId, resolvedCategoryId, {
+        forceReload: force,
+      });
+      enrollments = Array.isArray(list) ? list : [];
+      renderEnrollmentLists();
+      refreshPlayerOptions();
+      if (!force) {
+        setStatusMessage(status, '', '');
+      }
+    } catch (error) {
+      enrollments = [];
+      pendingList.innerHTML = '<li class="empty-state">No fue posible cargar las inscripciones.</li>';
+      enrolledList.innerHTML = '<li class="empty-state">No fue posible cargar las inscripciones.</li>';
+      setStatusMessage(status, 'error', error.message || 'No fue posible cargar las inscripciones.');
+    }
+  }
+
+  container.addEventListener('click', async (event) => {
+    const actionButton = event.target.closest('button[data-enrollment-action]');
+    if (!actionButton) {
+      return;
+    }
+
+    const action = actionButton.dataset.enrollmentAction;
+    const enrollmentId = normalizeId(actionButton.dataset.enrollmentId);
+    if (!enrollmentId) {
+      return;
+    }
+
+    const parentItem = actionButton.closest('li');
+    const relatedButtons = parentItem
+      ? Array.from(parentItem.querySelectorAll('button[data-enrollment-action]'))
+      : [actionButton];
+
+    relatedButtons.forEach((button) => {
+      button.disabled = true;
+    });
+
+    if (action === 'update-status') {
+      const targetStatus = actionButton.dataset.targetStatus;
+      if (!targetStatus) {
+        relatedButtons.forEach((button) => {
+          button.disabled = false;
+        });
+        return;
+      }
+
+      setStatusMessage(status, 'info', 'Actualizando inscripción...');
+      try {
+        await request(
+          `/tournaments/${resolvedTournamentId}/categories/${resolvedCategoryId}/enrollments/${enrollmentId}`,
+          {
+            method: 'PATCH',
+            body: { status: targetStatus },
+          }
+        );
+        state.tournamentEnrollments.delete(cacheKey);
+        await loadEnrollmentData({ force: true });
+        await reloadTournaments({ selectTournamentId: resolvedTournamentId });
+        state.tournamentDetails.delete(resolvedTournamentId);
+        await refreshTournamentDetail(resolvedTournamentId);
+        if (
+          state.selectedEnrollmentTournamentId === resolvedTournamentId &&
+          state.selectedEnrollmentCategoryId === resolvedCategoryId
+        ) {
+          await refreshTournamentEnrollments({ forceReload: true });
+        }
+        setStatusMessage(status, 'success', 'Inscripción actualizada correctamente.');
+      } catch (error) {
+        setStatusMessage(status, 'error', error.message || 'No fue posible actualizar la inscripción.');
+      } finally {
+        relatedButtons.forEach((button) => {
+          button.disabled = false;
+        });
+        updateTournamentActionAvailability();
+      }
+      return;
+    }
+
+    if (action === 'remove') {
+      setStatusMessage(status, 'info', 'Eliminando inscripción...');
+      try {
+        await request(
+          `/tournaments/${resolvedTournamentId}/categories/${resolvedCategoryId}/enrollments/${enrollmentId}`,
+          { method: 'DELETE' }
+        );
+        state.tournamentEnrollments.delete(cacheKey);
+        await loadEnrollmentData({ force: true });
+        await reloadTournaments({ selectTournamentId: resolvedTournamentId });
+        state.tournamentDetails.delete(resolvedTournamentId);
+        await refreshTournamentDetail(resolvedTournamentId);
+        if (
+          state.selectedEnrollmentTournamentId === resolvedTournamentId &&
+          state.selectedEnrollmentCategoryId === resolvedCategoryId
+        ) {
+          await refreshTournamentEnrollments({ forceReload: true });
+        }
+        setStatusMessage(status, 'success', 'Inscripción eliminada correctamente.');
+      } catch (error) {
+        setStatusMessage(status, 'error', error.message || 'No fue posible eliminar la inscripción.');
+      } finally {
+        relatedButtons.forEach((button) => {
+          button.disabled = false;
+        });
+        updateTournamentActionAvailability();
+      }
+    }
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const playerId = playerSelect.value;
+    if (!playerId) {
+      setStatusMessage(status, 'error', 'Selecciona un jugador.');
+      return;
+    }
+
+    submitButton.disabled = true;
+    setStatusMessage(status, 'info', 'Inscribiendo jugador...');
+
+    try {
+      await request(`/tournaments/${resolvedTournamentId}/categories/${resolvedCategoryId}/enrollments`, {
+        method: 'POST',
+        body: { userId: playerId },
+      });
+      playerSelect.value = '';
+      state.tournamentEnrollments.delete(cacheKey);
+      await loadEnrollmentData({ force: true });
+      await reloadTournaments({ selectTournamentId: resolvedTournamentId });
+      state.tournamentDetails.delete(resolvedTournamentId);
+      await refreshTournamentDetail(resolvedTournamentId);
+      if (
+        state.selectedEnrollmentTournamentId === resolvedTournamentId &&
+        state.selectedEnrollmentCategoryId === resolvedCategoryId
+      ) {
+        await refreshTournamentEnrollments({ forceReload: true });
+      }
+      refreshPlayerOptions();
+      setStatusMessage(status, 'success', 'Jugador inscrito correctamente.');
+    } catch (error) {
+      setStatusMessage(status, 'error', error.message || 'No fue posible inscribir al jugador.');
+    } finally {
+      submitButton.disabled = false;
+      updateTournamentActionAvailability();
+    }
+  });
+
+  playerSelect.addEventListener('change', () => {
+    submitButton.disabled = !playerSelect.value;
+  });
+
+  openModal({
+    title: `Inscripciones · ${category.name || 'Categoría'}`,
+    content: (body) => {
+      body.appendChild(container);
+    },
+    onClose: () => setStatusMessage(status, '', ''),
+  });
+
+  await loadEnrollmentData({ force: true });
+}
+
 async function openTournamentEnrollmentModal() {
   if (!isAdmin()) return;
   const tournaments = Array.isArray(state.tournaments) ? [...state.tournaments] : [];
@@ -22617,6 +23178,15 @@ tournamentCategoriesList?.addEventListener('click', async (event) => {
       tournamentId: normalizedTournamentId,
       categoryId: normalizedCategoryId,
     });
+    return;
+  }
+
+  if (action === 'enrollments') {
+    if (!normalizedTournamentId) {
+      showGlobalMessage('Selecciona un torneo para gestionar sus inscripciones.', 'error');
+      return;
+    }
+    openTournamentCategoryEnrollmentModal(normalizedTournamentId, normalizedCategoryId);
     return;
   }
 
