@@ -69,7 +69,9 @@ async function register(req, res) {
     return res.status(409).json({ message: 'El correo ya está registrado' });
   }
 
-  const adminExists = await User.exists({ roles: USER_ROLES.ADMIN });
+  const adminExists = await User.exists({
+    $or: [{ roles: USER_ROLES.ADMIN }, { role: USER_ROLES.ADMIN }],
+  });
 
   const requestedRoles = rolesInput ?? role;
   let roles = normalizeRoles(requestedRoles);
@@ -158,7 +160,9 @@ async function login(req, res) {
 }
 
 async function getSetupStatus(_req, res) {
-  const adminExists = await User.exists({ roles: USER_ROLES.ADMIN });
+  const adminExists = await User.exists({
+    $or: [{ roles: USER_ROLES.ADMIN }, { role: USER_ROLES.ADMIN }],
+  });
 
   return res.json({
     needsSetup: !adminExists,
