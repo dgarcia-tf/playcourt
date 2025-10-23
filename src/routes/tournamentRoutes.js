@@ -25,6 +25,7 @@ const {
 const {
   createTournamentEnrollment,
   listTournamentPlayers,
+  listTournamentDoublesPlayers,
   listTournamentEnrollments,
   updateEnrollmentStatus,
   removeTournamentEnrollment,
@@ -249,6 +250,11 @@ router.post(
 
 // Enrollments
 router.get('/:tournamentId/enrollments', [param('tournamentId').isMongoId()], listTournamentPlayers);
+router.get(
+  '/:tournamentId/doubles',
+  [param('tournamentId').isMongoId()],
+  listTournamentDoublesPlayers
+);
 
 router.get(
   '/:tournamentId/categories/:categoryId/enrollments',

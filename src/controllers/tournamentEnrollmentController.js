@@ -1,6 +1,9 @@
 const { validationResult } = require('express-validator');
 const { Tournament, TOURNAMENT_STATUS } = require('../models/Tournament');
-const { TournamentCategory } = require('../models/TournamentCategory');
+const {
+  TournamentCategory,
+  TOURNAMENT_CATEGORY_MATCH_TYPES,
+} = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
   TOURNAMENT_ENROLLMENT_STATUS,
@@ -101,6 +104,32 @@ function collectUniqueShirtSizes(entries = []) {
     }
   });
   return Array.from(unique.values());
+}
+
+function sanitizeEnrollmentMetadata(metadata) {
+  if (!metadata) {
+    return {};
+  }
+
+  if (metadata instanceof Map) {
+    return Array.from(metadata.entries()).reduce((acc, [key, value]) => {
+      if (typeof key === 'string') {
+        acc[key] = typeof value === 'string' ? value : value != null ? String(value) : '';
+      }
+      return acc;
+    }, {});
+  }
+
+  if (typeof metadata === 'object') {
+    return Object.entries(metadata).reduce((acc, [key, value]) => {
+      if (typeof key === 'string') {
+        acc[key] = typeof value === 'string' ? value : value != null ? String(value) : '';
+      }
+      return acc;
+    }, {});
+  }
+
+  return {};
 }
 
 async function getTournamentPlayerCategoryMap(tournamentId, userIds = []) {
@@ -386,6 +415,123 @@ async function listTournamentPlayers(req, res) {
   return res.json(players);
 }
 
+async function listTournamentDoublesPlayers(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId } = req.params;
+
+  let tournament;
+  try {
+    tournament = await ensureTournament(tournamentId);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  const doublesCategories = await TournamentCategory.find({
+    tournament: tournamentId,
+    matchType: TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES,
+  })
+    .select('_id name menuTitle matchType gender color status')
+    .sort({ menuTitle: 1, name: 1 })
+    .lean();
+
+  if (!doublesCategories.length) {
+    return res.json([]);
+  }
+
+  const categoryGroups = doublesCategories.reduce((map, category) => {
+    const id = category?._id ? category._id.toString() : '';
+    if (id) {
+      map.set(id, {
+        category: {
+          ...sanitizeCategory(category),
+          color: category.color || null,
+          status: category.status || null,
+        },
+        players: [],
+      });
+    }
+    return map;
+  }, new Map());
+
+  if (!categoryGroups.size) {
+    return res.json([]);
+  }
+
+  const categoryIds = Array.from(categoryGroups.keys());
+
+  const enrollments = await TournamentEnrollment.find({
+    tournament: tournamentId,
+    category: { $in: categoryIds },
+  })
+    .populate('user', 'fullName email gender phone photo birthDate isMember preferredSchedule shirtSize')
+    .select('_id category status shirtSize seedNumber notes metadata createdAt updatedAt')
+    .sort({ createdAt: 1 })
+    .lean();
+
+  enrollments.forEach((enrollment) => {
+    const categoryId =
+      (enrollment.category && typeof enrollment.category.toString === 'function'
+        ? enrollment.category.toString()
+        : typeof enrollment.category === 'string'
+        ? enrollment.category
+        : '') || '';
+
+    if (!categoryGroups.has(categoryId)) {
+      return;
+    }
+
+    if (enrollment.status === TOURNAMENT_ENROLLMENT_STATUS.CANCELLED) {
+      return;
+    }
+
+    const user = sanitizeUser(enrollment.user);
+    if (!user) {
+      return;
+    }
+
+    categoryGroups.get(categoryId).players.push({
+      id: enrollment._id ? enrollment._id.toString() : undefined,
+      status: enrollment.status,
+      seedNumber:
+        typeof enrollment.seedNumber === 'number' && Number.isFinite(enrollment.seedNumber)
+          ? enrollment.seedNumber
+          : null,
+      shirtSize: enrollment.shirtSize || null,
+      notes: enrollment.notes || '',
+      metadata: sanitizeEnrollmentMetadata(enrollment.metadata),
+      user,
+      enrolledAt: enrollment.createdAt || null,
+      updatedAt: enrollment.updatedAt || null,
+    });
+  });
+
+  const doublesData = Array.from(categoryGroups.values()).map((group) => {
+    group.players.sort((a, b) => {
+      const nameA = (a.user?.fullName || '').toLowerCase();
+      const nameB = (b.user?.fullName || '').toLowerCase();
+      if (nameA && nameB) {
+        return nameA.localeCompare(nameB, 'es');
+      }
+      if (nameA) return -1;
+      if (nameB) return 1;
+      const timeA = a.enrolledAt ? new Date(a.enrolledAt).getTime() : Infinity;
+      const timeB = b.enrolledAt ? new Date(b.enrolledAt).getTime() : Infinity;
+      return timeA - timeB;
+    });
+    return group;
+  });
+
+  return res.json(doublesData);
+}
+
 async function updateEnrollmentStatus(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -477,6 +623,7 @@ module.exports = {
   createTournamentEnrollment,
   listTournamentEnrollments,
   listTournamentPlayers,
+  listTournamentDoublesPlayers,
   updateEnrollmentStatus,
   removeTournamentEnrollment,
 };
