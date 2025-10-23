@@ -1870,7 +1870,8 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   align-items: flex-start;
 }
 
-.league-payments-controls {
+.league-payments-controls,
+.tournament-payments-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
@@ -1878,7 +1879,8 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-bottom: 1rem;
 }
 
-.league-payments-summary {
+.league-payments-summary,
+.tournament-payments-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 0.85rem;
@@ -1887,33 +1889,37 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-secondary);
 }
 
-
-.league-payments-groups {
+.league-payments-groups,
+.tournament-payments-groups {
   display: grid;
   gap: 1.5rem;
 }
 
 @media (min-width: 920px) {
-  .league-payments-groups {
+  .league-payments-groups,
+  .tournament-payments-groups {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
 }
 
-.league-payments-group {
+.league-payments-group,
+.tournament-payments-group {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.league-payments-group-header {
+.league-payments-group-header,
+.tournament-payments-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
 }
 
-.league-payments-group-stats {
+.league-payments-group-stats,
+.tournament-payments-group-stats {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1921,14 +1927,16 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   flex-wrap: wrap;
 }
 
-.league-payments-group-header h4 {
+.league-payments-group-header h4,
+.tournament-payments-group-header h4 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.league-payments-list {
+.league-payments-list,
+.tournament-payments-list {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1937,18 +1945,21 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   list-style: none;
 }
 
-.league-payment-entry {
+.league-payment-entry,
+.tournament-payment-entry {
   list-style: none;
 }
 
-.league-payment-item {
+.league-payment-item,
+.tournament-payment-item {
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 0.9rem;
   background: linear-gradient(180deg, rgba(241, 245, 249, 0.6), rgba(248, 250, 252, 0.9));
   overflow: hidden;
 }
 
-.league-payment-item summary {
+.league-payment-item summary,
+.tournament-payment-item summary {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1958,17 +1969,21 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   user-select: none;
 }
 
-.league-payment-item summary:focus-visible {
+.league-payment-item summary:focus-visible,
+.tournament-payment-item summary:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .league-payment-item summary::-webkit-details-marker,
-.league-payment-item summary::marker {
+.league-payment-item summary::marker,
+.tournament-payment-item summary::-webkit-details-marker,
+.tournament-payment-item summary::marker {
   display: none;
 }
 
-.league-payment-item summary::after {
+.league-payment-item summary::after,
+.tournament-payment-item summary::after {
   content: '';
   width: 0.65rem;
   height: 0.65rem;
@@ -1980,12 +1995,14 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-left: auto;
 }
 
-.league-payment-item[open] summary::after {
+.league-payment-item[open] summary::after,
+.tournament-payment-item[open] summary::after {
   transform: rotate(45deg);
   opacity: 0.8;
 }
 
-.league-payment-header {
+.league-payment-header,
+.tournament-payment-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1993,16 +2010,19 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   min-width: 0;
 }
 
-.league-payment-header .player-cell {
+.league-payment-header .player-cell,
+.tournament-payment-header .player-cell {
   align-items: center;
   gap: 0.55rem;
 }
 
-.league-payment-header .player-cell__name {
+.league-payment-header .player-cell__name,
+.tournament-payment-header .player-cell__name {
   font-size: 0.95rem;
 }
 
-.league-payment-header-meta {
+.league-payment-header-meta,
+.tournament-payment-header-meta {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -2012,16 +2032,19 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   font-size: 0.85rem;
 }
 
-.league-payment-header-meta .tag {
+.league-payment-header-meta .tag,
+.tournament-payment-header-meta .tag {
   margin-left: 0;
 }
 
-.league-payment-header-meta .league-payment-amount {
+.league-payment-header-meta .league-payment-amount,
+.tournament-payment-header-meta .tournament-payment-amount {
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.league-payment-body {
+.league-payment-body,
+.tournament-payment-body {
   display: grid;
   gap: 0.75rem;
   padding: 0.75rem 1rem 1rem;
@@ -2029,7 +2052,8 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   background: rgba(255, 255, 255, 0.55);
 }
 
-.league-payment-meta {
+.league-payment-meta,
+.tournament-payment-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
@@ -2037,28 +2061,33 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   font-size: 0.85rem;
 }
 
-.league-payment-meta .tag {
+.league-payment-meta .tag,
+.tournament-payment-meta .tag {
   margin-left: 0;
 }
 
-.league-payment-form {
+.league-payment-form,
+.tournament-payment-form {
   display: grid;
   gap: 0.75rem;
 }
 
-.league-payment-form .form-row {
+.league-payment-form .form-row,
+.tournament-payment-form .form-row {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
-.league-payment-form .form-actions {
+.league-payment-form .form-actions,
+.tournament-payment-form .form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
 }
 
-.league-payment-form select[name='method'] {
+.league-payment-form select[name='method'],
+.tournament-payment-form select[name='method'] {
   text-transform: capitalize;
 }
 

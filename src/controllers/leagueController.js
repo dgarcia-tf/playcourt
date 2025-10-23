@@ -22,6 +22,17 @@ const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const { resolveCategoryColor } = require('../utils/colors');
 const { normalizeId } = require('../utils/ranking');
 
+const PAYMENT_STATUSES = ['pendiente', 'pagado', 'exento', 'fallido'];
+const PAYMENT_STATUS_SET = new Set(PAYMENT_STATUSES);
+
+function normalizePaymentStatus(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim().toLowerCase();
+}
+
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 const LEAGUE_POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'leagues');
 
@@ -796,8 +807,9 @@ async function addLeaguePaymentRecord(req, res) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
 
+  const normalizedStatus = normalizePaymentStatus(status);
   const record = {
-    status: PAYMENT_STATUSES.includes(status) ? status : 'pendiente',
+    status: PAYMENT_STATUS_SET.has(normalizedStatus) ? normalizedStatus : 'pendiente',
     recordedBy: req.user.id,
   };
 
@@ -873,8 +885,9 @@ async function updateLeaguePaymentRecord(req, res) {
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'status')) {
-    if (PAYMENT_STATUSES.includes(updates.status)) {
-      payment.status = updates.status;
+    const normalizedStatus = normalizePaymentStatus(updates.status);
+    if (PAYMENT_STATUS_SET.has(normalizedStatus)) {
+      payment.status = normalizedStatus;
     }
   }
 
@@ -1227,5 +1240,4 @@ module.exports = {
   updateLeague,
   deleteLeague,
 };
-const PAYMENT_STATUSES = ['pendiente', 'pagado', 'exento', 'fallido'];
 

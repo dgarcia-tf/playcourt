@@ -235,6 +235,8 @@ const PAYMENT_STATUS_ORDER = {
   fallido: 3,
 };
 const DEFAULT_LEAGUE_CURRENCY = 'EUR';
+const TOURNAMENT_PAYMENT_METHOD_OPTIONS = LEAGUE_PAYMENT_METHOD_OPTIONS;
+const DEFAULT_TOURNAMENT_CURRENCY = 'EUR';
 
 function normalizeHexColor(value) {
   if (typeof value !== 'string') {
@@ -1539,6 +1541,12 @@ const state = {
   selectedMatchCategoryId: '',
   tournamentEnrollments: new Map(),
   tournamentMatches: new Map(),
+  tournamentPayments: new Map(),
+  tournamentPaymentFilters: {
+    tournament: '',
+    search: '',
+  },
+  tournamentPaymentsLoading: false,
   activeSection: 'section-dashboard',
   globalOverview: null,
   leagueDashboard: null,
@@ -1833,7 +1841,11 @@ const menuButtons = appMenu ? Array.from(appMenu.querySelectorAll('.menu-button'
 const leaguePaymentsMenuButton = appMenu
   ? appMenu.querySelector('[data-target="section-league-payments"]')
   : null;
+const tournamentPaymentsMenuButton = appMenu
+  ? appMenu.querySelector('[data-target="section-tournament-payments"]')
+  : null;
 const leaguePaymentsSection = document.getElementById('section-league-payments');
+const tournamentPaymentsSection = document.getElementById('section-tournament-payments');
 const adminMenuButtons = menuButtons.filter((button) => button.dataset.requiresAdmin === 'true');
 const adminSectionIds = new Set(adminMenuButtons.map((button) => button.dataset.target));
 const courtManagerMenuButtons = menuButtons.filter(
@@ -2043,6 +2055,21 @@ const leaguePaymentsSearchInput = document.getElementById('league-payments-searc
 const leaguePaymentsEmpty = document.getElementById('league-payments-empty');
 const leaguePaymentsFeeBadge = document.getElementById('league-payments-fee');
 const leaguePaymentsStatusMessage = document.getElementById('league-payments-status');
+const tournamentPaymentsGroups = document.getElementById('tournament-payments-groups');
+const tournamentPaymentsPendingList = document.getElementById('tournament-payments-pending');
+const tournamentPaymentsPendingEmpty = document.getElementById('tournament-payments-pending-empty');
+const tournamentPaymentsPendingCount = document.getElementById('tournament-payments-pending-count');
+const tournamentPaymentsPendingTotal = document.getElementById('tournament-payments-pending-total');
+const tournamentPaymentsPaidList = document.getElementById('tournament-payments-paid');
+const tournamentPaymentsPaidEmpty = document.getElementById('tournament-payments-paid-empty');
+const tournamentPaymentsPaidCount = document.getElementById('tournament-payments-paid-count');
+const tournamentPaymentsPaidTotal = document.getElementById('tournament-payments-paid-total');
+const tournamentPaymentsCount = document.getElementById('tournament-payments-count');
+const tournamentPaymentsTournamentSelect = document.getElementById('tournament-payments-tournament');
+const tournamentPaymentsSearchInput = document.getElementById('tournament-payments-search');
+const tournamentPaymentsEmpty = document.getElementById('tournament-payments-empty');
+const tournamentPaymentsFeeBadge = document.getElementById('tournament-payments-fee');
+const tournamentPaymentsStatusMessage = document.getElementById('tournament-payments-status');
 const playerDirectoryList = document.getElementById('user-directory-list');
 const playerDirectoryCount = document.getElementById('user-directory-count');
 const playerDirectorySearch = document.getElementById('user-directory-search');
@@ -2362,6 +2389,67 @@ function ensureLeaguePaymentFilters() {
   return state.leaguePaymentFilters;
 }
 
+function ensureTournamentPaymentFilters() {
+  if (!state.tournamentPaymentFilters) {
+    state.tournamentPaymentFilters = {
+      tournament: '',
+      search: '',
+    };
+  }
+  return state.tournamentPaymentFilters;
+}
+
+function tournamentHasEnrollmentFee(tournament) {
+  if (!tournament) return false;
+  const fees = Array.isArray(tournament.fees) ? tournament.fees : [];
+  return fees.some((fee) => {
+    const memberAmount = Number(fee?.memberAmount);
+    const nonMemberAmount = Number(fee?.nonMemberAmount);
+    const legacyAmount = Number(fee?.amount);
+    return (
+      (Number.isFinite(memberAmount) && memberAmount >= 0) ||
+      (Number.isFinite(nonMemberAmount) && nonMemberAmount >= 0) ||
+      (Number.isFinite(legacyAmount) && legacyAmount >= 0)
+    );
+  });
+}
+
+function getTournamentsWithEnrollmentFee() {
+  return Array.isArray(state.tournaments)
+    ? state.tournaments.filter((tournament) => tournamentHasEnrollmentFee(tournament))
+    : [];
+}
+
+function compareTournamentsBySchedule(tournamentA, tournamentB) {
+  const startA = Date.parse(tournamentA?.startDate);
+  const startB = Date.parse(tournamentB?.startDate);
+  const hasStartA = Number.isFinite(startA);
+  const hasStartB = Number.isFinite(startB);
+  if (hasStartA || hasStartB) {
+    if (!hasStartA) return 1;
+    if (!hasStartB) return -1;
+    if (startA !== startB) {
+      return startA - startB;
+    }
+  }
+
+  const endA = Date.parse(tournamentA?.endDate);
+  const endB = Date.parse(tournamentB?.endDate);
+  const hasEndA = Number.isFinite(endA);
+  const hasEndB = Number.isFinite(endB);
+  if (hasEndA || hasEndB) {
+    if (!hasEndA) return 1;
+    if (!hasEndB) return -1;
+    if (endA !== endB) {
+      return endA - endB;
+    }
+  }
+
+  const nameA = String(tournamentA?.name || '').toLocaleLowerCase('es');
+  const nameB = String(tournamentB?.name || '').toLocaleLowerCase('es');
+  return nameA.localeCompare(nameB, 'es');
+}
+
 function leagueHasEnrollmentFee(league) {
   if (!league) return false;
   const fee = Number(league.enrollmentFee);
@@ -2656,6 +2744,49 @@ function calculateLeaguePaymentTotal(entries = []) {
   }, 0);
 }
 
+function updateTournamentPaymentFeeIndicator(feeInfo) {
+  if (!tournamentPaymentsFeeBadge) return;
+
+  const info = feeInfo || null;
+  const amount = Number(info?.amount);
+  const currency = info?.currency || DEFAULT_TOURNAMENT_CURRENCY;
+  const label = info?.label ? info.label.toString().trim() : '';
+
+  if (Number.isFinite(amount) && amount > 0) {
+    const formatted = formatCurrencyValue(amount, currency) || `${amount.toFixed(2)} ${currency}`;
+    const labelSuffix = label ? ` (${label})` : '';
+    tournamentPaymentsFeeBadge.textContent = `Cuota sugerida: ${formatted}${labelSuffix}`;
+    tournamentPaymentsFeeBadge.hidden = false;
+  } else {
+    tournamentPaymentsFeeBadge.textContent = '';
+    tournamentPaymentsFeeBadge.hidden = true;
+  }
+}
+
+function formatTournamentPaymentTotal(amount = 0, currency = DEFAULT_TOURNAMENT_CURRENCY) {
+  const numericAmount = Number(amount);
+  const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
+  const resolvedCurrency = currency || DEFAULT_TOURNAMENT_CURRENCY;
+  return (
+    formatCurrencyValue(safeAmount, resolvedCurrency) || `${safeAmount.toFixed(2)} ${resolvedCurrency}`
+  );
+}
+
+function updateTournamentPaymentTotalElement(element, amount = 0, currency = DEFAULT_TOURNAMENT_CURRENCY) {
+  if (!element) return;
+  element.textContent = formatTournamentPaymentTotal(amount, currency);
+}
+
+function calculateTournamentPaymentTotal(entries = []) {
+  if (!Array.isArray(entries)) {
+    return 0;
+  }
+  return entries.reduce((total, entry) => {
+    const amount = Number(entry?.amount);
+    return Number.isFinite(amount) ? total + amount : total;
+  }, 0);
+}
+
 function resetLeaguePaymentGroups() {
   if (leaguePaymentsPendingList) {
     leaguePaymentsPendingList.innerHTML = '';
@@ -2676,6 +2807,29 @@ function resetLeaguePaymentGroups() {
   }
   if (leaguePaymentsPaidEmpty) {
     leaguePaymentsPaidEmpty.hidden = true;
+  }
+}
+
+function resetTournamentPaymentGroups() {
+  if (tournamentPaymentsPendingList) {
+    tournamentPaymentsPendingList.innerHTML = '';
+  }
+  if (tournamentPaymentsPaidList) {
+    tournamentPaymentsPaidList.innerHTML = '';
+  }
+  if (tournamentPaymentsPendingCount) {
+    tournamentPaymentsPendingCount.textContent = '0';
+  }
+  if (tournamentPaymentsPaidCount) {
+    tournamentPaymentsPaidCount.textContent = '0';
+  }
+  updateTournamentPaymentTotalElement(tournamentPaymentsPendingTotal, 0, DEFAULT_TOURNAMENT_CURRENCY);
+  updateTournamentPaymentTotalElement(tournamentPaymentsPaidTotal, 0, DEFAULT_TOURNAMENT_CURRENCY);
+  if (tournamentPaymentsPendingEmpty) {
+    tournamentPaymentsPendingEmpty.hidden = true;
+  }
+  if (tournamentPaymentsPaidEmpty) {
+    tournamentPaymentsPaidEmpty.hidden = true;
   }
 }
 
@@ -2763,8 +2917,84 @@ function updateLeaguePaymentControls({ resetSelection = false } = {}) {
   }
 }
 
+function updateTournamentPaymentControls({ resetSelection = false } = {}) {
+  if (!tournamentPaymentsTournamentSelect) return;
+
+  const filters = ensureTournamentPaymentFilters();
+  const previousTournament = resetSelection ? '' : filters.tournament || '';
+  const tournamentsWithFee = getTournamentsWithEnrollmentFee();
+  const sorted = tournamentsWithFee.slice().sort(compareTournamentsBySchedule);
+
+  tournamentPaymentsTournamentSelect.innerHTML =
+    '<option value="">Selecciona un torneo con cuotas</option>';
+
+  const availableIds = new Set();
+  sorted.forEach((tournament) => {
+    const id = normalizeId(tournament);
+    if (!id || availableIds.has(id)) {
+      return;
+    }
+    availableIds.add(id);
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = tournament.name || 'Torneo';
+    tournamentPaymentsTournamentSelect.appendChild(option);
+  });
+
+  let nextTournament = '';
+  if (previousTournament && availableIds.has(previousTournament)) {
+    nextTournament = previousTournament;
+  } else if (availableIds.size) {
+    const firstOption = tournamentPaymentsTournamentSelect.options[1];
+    nextTournament = firstOption?.value || '';
+  }
+
+  const resolvedTournament = nextTournament || '';
+  const selectionChanged = resolvedTournament !== previousTournament;
+
+  filters.tournament = resolvedTournament;
+  if (resetSelection || selectionChanged || !resolvedTournament) {
+    filters.search = '';
+  }
+
+  tournamentPaymentsTournamentSelect.value = resolvedTournament;
+  tournamentPaymentsTournamentSelect.disabled = !availableIds.size;
+
+  const hasSelection = Boolean(resolvedTournament);
+
+  updateTournamentPaymentMenuVisibility();
+
+  if (tournamentPaymentsSearchInput) {
+    tournamentPaymentsSearchInput.value = hasSelection ? filters.search || '' : '';
+    tournamentPaymentsSearchInput.disabled = !hasSelection;
+  }
+
+  if (!hasSelection) {
+    if (tournamentPaymentsCount) {
+      tournamentPaymentsCount.textContent = '0';
+    }
+    resetTournamentPaymentGroups();
+    if (tournamentPaymentsEmpty) {
+      tournamentPaymentsEmpty.hidden = false;
+      tournamentPaymentsEmpty.textContent = availableIds.size
+        ? 'Selecciona un torneo con cuotas para gestionar los pagos.'
+        : 'Configura cuotas de inscripción para habilitar el seguimiento de pagos.';
+    }
+    updateTournamentPaymentFeeIndicator(null);
+    setStatusMessage(tournamentPaymentsStatusMessage, '', '');
+    return;
+  }
+
+  if (tournamentPaymentsEmpty) {
+    tournamentPaymentsEmpty.hidden = true;
+  }
+
+  refreshTournamentPayments({ force: resetSelection || selectionChanged });
+}
+
 let leaguePlayersRequestToken = 0;
 let leaguePaymentsRequestToken = 0;
+let tournamentPaymentsRequestToken = 0;
 
 async function refreshLeaguePlayers({ force = false } = {}) {
   if (!leaguePlayersList) return;
@@ -3144,6 +3374,233 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
   return result;
 }
 
+function resolveTournamentFeeInfo(detail) {
+  const fees = Array.isArray(detail?.fees) ? detail.fees : [];
+
+  const normalizeCurrency = (value) => {
+    if (!value) return DEFAULT_TOURNAMENT_CURRENCY;
+    const trimmed = value.toString().trim();
+    return trimmed ? trimmed.toUpperCase() : DEFAULT_TOURNAMENT_CURRENCY;
+  };
+
+  for (const fee of fees) {
+    const amount = Number(fee?.memberAmount);
+    if (Number.isFinite(amount) && amount >= 0) {
+      const baseLabel = fee?.label ? fee.label.toString().trim() : '';
+      return {
+        amount,
+        currency: normalizeCurrency(fee?.currency),
+        label: baseLabel ? `${baseLabel} · Socios` : 'Socios',
+      };
+    }
+  }
+
+  for (const fee of fees) {
+    const amount = Number(fee?.nonMemberAmount);
+    if (Number.isFinite(amount) && amount >= 0) {
+      const baseLabel = fee?.label ? fee.label.toString().trim() : '';
+      return {
+        amount,
+        currency: normalizeCurrency(fee?.currency),
+        label: baseLabel ? `${baseLabel} · No socios` : 'No socios',
+      };
+    }
+  }
+
+  for (const fee of fees) {
+    const amount = Number(fee?.amount);
+    if (Number.isFinite(amount) && amount >= 0) {
+      return {
+        amount,
+        currency: normalizeCurrency(fee?.currency),
+        label: fee?.label ? fee.label.toString().trim() : '',
+      };
+    }
+  }
+
+  const fallbackCurrency = fees.find((fee) => fee?.currency)?.currency;
+  return {
+    amount: null,
+    currency: normalizeCurrency(fallbackCurrency),
+    label: '',
+  };
+}
+
+async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
+  const normalized = normalizeId(tournamentId);
+  if (!normalized) {
+    return {
+      entries: [],
+      feeInfo: { amount: null, currency: DEFAULT_TOURNAMENT_CURRENCY, label: '' },
+    };
+  }
+
+  if (!force && state.tournamentPayments instanceof Map && state.tournamentPayments.has(normalized)) {
+    return state.tournamentPayments.get(normalized);
+  }
+
+  if (force && state.tournamentPayments instanceof Map) {
+    state.tournamentPayments.delete(normalized);
+  }
+
+  if (force && state.tournamentDetails instanceof Map && state.tournamentDetails.has(normalized)) {
+    state.tournamentDetails.delete(normalized);
+  }
+
+  const detail = await loadTournamentDetail(normalized);
+  if (!detail) {
+    if (state.tournamentPayments instanceof Map) {
+      state.tournamentPayments.delete(normalized);
+    }
+    return {
+      entries: [],
+      feeInfo: { amount: null, currency: DEFAULT_TOURNAMENT_CURRENCY, label: '' },
+    };
+  }
+
+  const categories = getTournamentCategories(normalized);
+  const categoryIds = categories.map((category) => normalizeId(category)).filter(Boolean);
+
+  const categoriesById = new Map();
+  categories.forEach((category) => {
+    const id = normalizeId(category);
+    if (id) {
+      categoriesById.set(id, category);
+    }
+  });
+
+  const enrollmentMap = new Map();
+  await Promise.all(
+    categoryIds.map(async (categoryId) => {
+      try {
+        const enrollments = await fetchTournamentEnrollments(normalized, categoryId, { forceReload: force });
+        enrollmentMap.set(categoryId, Array.isArray(enrollments) ? enrollments : []);
+      } catch (error) {
+        const cacheKey = `${normalized}:${categoryId}`;
+        const cached = state.tournamentEnrollments.get(cacheKey) || [];
+        enrollmentMap.set(categoryId, cached);
+      }
+    })
+  );
+
+  const payments = Array.isArray(detail.payments) ? detail.payments : [];
+  const paymentByUser = new Map();
+  payments.forEach((payment) => {
+    const userId = normalizeId(payment?.user);
+    if (!userId) return;
+    paymentByUser.set(userId, payment);
+  });
+
+  const playerMap = new Map();
+  enrollmentMap.forEach((enrollments, categoryId) => {
+    enrollments.forEach((enrollment) => {
+      const player = enrollment?.user || {};
+      const playerId = normalizeId(player);
+      if (!playerId) return;
+      if (!playerMap.has(playerId)) {
+        playerMap.set(playerId, {
+          player,
+          categories: new Set(),
+        });
+      }
+      playerMap.get(playerId).categories.add(categoryId);
+    });
+  });
+
+  const feeInfo = resolveTournamentFeeInfo(detail);
+  const defaultAmount = Number.isFinite(Number(feeInfo.amount)) ? Number(feeInfo.amount) : null;
+  const currency = feeInfo.currency || DEFAULT_TOURNAMENT_CURRENCY;
+
+  const createEntry = ({ player, playerId, categories: playerCategories, payment, hasEnrollment }) => {
+    const normalizedPlayer = player && typeof player === 'object' ? player : {};
+    const amountValue = Number(payment?.amount);
+    const resolvedAmount = Number.isFinite(amountValue) && amountValue >= 0 ? amountValue : defaultAmount;
+
+    return {
+      player: normalizedPlayer,
+      playerId,
+      categories: playerCategories,
+      paymentRecord: payment || null,
+      paymentId: payment ? normalizeId(payment) : '',
+      status: payment?.status && PAYMENT_STATUS_LABELS[payment.status] ? payment.status : 'pendiente',
+      amount: typeof resolvedAmount === 'number' ? resolvedAmount : null,
+      method: payment?.method || '',
+      reference: payment?.reference || '',
+      notes: payment?.notes || '',
+      paidAt: payment?.paidAt || null,
+      recordedBy: payment?.recordedBy || null,
+      updatedAt: payment?.updatedAt || payment?.createdAt || null,
+      hasEnrollment,
+      currency,
+    };
+  };
+
+  const entries = [];
+
+  playerMap.forEach(({ player, categories: playerCategories }, playerId) => {
+    const payment = paymentByUser.get(playerId) || null;
+    if (payment) {
+      paymentByUser.delete(playerId);
+    }
+
+    const categoriesForPlayer = Array.from(playerCategories)
+      .map((categoryId) => categoriesById.get(categoryId))
+      .filter(Boolean);
+
+    entries.push(
+      createEntry({
+        player,
+        playerId,
+        categories: categoriesForPlayer,
+        payment,
+        hasEnrollment: true,
+      })
+    );
+  });
+
+  paymentByUser.forEach((payment, userId) => {
+    const player = typeof payment?.user === 'object' ? payment.user : {};
+    entries.push(
+      createEntry({
+        player,
+        playerId: userId,
+        categories: [],
+        payment,
+        hasEnrollment: false,
+      })
+    );
+  });
+
+  entries.sort((a, b) => {
+    const statusWeightA = PAYMENT_STATUS_ORDER[a.status] ?? 99;
+    const statusWeightB = PAYMENT_STATUS_ORDER[b.status] ?? 99;
+    if (statusWeightA !== statusWeightB) {
+      return statusWeightA - statusWeightB;
+    }
+    const nameA = (a.player.fullName || a.player.email || '').toLocaleLowerCase('es');
+    const nameB = (b.player.fullName || b.player.email || '').toLocaleLowerCase('es');
+    if (nameA && nameB) {
+      return nameA.localeCompare(nameB, 'es');
+    }
+    if (nameA) return -1;
+    if (nameB) return 1;
+    return 0;
+  });
+
+  const result = {
+    entries,
+    feeInfo,
+    currency,
+  };
+
+  if (!(state.tournamentPayments instanceof Map)) {
+    state.tournamentPayments = new Map();
+  }
+  state.tournamentPayments.set(normalized, result);
+
+  return result;
+}
+
 function createLeaguePaymentItem(entry, { fee = null } = {}) {
   const listItem = document.createElement('li');
   listItem.className = 'league-payment-entry';
@@ -3374,6 +3831,242 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   return listItem;
 }
 
+function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
+  const listItem = document.createElement('li');
+  listItem.className = 'tournament-payment-entry';
+
+  const item = document.createElement('details');
+  item.className = 'tournament-payment-item';
+  const statusValue = entry.status || 'pendiente';
+  item.dataset.paymentStatus = statusValue;
+  if (statusValue !== 'pagado') {
+    item.open = true;
+  }
+
+  const summary = document.createElement('summary');
+
+  const header = document.createElement('div');
+  header.className = 'tournament-payment-header';
+  const playerCell = buildPlayerCell(entry.player || {}, { includeSchedule: false, size: 'sm' });
+  header.appendChild(playerCell);
+  summary.appendChild(header);
+
+  const headerMeta = document.createElement('div');
+  headerMeta.className = 'tournament-payment-header-meta';
+
+  const statusBadge = document.createElement('span');
+  statusBadge.className = `tag payment-status payment-status--${statusValue}`;
+  statusBadge.textContent = PAYMENT_STATUS_LABELS[statusValue] || statusValue || 'Pendiente';
+  headerMeta.appendChild(statusBadge);
+
+  const entryCurrency = entry.currency || feeInfo?.currency || DEFAULT_TOURNAMENT_CURRENCY;
+
+  if (Number.isFinite(entry.amount)) {
+    const amountSpan = document.createElement('span');
+    amountSpan.className = 'tournament-payment-amount';
+    amountSpan.textContent =
+      formatCurrencyValue(entry.amount, entryCurrency) ||
+      `${entry.amount.toFixed(2)} ${entryCurrency}`;
+    headerMeta.appendChild(amountSpan);
+  }
+
+  if (entry.paidAt) {
+    const paidAtSpan = document.createElement('span');
+    paidAtSpan.textContent = `Pago: ${formatShortDate(entry.paidAt)}`;
+    headerMeta.appendChild(paidAtSpan);
+  }
+
+  if (!entry.hasEnrollment) {
+    const noteSpan = document.createElement('span');
+    noteSpan.textContent = 'Sin inscripción activa';
+    headerMeta.appendChild(noteSpan);
+  }
+
+  summary.appendChild(headerMeta);
+  item.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'tournament-payment-body';
+
+  const categoryNames = Array.isArray(entry.categories)
+    ? entry.categories.map((category) => category?.name || '').filter(Boolean)
+    : [];
+  const categoriesMeta = document.createElement('div');
+  categoriesMeta.className = 'tournament-payment-meta';
+  categoriesMeta.textContent = categoryNames.length
+    ? `Categorías: ${categoryNames.join(', ')}`
+    : 'Categorías: Sin asignar';
+  body.appendChild(categoriesMeta);
+
+  if (entry.player?.email || entry.player?.phone) {
+    const contactMeta = document.createElement('div');
+    contactMeta.className = 'tournament-payment-meta';
+    if (entry.player.email) {
+      contactMeta.appendChild(document.createElement('span')).textContent = entry.player.email;
+    }
+    if (entry.player.phone) {
+      contactMeta.appendChild(document.createElement('span')).textContent = entry.player.phone;
+    }
+    body.appendChild(contactMeta);
+  }
+
+  if (entry.reference) {
+    const referenceMeta = document.createElement('div');
+    referenceMeta.className = 'tournament-payment-meta';
+    referenceMeta.textContent = `Referencia: ${entry.reference}`;
+    body.appendChild(referenceMeta);
+  }
+
+  if (entry.recordedBy?.fullName) {
+    const recordedMeta = document.createElement('div');
+    recordedMeta.className = 'tournament-payment-meta';
+    recordedMeta.textContent = `Actualizado por ${entry.recordedBy.fullName}`;
+    body.appendChild(recordedMeta);
+  }
+
+  const form = document.createElement('form');
+  form.className = 'tournament-payment-form';
+  form.dataset.tournamentPaymentForm = 'true';
+  if (entry.playerId) {
+    form.dataset.userId = entry.playerId;
+  }
+  if (entry.paymentId) {
+    form.dataset.paymentId = entry.paymentId;
+  }
+
+  const statusRow = document.createElement('div');
+  statusRow.className = 'form-row';
+
+  const statusLabel = document.createElement('label');
+  statusLabel.textContent = 'Estado';
+  const statusSelect = document.createElement('select');
+  statusSelect.name = 'status';
+  Object.entries(PAYMENT_STATUS_LABELS).forEach(([value, label]) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    if (value === statusValue) {
+      option.selected = true;
+    }
+    statusSelect.appendChild(option);
+  });
+  statusLabel.appendChild(statusSelect);
+  statusRow.appendChild(statusLabel);
+
+  const amountLabel = document.createElement('label');
+  amountLabel.textContent = 'Importe';
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.name = 'amount';
+  amountInput.min = '0';
+  amountInput.step = '0.01';
+
+  const defaultAmount = Number.isFinite(Number(feeInfo?.amount)) ? Number(feeInfo.amount) : null;
+  const defaultCurrency = feeInfo?.currency || entryCurrency;
+
+  if (Number.isFinite(entry.amount)) {
+    amountInput.value = entry.amount.toFixed(2);
+  } else if (Number.isFinite(defaultAmount) && defaultAmount > 0) {
+    const formatted =
+      formatCurrencyValue(defaultAmount, defaultCurrency) || `${defaultAmount.toFixed(2)} ${defaultCurrency}`;
+    amountInput.placeholder = formatted;
+  }
+
+  amountLabel.appendChild(amountInput);
+  statusRow.appendChild(amountLabel);
+  form.appendChild(statusRow);
+
+  const detailsRow = document.createElement('div');
+  detailsRow.className = 'form-row';
+
+  const methodLabel = document.createElement('label');
+  methodLabel.textContent = 'Método';
+  const methodSelect = document.createElement('select');
+  methodSelect.name = 'method';
+  const methodValue = (entry.method || '').toString().trim();
+  const methodValueLower = methodValue.toLowerCase();
+  const placeholderOption = document.createElement('option');
+  placeholderOption.value = '';
+  placeholderOption.textContent = 'Sin especificar';
+  if (!methodValue) {
+    placeholderOption.selected = true;
+  }
+  methodSelect.appendChild(placeholderOption);
+
+  let matchedMethod = false;
+  TOURNAMENT_PAYMENT_METHOD_OPTIONS.forEach((label) => {
+    const option = document.createElement('option');
+    option.value = label;
+    option.textContent = label;
+    if (methodValueLower && methodValueLower === label.toLowerCase()) {
+      option.selected = true;
+      matchedMethod = true;
+    }
+    methodSelect.appendChild(option);
+  });
+
+  if (!matchedMethod && methodValue) {
+    const customOption = document.createElement('option');
+    customOption.value = methodValue;
+    customOption.textContent = methodValue;
+    customOption.selected = true;
+    methodSelect.appendChild(customOption);
+  }
+
+  methodLabel.appendChild(methodSelect);
+  detailsRow.appendChild(methodLabel);
+
+  const referenceLabel = document.createElement('label');
+  referenceLabel.textContent = 'Referencia';
+  const referenceInput = document.createElement('input');
+  referenceInput.type = 'text';
+  referenceInput.name = 'reference';
+  referenceInput.placeholder = 'Identificador o concepto';
+  referenceInput.value = entry.reference || '';
+  referenceLabel.appendChild(referenceInput);
+  detailsRow.appendChild(referenceLabel);
+  form.appendChild(detailsRow);
+
+  const notesRow = document.createElement('div');
+  notesRow.className = 'form-row';
+
+  const paidAtLabel = document.createElement('label');
+  paidAtLabel.textContent = 'Fecha de pago';
+  const paidAtInput = document.createElement('input');
+  paidAtInput.type = 'date';
+  paidAtInput.name = 'paidAt';
+  paidAtInput.value = entry.paidAt ? formatDateInput(entry.paidAt) : '';
+  paidAtLabel.appendChild(paidAtInput);
+  notesRow.appendChild(paidAtLabel);
+
+  const notesLabel = document.createElement('label');
+  notesLabel.textContent = 'Notas';
+  const notesInput = document.createElement('input');
+  notesInput.type = 'text';
+  notesInput.name = 'notes';
+  notesInput.placeholder = 'Añade una nota interna';
+  notesInput.value = entry.notes || '';
+  notesLabel.appendChild(notesInput);
+  notesRow.appendChild(notesLabel);
+  form.appendChild(notesRow);
+
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'form-actions';
+  const submitButton = document.createElement('button');
+  submitButton.type = 'submit';
+  submitButton.className = 'primary';
+  submitButton.textContent = entry.paymentId ? 'Actualizar pago' : 'Registrar pago';
+  actionsRow.appendChild(submitButton);
+  form.appendChild(actionsRow);
+
+  body.appendChild(form);
+  item.appendChild(body);
+
+  listItem.appendChild(item);
+
+  return listItem;
+}
+
 function renderLeaguePayments(entries = [], { fee = null } = {}) {
   if (!leaguePaymentsGroups) return;
 
@@ -3462,6 +4155,106 @@ function renderLeaguePayments(entries = [], { fee = null } = {}) {
 
     groupEntries.forEach((entry) => {
       list.appendChild(createLeaguePaymentItem(entry, { fee }));
+    });
+  });
+}
+
+function renderTournamentPayments(
+  entries = [],
+  { feeInfo = null, currency = DEFAULT_TOURNAMENT_CURRENCY } = {}
+) {
+  if (!tournamentPaymentsGroups) return;
+
+  if (tournamentPaymentsCount) {
+    tournamentPaymentsCount.textContent = String(entries.length);
+  }
+
+  updateTournamentPaymentFeeIndicator(feeInfo);
+
+  resetTournamentPaymentGroups();
+
+  const pendingEntries = entries.filter((entry) => (entry.status || 'pendiente') !== 'pagado');
+  const paidEntries = entries.filter((entry) => (entry.status || 'pendiente') === 'pagado');
+
+  updateTournamentPaymentTotalElement(
+    tournamentPaymentsPendingTotal,
+    calculateTournamentPaymentTotal(pendingEntries),
+    currency
+  );
+  updateTournamentPaymentTotalElement(
+    tournamentPaymentsPaidTotal,
+    calculateTournamentPaymentTotal(paidEntries),
+    currency
+  );
+
+  if (!entries.length) {
+    if (tournamentPaymentsPendingCount) {
+      tournamentPaymentsPendingCount.textContent = '0';
+    }
+    if (tournamentPaymentsPaidCount) {
+      tournamentPaymentsPaidCount.textContent = '0';
+    }
+    if (tournamentPaymentsPendingEmpty) {
+      tournamentPaymentsPendingEmpty.hidden = false;
+      tournamentPaymentsPendingEmpty.textContent = 'No hay pagos pendientes.';
+    }
+    if (tournamentPaymentsPaidEmpty) {
+      tournamentPaymentsPaidEmpty.hidden = false;
+      tournamentPaymentsPaidEmpty.textContent = 'No hay pagos registrados.';
+    }
+    if (tournamentPaymentsEmpty) {
+      tournamentPaymentsEmpty.hidden = false;
+      tournamentPaymentsEmpty.textContent = 'No hay registros de pago para la selección actual.';
+    }
+    return;
+  }
+
+  if (tournamentPaymentsEmpty) {
+    tournamentPaymentsEmpty.hidden = true;
+  }
+
+  const groups = [
+    {
+      entries: pendingEntries,
+      list: tournamentPaymentsPendingList,
+      emptyElement: tournamentPaymentsPendingEmpty,
+      countElement: tournamentPaymentsPendingCount,
+      emptyText: 'No hay pagos pendientes.',
+    },
+    {
+      entries: paidEntries,
+      list: tournamentPaymentsPaidList,
+      emptyElement: tournamentPaymentsPaidEmpty,
+      countElement: tournamentPaymentsPaidCount,
+      emptyText: 'No hay pagos registrados.',
+    },
+  ];
+
+  groups.forEach(({ entries: groupEntries, list, emptyElement, countElement, emptyText }) => {
+    if (countElement) {
+      countElement.textContent = String(groupEntries.length);
+    }
+
+    if (!list) {
+      return;
+    }
+
+    list.innerHTML = '';
+
+    if (!groupEntries.length) {
+      if (emptyElement) {
+        emptyElement.hidden = false;
+        emptyElement.textContent = emptyText;
+      }
+      return;
+    }
+
+    if (emptyElement) {
+      emptyElement.hidden = true;
+    }
+
+    groupEntries.forEach((entry) => {
+      list.appendChild(createTournamentPaymentItem(entry, { feeInfo }));
     });
   });
 }
@@ -3557,6 +4350,102 @@ async function refreshLeaguePayments({ force = false } = {}) {
   }
 }
 
+async function refreshTournamentPayments({ force = false } = {}) {
+  if (!tournamentPaymentsGroups) return;
+
+  const filters = ensureTournamentPaymentFilters();
+  const tournamentId = filters.tournament;
+
+  if (!tournamentId) {
+    resetTournamentPaymentGroups();
+    if (tournamentPaymentsCount) {
+      tournamentPaymentsCount.textContent = '0';
+    }
+    const hasOptions = getTournamentsWithEnrollmentFee().length > 0;
+    if (tournamentPaymentsEmpty) {
+      tournamentPaymentsEmpty.hidden = false;
+      tournamentPaymentsEmpty.textContent = hasOptions
+        ? 'Selecciona un torneo con cuotas para gestionar los pagos.'
+        : 'Configura cuotas de inscripción para habilitar el seguimiento de pagos.';
+    }
+    updateTournamentPaymentFeeIndicator(null);
+    setStatusMessage(tournamentPaymentsStatusMessage, '', '');
+    return;
+  }
+
+  const usingCachedData =
+    !force &&
+    state.tournamentPayments instanceof Map &&
+    state.tournamentPayments.has(tournamentId);
+
+  if (!usingCachedData) {
+    resetTournamentPaymentGroups();
+    if (tournamentPaymentsStatusMessage) {
+      setStatusMessage(tournamentPaymentsStatusMessage, 'info', 'Cargando registros de pago...');
+    }
+    if (tournamentPaymentsEmpty) {
+      tournamentPaymentsEmpty.hidden = false;
+      tournamentPaymentsEmpty.textContent = 'Cargando registros de pago...';
+    }
+  }
+
+  const requestToken = ++tournamentPaymentsRequestToken;
+  state.tournamentPaymentsLoading = true;
+
+  try {
+    const data = await getTournamentPaymentData(tournamentId, { force });
+    if (requestToken !== tournamentPaymentsRequestToken) {
+      return;
+    }
+
+    const activeFilters = ensureTournamentPaymentFilters();
+    const searchTerm = (activeFilters.search || '').trim().toLowerCase();
+
+    const filteredEntries = (data.entries || []).filter((entry) => {
+      if (searchTerm) {
+        const categoryNames = Array.isArray(entry.categories)
+          ? entry.categories.map((category) => category?.name || '').join(' ')
+          : '';
+        const haystack = `${entry.player?.fullName || ''} ${entry.player?.email || ''} ${
+          entry.player?.phone || ''
+        } ${categoryNames}`
+          .toLowerCase()
+          .trim();
+        if (!haystack.includes(searchTerm)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    renderTournamentPayments(filteredEntries, { feeInfo: data.feeInfo, currency: data.currency });
+
+    if (tournamentPaymentsStatusMessage) {
+      setStatusMessage(tournamentPaymentsStatusMessage, '', '');
+    }
+  } catch (error) {
+    if (requestToken !== tournamentPaymentsRequestToken) {
+      return;
+    }
+
+    if (tournamentPaymentsStatusMessage) {
+      setStatusMessage(tournamentPaymentsStatusMessage, 'error', error.message);
+    }
+    resetTournamentPaymentGroups();
+    if (tournamentPaymentsCount) {
+      tournamentPaymentsCount.textContent = '0';
+    }
+    if (tournamentPaymentsEmpty) {
+      tournamentPaymentsEmpty.hidden = false;
+      tournamentPaymentsEmpty.textContent = 'No fue posible cargar los registros de pago.';
+    }
+  } finally {
+    if (requestToken === tournamentPaymentsRequestToken) {
+      state.tournamentPaymentsLoading = false;
+    }
+  }
+}
+
 async function handleLeaguePaymentFormSubmit(form) {
   if (!form) return;
   const filters = ensureLeaguePaymentFilters();
@@ -3639,6 +4528,95 @@ async function handleLeaguePaymentFormSubmit(form) {
     );
   } catch (error) {
     setStatusMessage(leaguePaymentsStatusMessage, 'error', error.message);
+  }
+}
+
+async function handleTournamentPaymentFormSubmit(form) {
+  if (!form) return;
+  const filters = ensureTournamentPaymentFilters();
+  const tournamentId = filters.tournament;
+  if (!tournamentId) {
+    setStatusMessage(tournamentPaymentsStatusMessage, 'error', 'Selecciona un torneo con cuotas.');
+    return;
+  }
+
+  const paymentId = form.dataset.paymentId || '';
+  const userId = form.dataset.userId || '';
+  const formData = new FormData(form);
+
+  const payload = {};
+  const statusValue = formData.get('status');
+  if (statusValue && PAYMENT_STATUS_LABELS[statusValue]) {
+    payload.status = statusValue;
+  }
+
+  const amountRaw = formData.get('amount');
+  if (amountRaw !== null && amountRaw !== undefined) {
+    const trimmed = String(amountRaw).trim();
+    if (trimmed) {
+      const normalizedAmount = Number.parseFloat(trimmed.replace(',', '.'));
+      if (Number.isNaN(normalizedAmount) || normalizedAmount < 0) {
+        setStatusMessage(tournamentPaymentsStatusMessage, 'error', 'Introduce un importe válido.');
+        return;
+      }
+      payload.amount = normalizedAmount;
+    }
+  }
+
+  ['method', 'reference', 'notes'].forEach((field) => {
+    if (formData.has(field)) {
+      const value = (formData.get(field) || '').toString().trim();
+      payload[field] = value || null;
+    }
+  });
+
+  const paidAtValue = (formData.get('paidAt') || '').toString().trim();
+  if (paidAtValue) {
+    payload.paidAt = paidAtValue;
+  } else if (paymentId) {
+    payload.paidAt = null;
+  }
+
+  try {
+    setStatusMessage(
+      tournamentPaymentsStatusMessage,
+      'info',
+      paymentId ? 'Actualizando pago...' : 'Registrando pago...'
+    );
+
+    if (paymentId) {
+      await request(`/tournaments/${tournamentId}/payments/${paymentId}`, { method: 'PATCH', body: payload });
+    } else {
+      if (!userId) {
+        throw new Error('No se puede registrar el pago sin un jugador asociado.');
+      }
+      await request(`/tournaments/${tournamentId}/payments`, {
+        method: 'POST',
+        body: { ...payload, user: userId },
+      });
+    }
+
+    if (state.tournamentDetails instanceof Map) {
+      state.tournamentDetails.delete(tournamentId);
+    }
+    await loadTournamentDetail(tournamentId);
+    if (state.selectedTournamentId === tournamentId) {
+      await refreshTournamentDetail(tournamentId);
+    }
+
+    if (state.tournamentPayments instanceof Map) {
+      state.tournamentPayments.delete(tournamentId);
+    }
+
+    await refreshTournamentPayments({ force: true });
+
+    setStatusMessage(
+      tournamentPaymentsStatusMessage,
+      'success',
+      paymentId ? 'Pago actualizado correctamente.' : 'Pago registrado correctamente.'
+    );
+  } catch (error) {
+    setStatusMessage(tournamentPaymentsStatusMessage, 'error', error.message);
   }
 }
 
@@ -3888,6 +4866,7 @@ function updateAdminMenuVisibility() {
   }
 
   updateLeaguePaymentMenuVisibility();
+  updateTournamentPaymentMenuVisibility();
 
   if (!shouldShow && adminSectionIds.size) {
     adminSectionIds.forEach((sectionId) => {
@@ -3916,6 +4895,23 @@ function updateLeaguePaymentMenuVisibility() {
     }
     if (adminUser && state.activeSection === 'section-league-payments') {
       showSection('section-league-dashboard');
+    }
+  }
+}
+
+function updateTournamentPaymentMenuVisibility() {
+  if (!tournamentPaymentsMenuButton) return;
+
+  const adminUser = isAdmin();
+  const hasFeeTournaments = adminUser && getTournamentsWithEnrollmentFee().length > 0;
+  tournamentPaymentsMenuButton.hidden = !hasFeeTournaments;
+
+  if (!hasFeeTournaments) {
+    if (tournamentPaymentsSection) {
+      tournamentPaymentsSection.hidden = true;
+    }
+    if (adminUser && state.activeSection === 'section-tournament-payments') {
+      showSection('section-tournaments');
     }
   }
 }
@@ -4753,8 +5749,14 @@ function resetData() {
   state.selectedEnrollmentCategoryId = '';
   state.selectedMatchTournamentId = '';
   state.selectedMatchCategoryId = '';
-  state.tournamentEnrollments = new Map();
-  state.tournamentMatches = new Map();
+    state.tournamentEnrollments = new Map();
+    state.tournamentMatches = new Map();
+    state.tournamentPayments = new Map();
+    state.tournamentPaymentFilters = {
+      tournament: '',
+      search: '',
+    };
+    state.tournamentPaymentsLoading = false;
   state.courtReservations = [];
   state.courtAvailability = [];
   state.courtAdminSchedule = [];
@@ -4830,11 +5832,31 @@ function resetData() {
   if (tournamentMatchesList) {
     tournamentMatchesList.innerHTML = '';
   }
-  if (tournamentMatchesEmpty) {
-    tournamentMatchesEmpty.hidden = false;
-    tournamentMatchesEmpty.textContent = 'Selecciona un torneo para revisar sus partidos.';
-  }
-  notificationsList.innerHTML = '<li class="empty-state">Inicia sesión para ver tus notificaciones.</li>';
+    if (tournamentMatchesEmpty) {
+      tournamentMatchesEmpty.hidden = false;
+      tournamentMatchesEmpty.textContent = 'Selecciona un torneo para revisar sus partidos.';
+    }
+    if (tournamentPaymentsTournamentSelect) {
+      tournamentPaymentsTournamentSelect.innerHTML =
+        '<option value="">Selecciona un torneo con cuotas</option>';
+      tournamentPaymentsTournamentSelect.disabled = true;
+    }
+    if (tournamentPaymentsSearchInput) {
+      tournamentPaymentsSearchInput.value = '';
+      tournamentPaymentsSearchInput.disabled = true;
+    }
+    resetTournamentPaymentGroups();
+    if (tournamentPaymentsCount) {
+      tournamentPaymentsCount.textContent = '0';
+    }
+    if (tournamentPaymentsEmpty) {
+      tournamentPaymentsEmpty.hidden = false;
+      tournamentPaymentsEmpty.textContent =
+        'Inicia sesión para gestionar los pagos de inscripción de los torneos.';
+    }
+    updateTournamentPaymentFeeIndicator(null);
+    setStatusMessage(tournamentPaymentsStatusMessage, '', '');
+    notificationsList.innerHTML = '<li class="empty-state">Inicia sesión para ver tus notificaciones.</li>';
   upcomingList.innerHTML = '<li class="empty-state">Inicia sesión para consultar el calendario.</li>';
   myMatchesList.innerHTML = '<li class="empty-state">Inicia sesión para consultar tus partidos.</li>';
   updateMatchesMenuBadge(0);
@@ -9270,6 +10292,7 @@ async function reloadTournaments({ selectTournamentId } = {}) {
   }
 
   updateTournamentSelectors();
+  updateTournamentPaymentControls();
   return tournaments;
 }
 
@@ -20317,6 +21340,7 @@ async function loadAllData() {
 
     state.tournaments = Array.isArray(tournaments) ? tournaments : [];
     updateTournamentSelectors();
+    updateTournamentPaymentControls();
     if (state.selectedTournamentId) {
       await refreshTournamentDetail(state.selectedTournamentId);
     }
@@ -21500,16 +22524,51 @@ leaguePaymentsSearchInput?.addEventListener('input', (event) => {
   });
 });
 
-leaguePaymentsGroups?.addEventListener('submit', (event) => {
-  const form = event.target.closest('form[data-league-payment-form="true"]');
-  if (!form) {
-    return;
-  }
-  event.preventDefault();
-  handleLeaguePaymentFormSubmit(form).catch((error) => {
-    console.warn('No se pudo registrar o actualizar el pago de la liga seleccionada', error);
+  leaguePaymentsGroups?.addEventListener('submit', (event) => {
+    const form = event.target.closest('form[data-league-payment-form="true"]');
+    if (!form) {
+      return;
+    }
+    event.preventDefault();
+    handleLeaguePaymentFormSubmit(form).catch((error) => {
+      console.warn('No se pudo registrar o actualizar el pago de la liga seleccionada', error);
+    });
   });
-});
+
+  tournamentPaymentsTournamentSelect?.addEventListener('change', async (event) => {
+    const filters = ensureTournamentPaymentFilters();
+    const previousTournament = filters.tournament || '';
+    const value = (event.target.value || '').trim();
+    filters.tournament = value;
+    if (value !== previousTournament) {
+      filters.search = '';
+    }
+    updateTournamentPaymentControls();
+    try {
+      await refreshTournamentPayments({ force: value !== previousTournament });
+    } catch (error) {
+      console.warn('No se pudo actualizar los pagos de torneo tras cambiar el torneo seleccionado', error);
+    }
+  });
+
+  tournamentPaymentsSearchInput?.addEventListener('input', (event) => {
+    const filters = ensureTournamentPaymentFilters();
+    filters.search = (event.target.value || '').trim();
+    refreshTournamentPayments().catch((error) => {
+      console.warn('No se pudo actualizar los pagos de torneo al filtrar por búsqueda', error);
+    });
+  });
+
+  tournamentPaymentsGroups?.addEventListener('submit', (event) => {
+    const form = event.target.closest('form[data-tournament-payment-form="true"]');
+    if (!form) {
+      return;
+    }
+    event.preventDefault();
+    handleTournamentPaymentFormSubmit(form).catch((error) => {
+      console.warn('No se pudo registrar o actualizar el pago del torneo seleccionado', error);
+    });
+  });
 
 playerDirectoryList?.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-player-id]');

@@ -356,6 +356,15 @@
                   <button
                     type="button"
                     class="menu-button menu-button--nested menu-button--subnested"
+                    data-target="section-tournament-payments"
+                    data-parent-target="section-tournaments"
+                    data-requires-admin="true"
+                  >
+                    Pagos
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested menu-button--subnested"
                     data-target="section-tournament-matches"
                     data-parent-target="section-tournaments"
                   >
@@ -982,6 +991,83 @@
                 <p class="empty-state" id="tournament-enrollment-empty">
                   Selecciona una categoría para mostrar las inscripciones registradas.
                 </p>
+              </article>
+            </section>
+
+            <section
+              id="section-tournament-payments"
+              class="app-section"
+              data-admin-only="true"
+              hidden
+            >
+              <article class="card" id="tournament-payments-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Pagos del torneo</h3>
+                    <p class="card-subtitle">
+                      Supervisa los registros de inscripción y el estado de sus pagos.
+                    </p>
+                  </div>
+                </div>
+                <div class="tournament-payments-controls">
+                  <label class="inline-field">
+                    Torneo
+                    <select id="tournament-payments-tournament" disabled></select>
+                  </label>
+                  <label class="inline-field">
+                    Búsqueda
+                    <input
+                      type="search"
+                      id="tournament-payments-search"
+                      placeholder="Nombre, correo o teléfono"
+                      disabled
+                    />
+                  </label>
+                </div>
+                <div class="tournament-payments-summary">
+                  Registros: <strong id="tournament-payments-count">0</strong>
+                  <span class="tag" id="tournament-payments-fee" hidden></span>
+                </div>
+                <div class="tournament-payments-groups" id="tournament-payments-groups">
+                  <section
+                    class="tournament-payments-group"
+                    data-status="pending"
+                    aria-labelledby="tournament-payments-pending-title"
+                  >
+                    <div class="tournament-payments-group-header">
+                      <h4 id="tournament-payments-pending-title">Pagos pendientes</h4>
+                      <div class="tournament-payments-group-stats">
+                        <span class="tag" id="tournament-payments-pending-count">0</span>
+                        <span class="tag" id="tournament-payments-pending-total">0,00&nbsp;EUR</span>
+                      </div>
+                    </div>
+                    <ul class="list tournament-payments-list" id="tournament-payments-pending"></ul>
+                    <p class="empty-state" id="tournament-payments-pending-empty" hidden>
+                      No hay pagos pendientes.
+                    </p>
+                  </section>
+                  <section
+                    class="tournament-payments-group"
+                    data-status="paid"
+                    aria-labelledby="tournament-payments-paid-title"
+                  >
+                    <div class="tournament-payments-group-header">
+                      <h4 id="tournament-payments-paid-title">Pagos registrados</h4>
+                      <div class="tournament-payments-group-stats">
+                        <span class="tag" id="tournament-payments-paid-count">0</span>
+                        <span class="tag" id="tournament-payments-paid-total">0,00&nbsp;EUR</span>
+                      </div>
+                    </div>
+                    <ul class="list tournament-payments-list" id="tournament-payments-paid"></ul>
+                    <p class="empty-state" id="tournament-payments-paid-empty" hidden>
+                      No hay pagos registrados.
+                    </p>
+                  </section>
+                </div>
+                <div class="empty-state" id="tournament-payments-empty" hidden>
+                  Selecciona un torneo con cuotas para gestionar los pagos.
+                </div>
+                <p class="status-message" id="tournament-payments-status"></p>
               </article>
             </section>
 

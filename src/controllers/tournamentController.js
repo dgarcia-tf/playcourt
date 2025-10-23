@@ -16,6 +16,17 @@ const { TournamentMatch } = require('../models/TournamentMatch');
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 const POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'tournaments');
 
+const PAYMENT_STATUSES = ['pendiente', 'pagado', 'exento', 'fallido'];
+const PAYMENT_STATUS_SET = new Set(PAYMENT_STATUSES);
+
+function normalizePaymentStatus(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value.trim().toLowerCase();
+}
+
 async function removeFileIfExists(filePath) {
   if (!filePath) {
     return;
@@ -262,13 +273,16 @@ async function getTournamentDetail(req, res) {
 
   const { tournamentId } = req.params;
 
-  const tournament = await Tournament.findById(tournamentId).populate({
-    path: 'categories',
-    populate: {
-      path: 'seeds.player',
-      select: 'fullName gender rating photo',
-    },
-  });
+  const tournament = await Tournament.findById(tournamentId)
+    .populate({
+      path: 'categories',
+      populate: {
+        path: 'seeds.player',
+        select: 'fullName gender rating photo',
+      },
+    })
+    .populate({ path: 'payments.user', select: 'fullName email phone photo preferredSchedule' })
+    .populate({ path: 'payments.recordedBy', select: 'fullName email' });
 
   if (!tournament) {
     return res.status(404).json({ message: 'Torneo no encontrado' });
@@ -383,9 +397,18 @@ async function getTournamentDetail(req, res) {
   });
 
   const result = tournament.toObject();
+  const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
   result.categories = categoriesWithStats;
   result.materials = Array.isArray(result.materials) ? result.materials : [];
-  result.payments = Array.isArray(result.payments) ? result.payments : [];
+  result.payments = Array.isArray(result.payments)
+    ? [...result.payments].sort((a, b) => {
+        const paidDiff = toTimestamp(b.paidAt) - toTimestamp(a.paidAt);
+        if (paidDiff !== 0) {
+          return paidDiff;
+        }
+        return toTimestamp(b.createdAt) - toTimestamp(a.createdAt);
+      })
+    : [];
 
   return res.json(result);
 }
@@ -627,25 +650,26 @@ async function addPaymentRecord(req, res) {
     return res.status(404).json({ message: 'Torneo no encontrado' });
   }
 
-  const allowedStatuses = ['pendiente', 'pagado', 'exento', 'fallido'];
-
+  const numericAmount = Number(amount);
+  const normalizedStatus = normalizePaymentStatus(status);
   const record = {
     user: user ? new mongoose.Types.ObjectId(user) : undefined,
-    amount: Number.isFinite(Number(amount)) ? Number(amount) : undefined,
-    status: allowedStatuses.includes(status) ? status : undefined,
-    method,
-    reference,
-    notes,
+    amount: Number.isFinite(numericAmount) && numericAmount >= 0 ? numericAmount : undefined,
+    status: PAYMENT_STATUS_SET.has(normalizedStatus) ? normalizedStatus : 'pendiente',
+    method: typeof method === 'string' ? method.trim() || undefined : undefined,
+    reference: typeof reference === 'string' ? reference.trim() || undefined : undefined,
+    notes: typeof notes === 'string' ? notes.trim() || undefined : undefined,
     paidAt: paidAt ? new Date(paidAt) : undefined,
     recordedBy: req.user.id,
   };
 
-  if (!record.status) {
-    record.status = 'pendiente';
-  }
-
   tournament.payments.push(record);
   await tournament.save();
+
+  await tournament.populate([
+    { path: 'payments.user', select: 'fullName email phone photo preferredSchedule' },
+    { path: 'payments.recordedBy', select: 'fullName email' },
+  ]);
 
   return res.status(201).json(tournament.payments[tournament.payments.length - 1]);
 }
@@ -679,15 +703,16 @@ async function updatePaymentRecord(req, res) {
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'status')) {
-    const allowedStatuses = ['pendiente', 'pagado', 'exento', 'fallido'];
-    if (allowedStatuses.includes(updates.status)) {
-      payment.status = updates.status;
+    const normalizedStatus = normalizePaymentStatus(updates.status);
+    if (PAYMENT_STATUS_SET.has(normalizedStatus)) {
+      payment.status = normalizedStatus;
     }
   }
 
   ['method', 'reference', 'notes'].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(updates, field)) {
-      payment[field] = updates[field];
+      const value = typeof updates[field] === 'string' ? updates[field].trim() : updates[field];
+      payment[field] = value ? value : undefined;
     }
   });
 
@@ -699,7 +724,14 @@ async function updatePaymentRecord(req, res) {
 
   await tournament.save();
 
-  return res.json(payment);
+  await tournament.populate([
+    { path: 'payments.user', select: 'fullName email phone photo preferredSchedule' },
+    { path: 'payments.recordedBy', select: 'fullName email' },
+  ]);
+
+  const updatedPayment = tournament.payments.id(paymentId);
+
+  return res.json(updatedPayment);
 }
 
 module.exports = {
