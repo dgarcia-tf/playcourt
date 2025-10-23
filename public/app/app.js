@@ -6403,9 +6403,10 @@ function applySetupState() {
     authDescription.textContent =
       'No hay administradores configurados todavía. Crea el usuario inicial para activar la aplicación.';
     roleInputs.forEach((input) => {
-      input.checked = true;
-      input.disabled = true;
+      const isAdminOption = input.value === 'admin';
       const wrapper = input.closest('.checkbox-option');
+      input.checked = isAdminOption;
+      input.disabled = true;
       if (wrapper) {
         wrapper.hidden = false;
       }
@@ -18720,12 +18721,18 @@ function buildPlayerPayload(formData, isEditing = false) {
     birthDate: formData.get('birthDate'),
   };
 
-  const roles = formData.getAll('roles');
-  const normalizedRoles = roles.length ? roles : ['player'];
-  if (!normalizedRoles.includes('player')) {
+  const roles = formData
+    .getAll('roles')
+    .map((value) => (typeof value === 'string' ? value.toLowerCase() : ''))
+    .filter(Boolean);
+  let normalizedRoles = roles.length ? roles : ['player'];
+  if (normalizedRoles.includes('admin')) {
+    normalizedRoles = normalizedRoles.filter((role) => role !== 'player');
+  } else if (!normalizedRoles.includes('player')) {
     normalizedRoles.push('player');
   }
-  payload.roles = Array.from(new Set(normalizedRoles));
+  const uniqueRoles = Array.from(new Set(normalizedRoles));
+  payload.roles = uniqueRoles.length ? uniqueRoles : ['player'];
 
   const notes = (formData.get('notes') || '').trim();
   if (notes || isEditing) {
@@ -19532,12 +19539,10 @@ function openPlayerModal(playerId = '') {
       </label>
     </div>
     <div class="form-actions">
-      <button type="submit" class="primary">${player ? 'Actualizar' : 'Crear'} jugador</button>
+      <button type="submit" class="primary">${player ? 'Actualizar' : 'Crear'}</button>
       <button type="button" class="ghost" data-action="cancel">Cancelar</button>
       ${
-        player
-          ? '<button type="button" class="danger" data-action="delete">Eliminar jugador</button>'
-          : ''
+        player ? '<button type="button" class="danger" data-action="delete">Eliminar</button>' : ''
       }
     </div>
   `;
@@ -19553,21 +19558,48 @@ function openPlayerModal(playerId = '') {
   form.elements.notifyMatchResults.checked = player ? player.notifyMatchResults !== false : true;
 
   const roleInputs = Array.from(form.querySelectorAll('input[name="roles"]'));
-  const currentRoles = Array.isArray(player?.roles)
+  const adminInput = roleInputs.find((input) => input.value === 'admin');
+  const playerInput = roleInputs.find((input) => input.value === 'player');
+  const currentRolesRaw = Array.isArray(player?.roles)
     ? player.roles
     : player?.role
     ? [player.role]
-    : ['player'];
+    : [];
+  let currentRoles = currentRolesRaw
+    .map((role) => (typeof role === 'string' ? role.toLowerCase() : ''))
+    .filter(Boolean);
+
+  if (!currentRoles.length) {
+    currentRoles = ['player'];
+  }
+
+  if (currentRoles.includes('admin')) {
+    currentRoles = currentRoles.filter((role) => role !== 'player');
+  }
+
   roleInputs.forEach((input) => {
-    if (input.value === 'player') {
-      input.checked = true;
-    }
-    if (currentRoles.includes(input.value)) {
-      input.checked = true;
-    } else if (input.value !== 'player') {
-      input.checked = false;
-    }
+    input.checked = currentRoles.includes(input.value);
   });
+
+  function enforceRoleExclusivity() {
+    if (adminInput?.checked) {
+      if (playerInput) {
+        playerInput.checked = false;
+        playerInput.disabled = true;
+      }
+    } else if (playerInput) {
+      playerInput.disabled = false;
+      if (!roleInputs.some((input) => input !== playerInput && input.checked)) {
+        playerInput.checked = true;
+      }
+    }
+  }
+
+  roleInputs.forEach((input) => {
+    input.addEventListener('change', enforceRoleExclusivity);
+  });
+
+  enforceRoleExclusivity();
 
   const membershipCheckbox = form.elements.isMember;
   const membershipWrapper = form.querySelector('[data-membership-wrapper]');
@@ -21747,14 +21779,24 @@ registerForm.addEventListener('submit', async (event) => {
   const roleInputs = Array.from(registerForm.querySelectorAll('input[name="roles"]'));
   const selectedRoles = roleInputs
     .filter((input) => input.checked)
-    .map((input) => input.value);
+    .map((input) => (typeof input.value === 'string' ? input.value.toLowerCase() : ''))
+    .filter(Boolean);
   if (!selectedRoles.length) {
     selectedRoles.push('player');
   }
   if (state.needsSetup && !selectedRoles.includes('admin')) {
     selectedRoles.push('admin');
   }
-  payload.roles = Array.from(new Set(selectedRoles));
+  let normalizedRoles = Array.from(new Set(selectedRoles));
+  if (normalizedRoles.includes('admin')) {
+    normalizedRoles = normalizedRoles.filter((role) => role !== 'player');
+  } else if (!normalizedRoles.includes('player')) {
+    normalizedRoles.push('player');
+  }
+  if (!normalizedRoles.length) {
+    normalizedRoles = ['player'];
+  }
+  payload.roles = normalizedRoles;
 
   setStatusMessage(registerStatus, 'info', 'Creando la cuenta...');
 

@@ -80,8 +80,8 @@ async function register(req, res) {
     roles = normalizeRoles([...roles, USER_ROLES.ADMIN]);
   }
 
-  if (!roles.includes(USER_ROLES.PLAYER)) {
-    roles = normalizeRoles([...roles, USER_ROLES.PLAYER]);
+  if (!roles.length) {
+    roles = [USER_ROLES.PLAYER];
   }
 
   const hashedPassword = hashPassword(password);
