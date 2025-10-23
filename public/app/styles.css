@@ -1628,7 +1628,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 @media (min-width: 768px) {
   .list-item__poster {
     justify-self: end;
-    width: clamp(180px, 22vw, 240px);
+    width: clamp(180px, 22vw, 180px);
   }
 }
 
