@@ -1801,6 +1801,7 @@ const tournamentDetailBody = document.getElementById('tournament-detail-body');
 const tournamentCategoryTournamentSelect = document.getElementById('tournament-category-tournament');
 const tournamentCategoriesList = document.getElementById('tournament-categories-list');
 const tournamentCategoriesEmpty = document.getElementById('tournament-categories-empty');
+const tournamentCategoriesPoster = document.getElementById('tournament-categories-poster');
 const tournamentEnrollmentTournamentSelect = document.getElementById('tournament-enrollment-tournament');
 const tournamentEnrollmentCategorySelect = document.getElementById('tournament-enrollment-category');
 const tournamentEnrollmentList = document.getElementById('tournament-enrollment-list');
@@ -10010,18 +10011,40 @@ async function refreshTournamentDetail(tournamentId = state.selectedTournamentId
   }
 }
 
+function updateTournamentCategoriesPoster(detail) {
+  if (!tournamentCategoriesPoster) return;
+
+  tournamentCategoriesPoster.innerHTML = '';
+
+  const posterUrl = typeof detail?.poster === 'string' ? detail.poster.trim() : '';
+  if (!posterUrl) {
+    tournamentCategoriesPoster.hidden = true;
+    return;
+  }
+
+  const poster = document.createElement('img');
+  poster.className = 'tournament-categories__poster-image';
+  poster.src = posterUrl;
+  poster.alt = detail?.name ? `Cartel del torneo ${detail.name}` : 'Cartel del torneo';
+  poster.loading = 'lazy';
+  tournamentCategoriesPoster.appendChild(poster);
+  tournamentCategoriesPoster.hidden = false;
+}
+
 function renderTournamentCategories({ loading = false } = {}) {
   if (!tournamentCategoriesList || !tournamentCategoriesEmpty) return;
   tournamentCategoriesList.innerHTML = '';
 
   const tournamentId = state.selectedTournamentCategoriesId;
   if (!tournamentId) {
+    updateTournamentCategoriesPoster(null);
     tournamentCategoriesEmpty.hidden = false;
     tournamentCategoriesEmpty.textContent = 'Selecciona un torneo para consultar sus categorías.';
     return;
   }
 
   const detail = state.tournamentDetails.get(tournamentId) || getTournamentById(tournamentId);
+  updateTournamentCategoriesPoster(detail);
 
   if (loading) {
     tournamentCategoriesEmpty.hidden = false;
