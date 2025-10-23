@@ -4652,11 +4652,20 @@ function toggleProfileForm(show) {
 function updateAppSwitcherButtons() {
   if (!appSwitcherButtons.length) return;
 
-  appSwitcherButtons.forEach((button) => {
+  let activeIndex = 0;
+
+  appSwitcherButtons.forEach((button, index) => {
     const isActive = button.dataset.app === state.selectedApp;
     button.classList.toggle('app-switcher__button--active', isActive);
     button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    if (isActive) {
+      activeIndex = index;
+    }
   });
+
+  if (appSwitcher) {
+    appSwitcher.style.setProperty('--active-index', activeIndex);
+  }
 }
 
 function handleAppSwitcherClick(event) {
