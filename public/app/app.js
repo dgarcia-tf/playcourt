@@ -15642,11 +15642,14 @@ function buildLeaguePayload(formData, isEditing = false) {
     payload.description = null;
   }
 
-  const poster = (formData.get('poster') || '').trim();
-  if (poster) {
-    payload.poster = poster;
-  } else if (isEditing) {
-    payload.poster = null;
+  const hasPosterField = typeof formData.has === 'function' ? formData.has('poster') : true;
+  if (hasPosterField) {
+    const poster = (formData.get('poster') || '').trim();
+    if (poster) {
+      payload.poster = poster;
+    } else if (isEditing) {
+      payload.poster = null;
+    }
   }
 
   const startDate = formData.get('startDate');
@@ -17316,11 +17319,6 @@ function openLeagueModal(leagueId = '') {
     <label>
       Descripción
       <textarea name="description" rows="2" maxlength="280" placeholder="Detalles opcionales"></textarea>
-    </label>
-    <label>
-      Cartel (URL)
-      <input type="url" name="poster" placeholder="https://ejemplo.com/cartel.jpg" />
-      <span class="form-hint">Enlace público opcional a la imagen del cartel.</span>
     </label>
     <div class="form-grid">
       <label>
