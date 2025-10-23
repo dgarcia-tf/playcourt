@@ -17905,13 +17905,16 @@ function openMatchModal(matchId = '') {
     leagueOptionEntries
       .sort((a, b) => (a.info?.name || '').localeCompare(b.info?.name || '', 'es'))
       .forEach(({ id, info }) => {
+        const isClosed = info?.status === 'cerrada';
+        const isCurrentSelection = currentMatchLeagueId && currentMatchLeagueId === id;
+        if (isClosed && !isCurrentSelection) {
+          return;
+        }
+
         const option = document.createElement('option');
         option.value = id;
         option.textContent = formatLeagueLabel(info);
-        const isClosed = info?.status === 'cerrada';
-        const isCurrentSelection = currentMatchLeagueId && currentMatchLeagueId === id;
         if (isClosed) {
-          option.disabled = !isCurrentSelection;
           option.textContent += ' (cerrada)';
         }
         leagueField.appendChild(option);
@@ -18589,13 +18592,13 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
     leagueOptionEntries
       .sort((a, b) => (a.info?.name || '').localeCompare(b.info?.name || '', 'es'))
       .forEach(({ id, info }) => {
+        if (info?.status === 'cerrada') {
+          return;
+        }
+
         const option = document.createElement('option');
         option.value = id;
         option.textContent = formatLeagueLabel(info);
-        if (info?.status === 'cerrada') {
-          option.disabled = true;
-          option.textContent += ' (cerrada)';
-        }
         leagueSelect.appendChild(option);
       });
 
