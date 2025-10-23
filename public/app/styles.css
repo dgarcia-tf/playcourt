@@ -2189,6 +2189,13 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   gap: 0.4rem;
 }
 
+.tournament-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .tournament-detail__description,
 .league-detail__description {
   margin: 0;

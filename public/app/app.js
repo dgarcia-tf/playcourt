@@ -8137,6 +8137,27 @@ function renderTournamentDetail() {
     header.appendChild(description);
   }
 
+  const availableEnrollmentCategories = getTournamentCategories(tournamentId).filter((category) => {
+    const id = normalizeId(category);
+    if (!id) return false;
+    return Boolean(category?.canRequestEnrollment);
+  });
+
+  if (!isAdmin() && state.token && availableEnrollmentCategories.length) {
+    const actions = document.createElement('div');
+    actions.className = 'tournament-detail__actions';
+
+    const enrollButton = document.createElement('button');
+    enrollButton.type = 'button';
+    enrollButton.className = 'primary';
+    enrollButton.dataset.tournamentAction = 'open-enrollment';
+    enrollButton.dataset.tournamentId = tournamentId;
+    enrollButton.textContent = 'Inscribirse';
+    actions.appendChild(enrollButton);
+
+    header.appendChild(actions);
+  }
+
   content.appendChild(header);
 
   const metaItems = [];
@@ -8364,7 +8385,11 @@ function renderTournamentDetail() {
   tournamentDetailBody.appendChild(fragment);
 }
 
-async function openTournamentSelfEnrollmentModal({ tournamentId = state.selectedTournamentId, categoryId = '' } = {}) {
+async function openTournamentSelfEnrollmentModal({
+  tournamentId = state.selectedTournamentId,
+  categoryId = '',
+  allowMultiple = false,
+} = {}) {
   const normalizedTournamentId = tournamentId ? normalizeId(tournamentId) : '';
   const targetTournamentId = normalizedTournamentId || normalizeId(state.selectedTournamentId);
 
@@ -8403,30 +8428,111 @@ async function openTournamentSelfEnrollmentModal({ tournamentId = state.selected
   const form = document.createElement('form');
   form.className = 'form';
 
-  const categoryLabel = document.createElement('label');
-  categoryLabel.textContent = 'Categoría';
-  const categorySelect = document.createElement('select');
-  categorySelect.name = 'categoryId';
-  categorySelect.required = true;
+  let categorySelect = null;
+  let categoryCountSelect = null;
+  let categoryCheckboxes = [];
+  let selectionHint = null;
 
-  categories
+  const sortedCategories = categories
     .slice()
-    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
-    .forEach((category) => {
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+
+  if (allowMultiple) {
+    const countLabel = document.createElement('label');
+    countLabel.textContent = 'Número de categorías';
+    const countSelect = document.createElement('select');
+    countSelect.name = 'categoryCount';
+    countSelect.required = true;
+
+    sortedCategories.forEach((_, index) => {
+      const option = document.createElement('option');
+      const count = index + 1;
+      option.value = String(count);
+      option.textContent = count === 1 ? '1 categoría' : `${count} categorías`;
+      countSelect.appendChild(option);
+    });
+
+    countLabel.appendChild(countSelect);
+    form.appendChild(countLabel);
+
+    const categoryFieldset = document.createElement('fieldset');
+    categoryFieldset.className = 'checkbox-group';
+    const legend = document.createElement('legend');
+    legend.textContent = 'Categorías disponibles';
+    categoryFieldset.appendChild(legend);
+
+    selectionHint = document.createElement('p');
+    selectionHint.className = 'form-hint';
+    categoryFieldset.appendChild(selectionHint);
+
+    categoryCheckboxes = sortedCategories.map((category) => {
+      const id = normalizeId(category);
+      if (!id) return null;
+      const optionLabel = document.createElement('label');
+      optionLabel.className = 'checkbox-option';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.name = 'categoryIds';
+      checkbox.value = id;
+      optionLabel.appendChild(checkbox);
+      const text = document.createElement('span');
+      text.textContent = category.name || 'Categoría';
+      optionLabel.appendChild(text);
+      categoryFieldset.appendChild(optionLabel);
+      return checkbox;
+    }).filter(Boolean);
+
+    form.appendChild(categoryFieldset);
+
+    const updateSelectionHint = () => {
+      const desired = Number(countSelect.value || '0');
+      const selected = categoryCheckboxes.filter((checkbox) => checkbox.checked).length;
+      if (desired > 0) {
+        selectionHint.textContent =
+          desired === 1
+            ? `Selecciona 1 categoría (actualmente ${selected}).`
+            : `Selecciona ${desired} categorías (actualmente ${selected}).`;
+      } else {
+        selectionHint.textContent = 'Selecciona las categorías en las que deseas inscribirte.';
+      }
+    };
+
+    countSelect.addEventListener('change', () => {
+      updateSelectionHint();
+    });
+
+    categoryCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        updateSelectionHint();
+      });
+    });
+
+    updateSelectionHint();
+    categoryCountSelect = countSelect;
+  } else {
+    const categoryLabel = document.createElement('label');
+    categoryLabel.textContent = 'Categoría';
+    const singleSelect = document.createElement('select');
+    singleSelect.name = 'categoryId';
+    singleSelect.required = true;
+
+    sortedCategories.forEach((category) => {
       const id = normalizeId(category);
       if (!id) return;
       const option = document.createElement('option');
       option.value = id;
       option.textContent = category.name || 'Categoría';
-      categorySelect.appendChild(option);
+      singleSelect.appendChild(option);
     });
 
-  if (categoryId) {
-    categorySelect.value = categoryId;
-  }
+    if (categoryId) {
+      singleSelect.value = categoryId;
+    }
 
-  categoryLabel.appendChild(categorySelect);
-  form.appendChild(categoryLabel);
+    categoryLabel.appendChild(singleSelect);
+    form.appendChild(categoryLabel);
+    categorySelect = singleSelect;
+  }
 
   let shirtField = null;
 
@@ -8468,7 +8574,7 @@ async function openTournamentSelfEnrollmentModal({ tournamentId = state.selected
   const submitButton = document.createElement('button');
   submitButton.type = 'submit';
   submitButton.className = 'primary';
-  submitButton.textContent = 'Enviar solicitud';
+  submitButton.textContent = allowMultiple ? 'Enviar solicitudes' : 'Enviar solicitud';
   actions.appendChild(submitButton);
 
   const cancelButton = document.createElement('button');
@@ -8486,10 +8592,33 @@ async function openTournamentSelfEnrollmentModal({ tournamentId = state.selected
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const selectedCategory = categorySelect.value;
-    if (!selectedCategory) {
-      setStatusMessage(status, 'error', 'Selecciona una categoría.');
-      return;
+    let selectedCategories = [];
+
+    if (allowMultiple) {
+      const desiredCount = Number(categoryCountSelect?.value || '0');
+      const checked = categoryCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+      if (!desiredCount || !Number.isFinite(desiredCount)) {
+        setStatusMessage(status, 'error', 'Selecciona cuántas categorías deseas.');
+        return;
+      }
+      if (checked.length !== desiredCount) {
+        setStatusMessage(
+          status,
+          'error',
+          desiredCount === 1
+            ? 'Debes seleccionar exactamente 1 categoría.'
+            : `Debes seleccionar exactamente ${desiredCount} categorías.`,
+        );
+        return;
+      }
+      selectedCategories = checked;
+    } else if (categorySelect) {
+      const selectedCategory = categorySelect.value;
+      if (!selectedCategory) {
+        setStatusMessage(status, 'error', 'Selecciona una categoría.');
+        return;
+      }
+      selectedCategories = [selectedCategory];
     }
 
     const payload = {};
@@ -8503,15 +8632,10 @@ async function openTournamentSelfEnrollmentModal({ tournamentId = state.selected
     }
 
     submitButton.disabled = true;
-    setStatusMessage(status, 'info', 'Enviando solicitud...');
-    try {
-      await request(`/tournaments/${targetTournamentId}/categories/${selectedCategory}/enrollments`, {
-        method: 'POST',
-        body: payload,
-      });
-      setStatusMessage(status, 'success', 'Solicitud enviada correctamente.');
-      closeModal();
-      showGlobalMessage('Solicitud enviada. Un administrador la revisará en breve.');
+    setStatusMessage(status, 'info', allowMultiple ? 'Enviando solicitudes...' : 'Enviando solicitud...');
+
+    const processedCategories = [];
+    const refreshContext = async () => {
       state.tournamentDetails.delete(targetTournamentId);
       await Promise.all([
         reloadTournaments({ selectTournamentId: targetTournamentId }),
@@ -8520,9 +8644,35 @@ async function openTournamentSelfEnrollmentModal({ tournamentId = state.selected
       if (state.notificationBase !== null) {
         renderNotifications(state.notificationBase || []);
       }
+    };
+
+    try {
+      for (const id of selectedCategories) {
+        await request(`/tournaments/${targetTournamentId}/categories/${id}/enrollments`, {
+          method: 'POST',
+          body: payload,
+        });
+        processedCategories.push(id);
+      }
+
+      const successStatusMessage =
+        selectedCategories.length > 1
+          ? 'Solicitudes enviadas correctamente.'
+          : 'Solicitud enviada correctamente.';
+      setStatusMessage(status, 'success', successStatusMessage);
+      closeModal();
+      const successMessage =
+        selectedCategories.length > 1
+          ? 'Solicitudes enviadas. Un administrador las revisará en breve.'
+          : 'Solicitud enviada. Un administrador la revisará en breve.';
+      showGlobalMessage(successMessage);
+      await refreshContext();
     } catch (error) {
       setStatusMessage(status, 'error', error.message);
       submitButton.disabled = false;
+      if (processedCategories.length) {
+        await refreshContext();
+      }
     }
   });
 
@@ -8532,7 +8682,7 @@ async function openTournamentSelfEnrollmentModal({ tournamentId = state.selected
   });
 
   openModal({
-    title: 'Solicitar inscripción',
+    title: allowMultiple ? 'Inscribirse en el torneo' : 'Solicitar inscripción',
     content: (body) => {
       body.appendChild(form);
       body.appendChild(status);
@@ -21010,6 +21160,14 @@ tournamentDetailBody?.addEventListener('click', (event) => {
   if (!button) return;
 
   const { tournamentAction, tournamentId, categoryId } = button.dataset;
+  if (tournamentAction === 'open-enrollment') {
+    openTournamentSelfEnrollmentModal({
+      tournamentId: tournamentId || state.selectedTournamentId,
+      allowMultiple: true,
+    });
+    return;
+  }
+
   if (tournamentAction === 'request-enrollment') {
     openTournamentSelfEnrollmentModal({
       tournamentId: tournamentId || state.selectedTournamentId,
