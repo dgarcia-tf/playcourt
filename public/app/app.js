@@ -1556,6 +1556,7 @@ const state = {
   selectedEnrollmentCategoryId: TOURNAMENT_ENROLLMENT_ALL_OPTION,
   selectedMatchTournamentId: '',
   selectedMatchCategoryId: '',
+  selectedDoublesTournamentId: '',
   tournamentEnrollments: new Map(),
   tournamentEnrollmentFilters: {
     search: '',
@@ -1563,6 +1564,7 @@ const state = {
   },
   tournamentMatches: new Map(),
   tournamentPayments: new Map(),
+  tournamentDoubles: new Map(),
   tournamentPaymentFilters: {
     tournament: '',
     search: '',
@@ -1815,6 +1817,9 @@ const tournamentEnrollmentSearch = document.getElementById('tournament-enrollmen
 const tournamentEnrollmentGender = document.getElementById('tournament-enrollment-gender');
 const tournamentEnrollmentList = document.getElementById('tournament-enrollment-list');
 const tournamentEnrollmentEmpty = document.getElementById('tournament-enrollment-empty');
+const tournamentDoublesTournamentSelect = document.getElementById('tournament-doubles-tournament');
+const tournamentDoublesContainer = document.getElementById('tournament-doubles-container');
+const tournamentDoublesEmpty = document.getElementById('tournament-doubles-empty');
 const tournamentMatchTournamentSelect = document.getElementById('tournament-match-tournament');
 const tournamentMatchCategorySelect = document.getElementById('tournament-match-category');
 const tournamentMatchesList = document.getElementById('tournament-matches-list');
@@ -1846,6 +1851,7 @@ let pendingTournamentDetailId = null;
 let pendingLeagueDetailId = null;
 let pendingTournamentEnrollmentKey = '';
 let pendingTournamentMatchesKey = '';
+let pendingTournamentDoublesId = '';
 const generalChatMessagesList = document.getElementById('general-chat-messages');
 const generalChatForm = document.getElementById('general-chat-form');
 const generalChatInput = document.getElementById('general-chat-input');
@@ -5227,6 +5233,8 @@ function showSection(sectionId) {
     });
   } else if (resolvedSectionId === 'section-tournament-dashboard') {
     loadTournamentDashboard({ force: false });
+  } else if (resolvedSectionId === 'section-tournament-doubles') {
+    refreshTournamentDoubles();
   } else if (resolvedSectionId === 'section-account') {
     loadAccountSummary({ force: false });
   }
@@ -5983,18 +5991,36 @@ function resetData() {
   state.selectedEnrollmentCategoryId = TOURNAMENT_ENROLLMENT_ALL_OPTION;
   state.selectedMatchTournamentId = '';
   state.selectedMatchCategoryId = '';
+  state.selectedDoublesTournamentId = '';
+  if (state.tournamentDoubles instanceof Map) {
+    state.tournamentDoubles.clear();
+  } else {
+    state.tournamentDoubles = new Map();
+  }
+  if (state.tournamentEnrollments instanceof Map) {
+    state.tournamentEnrollments.clear();
+  } else {
     state.tournamentEnrollments = new Map();
-    state.tournamentEnrollmentFilters = {
-      search: '',
-      gender: '',
-    };
+  }
+  state.tournamentEnrollmentFilters = {
+    search: '',
+    gender: '',
+  };
+  if (state.tournamentMatches instanceof Map) {
+    state.tournamentMatches.clear();
+  } else {
     state.tournamentMatches = new Map();
+  }
+  if (state.tournamentPayments instanceof Map) {
+    state.tournamentPayments.clear();
+  } else {
     state.tournamentPayments = new Map();
-    state.tournamentPaymentFilters = {
-      tournament: '',
-      search: '',
-    };
-    state.tournamentPaymentsLoading = false;
+  }
+  state.tournamentPaymentFilters = {
+    tournament: '',
+    search: '',
+  };
+  state.tournamentPaymentsLoading = false;
   state.courtReservations = [];
   state.courtAvailability = [];
   state.courtAdminSchedule = [];
@@ -6070,6 +6096,17 @@ function resetData() {
     tournamentEnrollmentEmpty.hidden = false;
     tournamentEnrollmentEmpty.textContent = 'Selecciona un torneo para consultar los jugadores inscritos.';
   }
+  if (tournamentDoublesTournamentSelect) {
+    tournamentDoublesTournamentSelect.innerHTML = '';
+    tournamentDoublesTournamentSelect.disabled = true;
+  }
+  if (tournamentDoublesContainer) {
+    tournamentDoublesContainer.innerHTML = '';
+  }
+  if (tournamentDoublesEmpty) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = 'Selecciona un torneo para ver las inscripciones de dobles.';
+  }
   if (tournamentMatchTournamentSelect) {
     tournamentMatchTournamentSelect.innerHTML = '';
     tournamentMatchTournamentSelect.disabled = true;
@@ -6081,23 +6118,23 @@ function resetData() {
   if (tournamentMatchesList) {
     tournamentMatchesList.innerHTML = '';
   }
-    if (tournamentMatchesEmpty) {
-      tournamentMatchesEmpty.hidden = false;
-      tournamentMatchesEmpty.textContent = 'Selecciona un torneo para revisar sus partidos.';
-    }
-    if (tournamentPaymentsTournamentSelect) {
-      tournamentPaymentsTournamentSelect.innerHTML =
-        '<option value="">Selecciona un torneo con cuotas</option>';
-      tournamentPaymentsTournamentSelect.disabled = true;
-    }
-    if (tournamentPaymentsSearchInput) {
-      tournamentPaymentsSearchInput.value = '';
-      tournamentPaymentsSearchInput.disabled = true;
-    }
-    resetTournamentPaymentGroups();
-    if (tournamentPaymentsCount) {
-      tournamentPaymentsCount.textContent = '0';
-    }
+  if (tournamentMatchesEmpty) {
+    tournamentMatchesEmpty.hidden = false;
+    tournamentMatchesEmpty.textContent = 'Selecciona un torneo para revisar sus partidos.';
+  }
+  if (tournamentPaymentsTournamentSelect) {
+    tournamentPaymentsTournamentSelect.innerHTML =
+      '<option value="">Selecciona un torneo con cuotas</option>';
+    tournamentPaymentsTournamentSelect.disabled = true;
+  }
+  if (tournamentPaymentsSearchInput) {
+    tournamentPaymentsSearchInput.value = '';
+    tournamentPaymentsSearchInput.disabled = true;
+  }
+  resetTournamentPaymentGroups();
+  if (tournamentPaymentsCount) {
+    tournamentPaymentsCount.textContent = '0';
+  }
     if (tournamentPaymentsEmpty) {
       tournamentPaymentsEmpty.hidden = false;
       tournamentPaymentsEmpty.textContent =
@@ -10310,6 +10347,256 @@ function renderTournamentCategories({ loading = false } = {}) {
     });
 }
 
+function createTournamentDoublesCategoryCard(group) {
+  const category = group?.category || {};
+  const players = Array.isArray(group?.players) ? group.players : [];
+
+  const card = document.createElement('div');
+  card.className = 'collection-card';
+
+  const header = document.createElement('div');
+  header.className = 'collection-card__header';
+
+  const title = document.createElement('div');
+  title.className = 'collection-card__title';
+  const categoryColor = category.color;
+  if (categoryColor) {
+    const indicator = createCategoryColorIndicator(categoryColor, category.name);
+    if (indicator) {
+      title.appendChild(indicator);
+    }
+  }
+  title.appendChild(
+    document.createTextNode(category.menuTitle || category.name || 'Categoría de dobles')
+  );
+  header.appendChild(title);
+
+  if (category.status) {
+    const statusLabel = formatTournamentCategoryStatusLabel(category.status);
+    if (statusLabel) {
+      const subtitle = document.createElement('span');
+      subtitle.className = 'collection-card__subtitle';
+      subtitle.textContent = statusLabel;
+      header.appendChild(subtitle);
+    }
+  }
+
+  card.appendChild(header);
+
+  const metaParts = [];
+  const genderLabel = translateGender(category.gender);
+  if (genderLabel) {
+    metaParts.push(genderLabel);
+  }
+  const matchTypeLabel = formatTournamentMatchType(category.matchType);
+  if (matchTypeLabel) {
+    metaParts.push(matchTypeLabel);
+  }
+  const playerCount = players.length;
+  metaParts.push(`${playerCount} ${playerCount === 1 ? 'jugador' : 'jugadores'}`);
+
+  if (metaParts.length) {
+    const meta = document.createElement('div');
+    meta.className = 'collection-card__meta';
+    meta.textContent = metaParts.join(' · ');
+    card.appendChild(meta);
+  }
+
+  if (!players.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'Sin inscripciones registradas.';
+    card.appendChild(empty);
+    return card;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'collection-card__list';
+
+  const formatMetadataLabel = (key) => {
+    if (!key) return '';
+    return key
+      .toString()
+      .split(/[_\s]+/)
+      .filter(Boolean)
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(' ');
+  };
+
+  players.forEach((entry) => {
+    const listItem = document.createElement('li');
+    listItem.className = 'collection-card__list-item';
+
+    const playerInfo = document.createElement('div');
+    playerInfo.className = 'collection-card__player';
+
+    const name = document.createElement('strong');
+    const playerName = entry?.user?.fullName || entry?.user?.email || 'Jugador';
+    name.textContent = playerName;
+    playerInfo.appendChild(name);
+
+    const details = [];
+    const email = typeof entry?.user?.email === 'string' ? entry.user.email.trim() : '';
+    if (email) {
+      details.push(email);
+    }
+    const phone = typeof entry?.user?.phone === 'string' ? entry.user.phone.trim() : '';
+    if (phone) {
+      details.push(phone);
+    }
+    const scheduleValue = entry?.user?.preferredSchedule;
+    if (scheduleValue) {
+      details.push(`Horario: ${translateSchedule(scheduleValue)}`);
+    }
+    const seedNumber = Number(entry?.seedNumber);
+    if (Number.isFinite(seedNumber) && seedNumber > 0) {
+      details.push(`Siembra ${seedNumber}`);
+    }
+    const shirtSize = typeof entry?.shirtSize === 'string' ? entry.shirtSize.trim() : '';
+    if (shirtSize) {
+      details.push(`Talla ${shirtSize}`);
+    }
+    if (entry?.enrolledAt) {
+      details.push(`Inscrito: ${formatShortDate(entry.enrolledAt)}`);
+    }
+
+    const metadata = entry?.metadata && typeof entry.metadata === 'object' ? entry.metadata : {};
+    Object.entries(metadata).forEach(([key, value]) => {
+      const text = typeof value === 'string' ? value.trim() : '';
+      if (!text) {
+        return;
+      }
+      const label = formatMetadataLabel(key);
+      details.push(label ? `${label}: ${text}` : text);
+    });
+
+    if (entry?.notes) {
+      details.push(`Notas: ${entry.notes}`);
+    }
+
+    if (details.length) {
+      const detailLine = document.createElement('span');
+      detailLine.textContent = details.join(' · ');
+      playerInfo.appendChild(detailLine);
+    }
+
+    listItem.appendChild(playerInfo);
+
+    const statusValue = entry?.status;
+    if (statusValue) {
+      const statusTag = document.createElement('span');
+      statusTag.className = statusValue === 'confirmada' ? 'tag tag--success' : 'tag';
+      statusTag.textContent = formatTournamentEnrollmentStatusLabel(statusValue);
+      listItem.appendChild(statusTag);
+    }
+
+    list.appendChild(listItem);
+  });
+
+  card.appendChild(list);
+  return card;
+}
+
+function renderTournamentDoubles(list = null, { loading = false, error = '' } = {}) {
+  if (!tournamentDoublesContainer || !tournamentDoublesEmpty) {
+    return;
+  }
+
+  tournamentDoublesContainer.innerHTML = '';
+
+  const tournamentId = state.selectedDoublesTournamentId;
+  const normalizedId = normalizeId(tournamentId);
+
+  if (!normalizedId) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = 'Selecciona un torneo para ver las inscripciones de dobles.';
+    return;
+  }
+
+  if (loading) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = 'Cargando inscripciones de dobles...';
+    return;
+  }
+
+  if (error) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = error;
+    return;
+  }
+
+  if (!state.tournamentDoubles.has(normalizedId) && list === null) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = 'Selecciona un torneo para ver las inscripciones de dobles.';
+    return;
+  }
+
+  const groups = Array.isArray(list)
+    ? list
+    : state.tournamentDoubles.get(normalizedId) || [];
+
+  if (!groups.length) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = 'No hay inscripciones de dobles registradas.';
+    return;
+  }
+
+  groups.forEach((group) => {
+    const card = createTournamentDoublesCategoryCard(group);
+    if (card) {
+      tournamentDoublesContainer.appendChild(card);
+    }
+  });
+
+  if (!tournamentDoublesContainer.childElementCount) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = 'No hay inscripciones de dobles registradas.';
+    return;
+  }
+
+  tournamentDoublesEmpty.hidden = true;
+  tournamentDoublesEmpty.textContent = '';
+}
+
+async function refreshTournamentDoubles({ force = false } = {}) {
+  const tournamentId = state.selectedDoublesTournamentId;
+  const normalizedId = normalizeId(tournamentId);
+
+  if (!normalizedId) {
+    renderTournamentDoubles([], { loading: false });
+    return;
+  }
+
+  if (!force && state.tournamentDoubles.has(normalizedId)) {
+    renderTournamentDoubles();
+    return;
+  }
+
+  pendingTournamentDoublesId = normalizedId;
+  renderTournamentDoubles([], { loading: true });
+
+  try {
+    const response = await request(`/tournaments/${normalizedId}/doubles`, {
+      requireAuth: Boolean(state.token),
+    });
+    const groups = Array.isArray(response) ? response : [];
+    state.tournamentDoubles.set(normalizedId, groups);
+    if (pendingTournamentDoublesId === normalizedId) {
+      renderTournamentDoubles(groups);
+    }
+  } catch (error) {
+    if (pendingTournamentDoublesId === normalizedId) {
+      renderTournamentDoubles([], {
+        error: error.message || 'No fue posible cargar las parejas de dobles.',
+      });
+    }
+  } finally {
+    if (pendingTournamentDoublesId === normalizedId) {
+      pendingTournamentDoublesId = '';
+    }
+  }
+}
+
 function fillTournamentSelect(select, tournaments, selectedId, placeholder = 'Selecciona un torneo') {
   if (!select) return;
 
@@ -10355,6 +10642,7 @@ function updateTournamentSelectors() {
   state.selectedTournamentCategoriesId = resolveSelection(state.selectedTournamentCategoriesId);
   state.selectedEnrollmentTournamentId = resolveSelection(state.selectedEnrollmentTournamentId);
   state.selectedMatchTournamentId = resolveSelection(state.selectedMatchTournamentId);
+  state.selectedDoublesTournamentId = resolveSelection(state.selectedDoublesTournamentId);
 
   fillTournamentSelect(
     tournamentCategoryTournamentSelect,
@@ -10374,12 +10662,19 @@ function updateTournamentSelectors() {
     state.selectedMatchTournamentId,
     'Selecciona un torneo'
   );
+  fillTournamentSelect(
+    tournamentDoublesTournamentSelect,
+    tournaments,
+    state.selectedDoublesTournamentId,
+    'Selecciona un torneo'
+  );
 
   renderTournaments(tournaments);
   renderTournamentDetail();
   renderTournamentCategories();
   updateEnrollmentCategoryOptions();
   updateMatchCategoryOptions();
+  renderTournamentDoubles();
   updateTournamentActionAvailability();
 }
 
@@ -10924,10 +11219,22 @@ async function reloadTournaments({ selectTournamentId } = {}) {
     state.selectedTournamentCategoriesId = normalizedSelection;
     state.selectedEnrollmentTournamentId = normalizedSelection;
     state.selectedMatchTournamentId = normalizedSelection;
+    state.selectedDoublesTournamentId = normalizedSelection;
   }
+
+  const validTournamentIds = new Set(
+    tournaments.map((tournament) => normalizeId(tournament)).filter(Boolean)
+  );
+  state.tournamentDoubles = new Map(
+    Array.from(state.tournamentDoubles.entries()).filter(([id]) => validTournamentIds.has(id))
+  );
 
   updateTournamentSelectors();
   updateTournamentPaymentControls();
+
+  if (state.activeSection === 'section-tournament-doubles' && state.selectedDoublesTournamentId) {
+    await refreshTournamentDoubles({ force: true });
+  }
   return tournaments;
 }
 
@@ -23541,9 +23848,16 @@ tournamentsList?.addEventListener('click', async (event) => {
     state.selectedMatchCategoryId = '';
   }
 
+  if (!state.selectedDoublesTournamentId || state.selectedDoublesTournamentId === previous) {
+    state.selectedDoublesTournamentId = tournamentId;
+  }
+
   updateTournamentSelectors();
   if (tournamentId) {
     await refreshTournamentDetail(tournamentId);
+    if (state.activeSection === 'section-tournament-doubles') {
+      await refreshTournamentDoubles();
+    }
   }
 });
 
@@ -23620,6 +23934,24 @@ tournamentEnrollmentTournamentSelect?.addEventListener('change', async (event) =
   if (value && !state.tournamentDetails.has(value)) {
     await refreshTournamentDetail(value);
   }
+  updateTournamentActionAvailability();
+});
+
+tournamentDoublesTournamentSelect?.addEventListener('change', async (event) => {
+  const value = event.target.value || '';
+  state.selectedDoublesTournamentId = value;
+
+  if (!value) {
+    renderTournamentDoubles();
+    updateTournamentActionAvailability();
+    return;
+  }
+
+  if (!state.tournamentDetails.has(value)) {
+    await refreshTournamentDetail(value);
+  }
+
+  await refreshTournamentDoubles();
   updateTournamentActionAvailability();
 });
 

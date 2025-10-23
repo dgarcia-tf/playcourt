@@ -369,6 +369,14 @@
                   <button
                     type="button"
                     class="menu-button menu-button--nested menu-button--subnested"
+                    data-target="section-tournament-doubles"
+                    data-parent-target="section-tournaments"
+                  >
+                    Dobles
+                  </button>
+                  <button
+                    type="button"
+                    class="menu-button menu-button--nested menu-button--subnested"
                     data-target="section-tournament-payments"
                     data-parent-target="section-tournaments"
                     data-requires-admin="true"
@@ -1029,6 +1037,29 @@
                 <div class="empty-state" id="tournament-enrollment-empty">
                   Selecciona un torneo para consultar los jugadores inscritos.
                 </div>
+              </article>
+            </section>
+
+            <section id="section-tournament-doubles" class="app-section" hidden>
+              <article class="card" id="tournament-doubles-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Parejas de dobles</h3>
+                    <p class="card-subtitle">
+                      Consulta los jugadores inscritos en categorías de dobles.
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <label class="inline-field">
+                      Torneo
+                      <select id="tournament-doubles-tournament"></select>
+                    </label>
+                  </div>
+                </div>
+                <div id="tournament-doubles-container" class="card-collection"></div>
+                <p class="empty-state" id="tournament-doubles-empty">
+                  Selecciona un torneo para ver las inscripciones de dobles.
+                </p>
               </article>
             </section>
 
