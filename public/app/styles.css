@@ -1101,6 +1101,28 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-bottom: 1.25rem;
 }
 
+.tournament-categories__poster {
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.tournament-categories__poster[hidden] {
+  display: none;
+}
+
+.tournament-categories__poster-image {
+  max-height: 180px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  display: block;
+}
+
 .card-badge {
   display: inline-flex;
   align-items: center;
