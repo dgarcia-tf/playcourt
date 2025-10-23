@@ -1228,6 +1228,15 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   width: 100%;
 }
 
+.player-directory-controls__action {
+  display: flex;
+  align-items: flex-end;
+}
+
+.player-directory-controls__action > * {
+  width: 100%;
+}
+
 .inline-field {
   display: grid;
   gap: 0.4rem;
