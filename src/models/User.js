@@ -10,6 +10,7 @@ const USER_ROLES = {
 const GENDERS = {
   MALE: 'masculino',
   FEMALE: 'femenino',
+  MIXED: 'mixto',
 };
 
 const PREFERRED_SCHEDULES = {

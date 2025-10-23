@@ -186,7 +186,7 @@ async function listTournaments(req, res) {
     .sort({ startDate: 1, createdAt: -1 })
     .populate({
       path: 'categories',
-      select: 'name gender skillLevel status color menuTitle',
+      select: 'name gender matchType matchFormat status color menuTitle',
     });
   if (!tournaments.length) {
     return res.json([]);

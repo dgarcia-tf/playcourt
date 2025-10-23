@@ -1,7 +1,19 @@
 const mongoose = require('mongoose');
 const { GENDERS } = require('./User');
-const { CATEGORY_SKILL_LEVELS, DEFAULT_CATEGORY_COLOR } = require('./Category');
+const {
+  DEFAULT_CATEGORY_COLOR,
+  MATCH_FORMATS,
+  DEFAULT_CATEGORY_MATCH_FORMAT,
+} = require('./Category');
 const { resolveCategoryColor } = require('../utils/colors');
+
+const TOURNAMENT_CATEGORY_MATCH_TYPES = {
+  SINGLES: 'individual',
+  DOUBLES: 'dobles',
+};
+
+const TOURNAMENT_CATEGORY_MATCH_FORMATS = MATCH_FORMATS;
+const DEFAULT_TOURNAMENT_CATEGORY_MATCH_FORMAT = DEFAULT_CATEGORY_MATCH_FORMAT;
 
 const TOURNAMENT_CATEGORY_STATUSES = {
   REGISTRATION: 'inscripcion',
@@ -102,11 +114,6 @@ const tournamentCategorySchema = new mongoose.Schema(
       enum: Object.values(GENDERS),
       required: true,
     },
-    skillLevel: {
-      type: String,
-      enum: Object.values(CATEGORY_SKILL_LEVELS),
-      default: CATEGORY_SKILL_LEVELS.INTERMEDIATE,
-    },
     menuTitle: {
       type: String,
       trim: true,
@@ -115,6 +122,16 @@ const tournamentCategorySchema = new mongoose.Schema(
       type: String,
       default: DEFAULT_CATEGORY_COLOR,
       set: (value) => resolveCategoryColor(value),
+    },
+    matchType: {
+      type: String,
+      enum: Object.values(TOURNAMENT_CATEGORY_MATCH_TYPES),
+      default: TOURNAMENT_CATEGORY_MATCH_TYPES.SINGLES,
+    },
+    matchFormat: {
+      type: String,
+      enum: Object.values(TOURNAMENT_CATEGORY_MATCH_FORMATS),
+      default: DEFAULT_TOURNAMENT_CATEGORY_MATCH_FORMAT,
     },
     status: {
       type: String,
@@ -179,4 +196,7 @@ tournamentCategorySchema.pre('insertMany', function ensureMenuTitle(docs, next) 
 module.exports = {
   TournamentCategory: mongoose.model('TournamentCategory', tournamentCategorySchema),
   TOURNAMENT_CATEGORY_STATUSES,
+  TOURNAMENT_CATEGORY_MATCH_TYPES,
+  TOURNAMENT_CATEGORY_MATCH_FORMATS,
+  DEFAULT_TOURNAMENT_CATEGORY_MATCH_FORMAT,
 };

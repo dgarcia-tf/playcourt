@@ -93,6 +93,21 @@ const CATEGORY_MATCH_FORMAT_OPTIONS = [
   },
 ];
 
+const TOURNAMENT_MATCH_TYPE_OPTIONS = [
+  { value: 'individual', label: 'Individual' },
+  { value: 'dobles', label: 'Dobles' },
+];
+
+const TOURNAMENT_MATCH_TYPE_LABELS = TOURNAMENT_MATCH_TYPE_OPTIONS.reduce((map, option) => {
+  map[option.value] = option.label;
+  return map;
+}, {});
+
+const MATCH_FORMAT_LABELS = CATEGORY_MATCH_FORMAT_OPTIONS.reduce((map, option) => {
+  map[option.value] = option.label;
+  return map;
+}, {});
+
 const MATCH_FORMAT_METADATA = {
   two_sets_six_games_super_tb: {
     label: '2 sets a 6 juegos + super tie-break',
@@ -2163,7 +2178,18 @@ updateAdminMatchScheduleVisibility();
 function translateGender(value) {
   if (value === 'femenino') return 'Femenino';
   if (value === 'masculino') return 'Masculino';
+  if (value === 'mixto') return 'Mixto';
   return value;
+}
+
+function formatTournamentMatchType(value) {
+  if (!value) return '';
+  return TOURNAMENT_MATCH_TYPE_LABELS[value] || value;
+}
+
+function formatTournamentMatchFormat(value) {
+  if (!value) return '';
+  return MATCH_FORMAT_LABELS[value] || value;
 }
 
 function translateSchedule(value) {
@@ -7958,10 +7984,16 @@ function renderLeagueDetail() {
           metaLine.appendChild(genderSpan);
         }
 
-        if (category.skillLevel) {
-          const skillSpan = document.createElement('span');
-          skillSpan.textContent = formatSkillLevelLabel(category.skillLevel);
-          metaLine.appendChild(skillSpan);
+        if (category.matchType) {
+          const typeSpan = document.createElement('span');
+          typeSpan.textContent = formatTournamentMatchType(category.matchType);
+          metaLine.appendChild(typeSpan);
+        }
+
+        if (category.matchFormat) {
+          const formatSpan = document.createElement('span');
+          formatSpan.textContent = formatTournamentMatchFormat(category.matchFormat);
+          metaLine.appendChild(formatSpan);
         }
 
         const enrollmentCount = Number.isFinite(Number(category.enrollmentCount))
@@ -8106,8 +8138,11 @@ function openLeagueEnrollmentModal(leagueId = '') {
     if (category.gender) {
       metaParts.push(translateGender(category.gender));
     }
-    if (category.skillLevel) {
-      metaParts.push(formatSkillLevelLabel(category.skillLevel));
+    if (category.matchType) {
+      metaParts.push(formatTournamentMatchType(category.matchType));
+    }
+    if (category.matchFormat) {
+      metaParts.push(formatTournamentMatchFormat(category.matchFormat));
     }
     const metaText = metaParts.join(' · ');
     labelText.textContent = metaText
@@ -9504,10 +9539,16 @@ function renderTournamentDetail() {
           metaLine.appendChild(genderSpan);
         }
 
-        if (category.skillLevel) {
-          const skillSpan = document.createElement('span');
-          skillSpan.textContent = formatSkillLevelLabel(category.skillLevel);
-          metaLine.appendChild(skillSpan);
+        if (category.matchType) {
+          const typeSpan = document.createElement('span');
+          typeSpan.textContent = formatTournamentMatchType(category.matchType);
+          metaLine.appendChild(typeSpan);
+        }
+
+        if (category.matchFormat) {
+          const formatSpan = document.createElement('span');
+          formatSpan.textContent = formatTournamentMatchFormat(category.matchFormat);
+          metaLine.appendChild(formatSpan);
         }
 
         const enrollmentStats = category.enrollmentStats || {};
@@ -9995,6 +10036,7 @@ function renderTournamentCategories({ loading = false } = {}) {
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
     .forEach((category) => {
       const item = document.createElement('li');
+      const categoryId = normalizeId(category);
       const title = document.createElement('strong');
       title.textContent = category.name || 'Categoría';
       item.appendChild(title);
@@ -10014,10 +10056,16 @@ function renderTournamentCategories({ loading = false } = {}) {
         meta.appendChild(genderSpan);
       }
 
-      if (category.skillLevel) {
-        const skillSpan = document.createElement('span');
-        skillSpan.textContent = formatSkillLevelLabel(category.skillLevel);
-        meta.appendChild(skillSpan);
+      if (category.matchType) {
+        const matchTypeSpan = document.createElement('span');
+        matchTypeSpan.textContent = formatTournamentMatchType(category.matchType);
+        meta.appendChild(matchTypeSpan);
+      }
+
+      if (category.matchFormat) {
+        const formatSpan = document.createElement('span');
+        formatSpan.textContent = formatTournamentMatchFormat(category.matchFormat);
+        meta.appendChild(formatSpan);
       }
 
       const enrollmentStats = category.enrollmentStats || {};
@@ -10039,6 +10087,32 @@ function renderTournamentCategories({ loading = false } = {}) {
       meta.appendChild(matchesSpan);
 
       item.appendChild(meta);
+
+      if (isAdmin() && categoryId) {
+        const actions = document.createElement('div');
+        actions.className = 'actions category-actions';
+
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'secondary';
+        editButton.dataset.tournamentCategoryAction = 'edit';
+        editButton.dataset.tournamentId = tournamentId;
+        editButton.dataset.categoryId = categoryId;
+        editButton.textContent = 'Editar';
+        actions.appendChild(editButton);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'danger';
+        deleteButton.dataset.tournamentCategoryAction = 'delete';
+        deleteButton.dataset.tournamentId = tournamentId;
+        deleteButton.dataset.categoryId = categoryId;
+        deleteButton.textContent = 'Eliminar';
+        actions.appendChild(deleteButton);
+
+        item.appendChild(actions);
+      }
+
       tournamentCategoriesList.appendChild(item);
     });
 }
@@ -17954,14 +18028,19 @@ function buildTournamentCategoryPayload(form) {
     payload.menuTitle = menuTitle;
   }
 
-  const skillLevel = formData.get('skillLevel');
-  if (skillLevel) {
-    payload.skillLevel = skillLevel;
-  }
-
   const color = formData.get('color');
   if (color) {
     payload.color = resolveCategoryColor(color);
+  }
+
+  const matchType = formData.get('matchType');
+  if (matchType && TOURNAMENT_MATCH_TYPE_LABELS[matchType]) {
+    payload.matchType = matchType;
+  }
+
+  const matchFormat = formData.get('matchFormat');
+  if (matchFormat && MATCH_FORMAT_LABELS[matchFormat]) {
+    payload.matchFormat = matchFormat;
   }
 
   const drawSizeValue = (formData.get('drawSize') || '').trim();
@@ -17975,7 +18054,12 @@ function buildTournamentCategoryPayload(form) {
   return payload;
 }
 
-async function submitTournamentCategoryForm({ form, tournamentId, statusElement }) {
+async function submitTournamentCategoryForm({
+  form,
+  tournamentId,
+  categoryId = '',
+  statusElement,
+}) {
   if (!form || !tournamentId) return { success: false };
 
   const payload = buildTournamentCategoryPayload(form);
@@ -17989,14 +18073,39 @@ async function submitTournamentCategoryForm({ form, tournamentId, statusElement 
     return { success: false };
   }
 
-  setStatusMessage(statusElement, 'info', 'Creando categoría de torneo...');
+  if (!payload.matchType) {
+    setStatusMessage(statusElement, 'error', 'Selecciona el tipo de partido de la categoría.');
+    return { success: false };
+  }
+
+  if (!payload.matchFormat) {
+    setStatusMessage(statusElement, 'error', 'Selecciona el formato de partido.');
+    return { success: false };
+  }
+
+  const normalizedCategoryId = categoryId ? normalizeId(categoryId) : '';
+  const isEditing = Boolean(normalizedCategoryId);
+
+  setStatusMessage(
+    statusElement,
+    'info',
+    isEditing ? 'Actualizando categoría de torneo...' : 'Creando categoría de torneo...'
+  );
 
   try {
-    await request(`/tournaments/${tournamentId}/categories`, { method: 'POST', body: payload });
+    const endpoint = isEditing
+      ? `/tournaments/${tournamentId}/categories/${normalizedCategoryId}`
+      : `/tournaments/${tournamentId}/categories`;
+    const method = isEditing ? 'PATCH' : 'POST';
+    await request(endpoint, { method, body: payload });
     await reloadTournaments({ selectTournamentId: tournamentId });
     state.tournamentDetails.delete(tournamentId);
     await refreshTournamentDetail(tournamentId);
-    setStatusMessage(statusElement, 'success', 'Categoría creada correctamente.');
+    setStatusMessage(
+      statusElement,
+      'success',
+      isEditing ? 'Categoría actualizada correctamente.' : 'Categoría creada correctamente.'
+    );
     return { success: true };
   } catch (error) {
     setStatusMessage(statusElement, 'error', error.message);
@@ -18004,7 +18113,7 @@ async function submitTournamentCategoryForm({ form, tournamentId, statusElement 
   }
 }
 
-async function openTournamentCategoryModal(defaultTournamentId = '') {
+async function openTournamentCategoryModal({ tournamentId: initialTournamentId = '', categoryId = '' } = {}) {
   if (!isAdmin()) return;
   const tournaments = Array.isArray(state.tournaments) ? [...state.tournaments] : [];
   if (!tournaments.length) {
@@ -18012,16 +18121,58 @@ async function openTournamentCategoryModal(defaultTournamentId = '') {
     return;
   }
 
-  const normalizedDefault = defaultTournamentId
-    ? normalizeId(defaultTournamentId)
-    : normalizeId(state.selectedTournamentCategoriesId || state.selectedTournamentId);
+  const normalizedInitialTournamentId = normalizeId(initialTournamentId);
+  const normalizedCategoryId = normalizeId(categoryId);
+  const fallbackTournamentId = normalizeId(
+    state.selectedTournamentCategoriesId || state.selectedTournamentId
+  );
+
+  let resolvedTournamentId = normalizedInitialTournamentId || fallbackTournamentId;
+  if (normalizedCategoryId && !resolvedTournamentId) {
+    const inferredTournament = tournaments.find((tournament) => {
+      const id = normalizeId(tournament);
+      if (!id) return false;
+      const categories = getTournamentCategories(id);
+      return categories.some((category) => normalizeId(category) === normalizedCategoryId);
+    });
+    resolvedTournamentId = normalizeId(inferredTournament);
+  }
+
+  let category = null;
+  if (normalizedCategoryId && resolvedTournamentId) {
+    if (!state.tournamentDetails.has(resolvedTournamentId)) {
+      try {
+        await refreshTournamentDetail(resolvedTournamentId);
+      } catch (error) {
+        console.warn('No se pudo refrescar el detalle del torneo antes de editar la categoría', error);
+      }
+    }
+    category =
+      getTournamentCategories(resolvedTournamentId).find(
+        (entry) => normalizeId(entry) === normalizedCategoryId
+      ) || null;
+
+    if (!category) {
+      try {
+        category = await request(
+          `/tournaments/${resolvedTournamentId}/categories/${normalizedCategoryId}`
+        );
+      } catch (error) {
+        showGlobalMessage(error.message || 'No fue posible cargar la categoría seleccionada.', 'error');
+        return;
+      }
+    }
+  }
+
+  const editing = Boolean(category);
+  const selectedColor = category ? getCategoryColor(category) : DEFAULT_CATEGORY_COLOR;
 
   const form = document.createElement('form');
   form.className = 'form';
   form.innerHTML = `
     <label>
       Torneo
-      <select name="tournamentId" required></select>
+      <select name="tournamentId" required ${editing ? 'disabled' : ''}></select>
     </label>
     <label>
       Nombre
@@ -18041,29 +18192,45 @@ async function openTournamentCategoryModal(defaultTournamentId = '') {
         <select name="gender" required>
           <option value="masculino">Masculino</option>
           <option value="femenino">Femenino</option>
+          <option value="mixto">Mixto</option>
         </select>
       </label>
       <label>
-        Nivel
-        <select name="skillLevel">
-          <option value="">Sin nivel específico</option>
-          ${CATEGORY_SKILL_LEVEL_OPTIONS.map(
+        Tipo de partido
+        <select name="matchType" required>
+          ${TOURNAMENT_MATCH_TYPE_OPTIONS.map(
             (option) => `<option value="${option.value}">${option.label}</option>`
           ).join('')}
         </select>
       </label>
     </div>
+    <label>
+      Formato de partido
+      <select name="matchFormat" required>
+        ${CATEGORY_MATCH_FORMAT_OPTIONS.map(
+          (option) => `<option value="${option.value}">${option.label}</option>`
+        ).join('')}
+      </select>
+      <span class="form-hint">Define cómo se registrarán los resultados de la categoría.</span>
+    </label>
     ${renderCategoryColorField({
       name: 'color',
-      selected: DEFAULT_CATEGORY_COLOR,
+      selected: selectedColor,
     })}
     <label>
       Tamaño de cuadro (opcional)
       <input type="number" name="drawSize" min="0" placeholder="Ej. 16" />
     </label>
     <div class="form-actions">
-      <button type="submit" class="primary">Crear categoría</button>
+      <button type="submit" class="primary">${
+        editing ? 'Actualizar categoría' : 'Crear categoría'
+      }</button>
       <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+      ${
+        editing
+          ? '<button type="button" class="danger" data-action="delete">Eliminar</button>'
+          : ''
+      }
     </div>
   `;
 
@@ -18082,15 +18249,32 @@ async function openTournamentCategoryModal(defaultTournamentId = '') {
     });
 
   if (
-    normalizedDefault &&
-    Array.from(tournamentSelect.options).some((option) => option.value === normalizedDefault)
+    resolvedTournamentId &&
+    Array.from(tournamentSelect.options).some((option) => option.value === resolvedTournamentId)
   ) {
-    tournamentSelect.value = normalizedDefault;
+    tournamentSelect.value = resolvedTournamentId;
+  }
+
+  const defaultMatchType = TOURNAMENT_MATCH_TYPE_OPTIONS[0]?.value || 'individual';
+  const defaultMatchFormat = CATEGORY_MATCH_FORMAT_OPTIONS[0]?.value || DEFAULT_CATEGORY_MATCH_FORMAT;
+
+  form.elements.name.value = category?.name || '';
+  form.elements.menuTitle.value = category?.menuTitle || '';
+  form.elements.description.value = category?.description || '';
+  form.elements.gender.value = category?.gender || 'masculino';
+  form.elements.matchType.value = category?.matchType || defaultMatchType;
+  if (form.elements.matchFormat) {
+    form.elements.matchFormat.value = category?.matchFormat || defaultMatchFormat;
+  }
+  if (form.elements.drawSize) {
+    form.elements.drawSize.value = Number.isFinite(Number(category?.drawSize))
+      ? Number(category.drawSize)
+      : '';
   }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const tournamentId = tournamentSelect.value;
+    const tournamentId = editing ? resolvedTournamentId : tournamentSelect.value;
     if (!tournamentId) {
       setStatusMessage(status, 'error', 'Selecciona un torneo.');
       return;
@@ -18099,6 +18283,7 @@ async function openTournamentCategoryModal(defaultTournamentId = '') {
     const result = await submitTournamentCategoryForm({
       form,
       tournamentId,
+      categoryId: normalizedCategoryId,
       statusElement: status,
     });
     if (result.success) {
@@ -18112,8 +18297,32 @@ async function openTournamentCategoryModal(defaultTournamentId = '') {
     closeModal();
   });
 
+  const deleteButton = form.querySelector('[data-action="delete"]');
+  deleteButton?.addEventListener('click', async () => {
+    if (!normalizedCategoryId || !resolvedTournamentId) {
+      return;
+    }
+    const confirmed = window.confirm('¿Seguro que deseas eliminar esta categoría?');
+    if (!confirmed) return;
+
+    setStatusMessage(status, 'info', 'Eliminando categoría de torneo...');
+    try {
+      await request(`/tournaments/${resolvedTournamentId}/categories/${normalizedCategoryId}`, {
+        method: 'DELETE',
+      });
+      setStatusMessage(status, 'success', 'Categoría eliminada correctamente.');
+      closeModal();
+      await reloadTournaments({ selectTournamentId: resolvedTournamentId });
+      state.tournamentDetails.delete(resolvedTournamentId);
+      await refreshTournamentDetail(resolvedTournamentId);
+      showGlobalMessage('Categoría de torneo eliminada correctamente.');
+    } catch (error) {
+      setStatusMessage(status, 'error', error.message);
+    }
+  });
+
   openModal({
-    title: 'Nueva categoría de torneo',
+    title: editing ? 'Editar categoría de torneo' : 'Nueva categoría de torneo',
     content: (body) => {
       body.appendChild(form);
       body.appendChild(status);
@@ -19069,6 +19278,7 @@ function openCategoryModal(categoryId = '') {
         <select name="gender" required>
           <option value="masculino">Masculino</option>
           <option value="femenino">Femenino</option>
+          <option value="mixto">Mixto</option>
         </select>
       </label>
       <label>
@@ -19477,6 +19687,7 @@ function openPlayerModal(playerId = '') {
         <select name="gender" required>
           <option value="masculino">Masculino</option>
           <option value="femenino">Femenino</option>
+          <option value="mixto">Mixto</option>
         </select>
       </label>
       <fieldset class="checkbox-group">
@@ -22389,6 +22600,50 @@ tournamentCategoryTournamentSelect?.addEventListener('change', async (event) => 
   }
 });
 
+tournamentCategoriesList?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-tournament-category-action]');
+  if (!button || !isAdmin()) return;
+
+  const { tournamentCategoryAction: action, tournamentId, categoryId } = button.dataset;
+  const normalizedCategoryId = normalizeId(categoryId);
+  const normalizedTournamentId = normalizeId(tournamentId) || state.selectedTournamentCategoriesId;
+
+  if (!normalizedCategoryId) {
+    return;
+  }
+
+  if (action === 'edit') {
+    openTournamentCategoryModal({
+      tournamentId: normalizedTournamentId,
+      categoryId: normalizedCategoryId,
+    });
+    return;
+  }
+
+  if (action === 'delete') {
+    if (!normalizedTournamentId) {
+      return;
+    }
+    const confirmed = window.confirm('¿Seguro que deseas eliminar esta categoría?');
+    if (!confirmed) return;
+
+    button.disabled = true;
+    try {
+      await request(`/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}`, {
+        method: 'DELETE',
+      });
+      await reloadTournaments({ selectTournamentId: normalizedTournamentId });
+      state.tournamentDetails.delete(normalizedTournamentId);
+      await refreshTournamentDetail(normalizedTournamentId);
+      showGlobalMessage('Categoría de torneo eliminada correctamente.');
+    } catch (error) {
+      showGlobalMessage(error.message || 'No fue posible eliminar la categoría.', 'error');
+    } finally {
+      button.disabled = false;
+    }
+  }
+});
+
 tournamentEnrollmentTournamentSelect?.addEventListener('change', async (event) => {
   const value = event.target.value || '';
   state.selectedEnrollmentTournamentId = value;
@@ -23011,7 +23266,7 @@ tournamentEditButton?.addEventListener('click', () => {
 tournamentCategoryCreateButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
   const preferred = state.selectedTournamentCategoriesId || state.selectedTournamentId || '';
-  openTournamentCategoryModal(preferred);
+  openTournamentCategoryModal({ tournamentId: preferred });
 });
 
 tournamentEnrollmentAddButton?.addEventListener('click', () => {
