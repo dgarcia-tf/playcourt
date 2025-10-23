@@ -8,7 +8,7 @@ const {
   USER_ROLES,
   GENDERS,
 } = require('../controllers/playerController');
-const { PREFERRED_SCHEDULES, normalizePreferredSchedule } = require('../models/User');
+const { PREFERRED_SCHEDULES, SHIRT_SIZES, normalizePreferredSchedule } = require('../models/User');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 const { isValidImageDataUrl, sanitizeBoolean } = require('../utils/validators');
 
@@ -55,6 +55,13 @@ router.post(
       .isIn(Object.values(PREFERRED_SCHEDULES))
       .withMessage('Horario preferido inválido'),
     body('notes').optional().isString().trim().isLength({ max: 500 }),
+    body('shirtSize')
+      .trim()
+      .notEmpty()
+      .withMessage('La talla de camiseta es obligatoria')
+      .bail()
+      .isIn(Object.values(SHIRT_SIZES))
+      .withMessage('Talla de camiseta inválida'),
     body('isMember')
       .optional()
       .customSanitizer(sanitizeBoolean)
@@ -120,6 +127,11 @@ router.patch(
       .isIn(Object.values(PREFERRED_SCHEDULES))
       .withMessage('Horario preferido inválido'),
     body('notes').optional().isString().trim().isLength({ max: 500 }),
+    body('shirtSize')
+      .optional({ checkFalsy: true })
+      .trim()
+      .isIn(Object.values(SHIRT_SIZES))
+      .withMessage('Talla de camiseta inválida'),
     body('isMember')
       .optional()
       .customSanitizer(sanitizeBoolean)
