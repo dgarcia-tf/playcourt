@@ -5,7 +5,7 @@ function canAccessPrivateContent(user) {
     return false;
   }
 
-  if (userHasRole(user, USER_ROLES.ADMIN) || userHasRole(user, USER_ROLES.COURT_MANAGER)) {
+  if (userHasRole(user, USER_ROLES.ADMIN)) {
     return true;
   }
 
