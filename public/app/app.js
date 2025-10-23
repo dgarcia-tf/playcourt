@@ -1426,7 +1426,41 @@ function createAvatarElement(player, { size = 'md' } = {}) {
   return wrapper;
 }
 
-function buildPlayerCell(player, { includeSchedule = false, size = 'md' } = {}) {
+const SHIRT_ICON_SVG_CONTENT =
+  '<path d="M8 2 12 4 16 2l4 4-3 3v11H7V9L4 6z" fill="currentColor" />';
+
+function getShirtIconMarkup(iconClass = 'player-shirt-icon') {
+  return `<svg class="${iconClass}" viewBox="0 0 24 24" aria-hidden="true">${SHIRT_ICON_SVG_CONTENT}</svg>`;
+}
+
+function createShirtIndicatorElement(
+  label,
+  { wrapperClass = 'player-shirt-indicator', iconClass = 'player-shirt-icon' } = {}
+) {
+  const value = typeof label === 'string' ? label.trim() : '';
+  if (!value) {
+    return null;
+  }
+
+  const indicator = document.createElement('span');
+  indicator.className = wrapperClass;
+  indicator.innerHTML = `${getShirtIconMarkup(iconClass)}<span>${escapeHtml(value)}</span>`;
+  return indicator;
+}
+
+function buildShirtIndicatorMarkup(
+  label,
+  { wrapperClass = 'player-shirt-indicator', iconClass = 'player-shirt-icon' } = {}
+) {
+  const value = typeof label === 'string' ? label.trim() : '';
+  if (!value) {
+    return '';
+  }
+
+  return `<span class="${wrapperClass}">${getShirtIconMarkup(iconClass)}<span>${escapeHtml(value)}</span></span>`;
+}
+
+function buildPlayerCell(player, { includeSchedule = false, size = 'md', showShirt = false, shirtSize = '' } = {}) {
   const container = document.createElement('div');
   container.className = 'player-cell';
 
@@ -1445,6 +1479,14 @@ function buildPlayerCell(player, { includeSchedule = false, size = 'md' } = {}) 
     schedule.className = 'player-cell__meta';
     schedule.textContent = SCHEDULE_LABELS[player.preferredSchedule] || player.preferredSchedule;
     info.appendChild(schedule);
+  }
+
+  const resolvedShirtSize = shirtSize || (typeof player?.shirtSize === 'string' ? player.shirtSize : '');
+  if (showShirt && resolvedShirtSize) {
+    const shirtIndicator = createShirtIndicatorElement(resolvedShirtSize);
+    if (shirtIndicator) {
+      info.appendChild(shirtIndicator);
+    }
   }
 
   container.appendChild(info);
@@ -1503,6 +1545,7 @@ function buildPlayerCellMarkup(player, { includeSchedule = false } = {}) {
     includeSchedule && player?.preferredSchedule
       ? escapeHtml(SCHEDULE_LABELS[player.preferredSchedule] || player.preferredSchedule)
       : '';
+  const shirtSize = typeof player?.shirtSize === 'string' ? player.shirtSize.trim() : '';
   const photo = typeof player?.photo === 'string' ? player.photo : '';
   const hasPhoto = Boolean(photo);
   const avatarClasses = ['player-avatar', 'player-avatar--md'];
@@ -1521,6 +1564,7 @@ function buildPlayerCellMarkup(player, { includeSchedule = false } = {}) {
       <div class="player-cell__info">
         <span class="player-cell__name">${safeName}</span>
         ${scheduleLabel ? `<span class="player-cell__meta">${scheduleLabel}</span>` : ''}
+        ${buildShirtIndicatorMarkup(shirtSize)}
       </div>
     </div>
   `.trim();
@@ -3150,16 +3194,40 @@ async function refreshLeaguePlayers({ force = false } = {}) {
       const player = enrollment?.user || {};
       const playerId = normalizeId(player);
       if (!playerId) return;
+      const shirtSize =
+        typeof enrollment?.shirtSize === 'string' ? enrollment.shirtSize.trim() : '';
 
       if (!playerMap.has(playerId)) {
+        const playerClone = typeof player === 'object' && player !== null ? { ...player } : {};
+        if (shirtSize) {
+          playerClone.shirtSize = shirtSize;
+        }
         playerMap.set(playerId, {
-          player,
+          player: playerClone,
           categories: new Set(),
+          shirtSizes: shirtSize ? new Set([shirtSize]) : new Set(),
         });
       }
-      playerMap.get(playerId).categories.add(categoryId);
+
+      const entry = playerMap.get(playerId);
+      entry.categories.add(categoryId);
+      if (shirtSize) {
+        entry.shirtSizes.add(shirtSize);
+        if (!entry.player.shirtSize) {
+          entry.player.shirtSize = shirtSize;
+        }
+      }
     });
   });
+
+  playerMap.forEach((entry) => {
+    if (!entry.player.shirtSize && entry.shirtSizes instanceof Set && entry.shirtSizes.size) {
+      entry.player.shirtSize = Array.from(entry.shirtSizes)[0];
+    }
+  });
+
+  const league = state.leagues.find((entry) => normalizeId(entry) === leagueId);
+  const leagueHasShirt = Boolean(league?.hasShirt);
 
   const searchTerm = (filters.search || '').toLowerCase();
   const genderFilter = filters.gender || '';
@@ -3208,7 +3276,13 @@ async function refreshLeaguePlayers({ force = false } = {}) {
 
   entries.forEach(({ player, categories: playerCategories }) => {
     const item = document.createElement('li');
-    item.appendChild(buildPlayerCell(player, { includeSchedule: true }));
+    item.appendChild(
+      buildPlayerCell(player, {
+        includeSchedule: true,
+        showShirt: leagueHasShirt,
+        shirtSize: typeof player?.shirtSize === 'string' ? player.shirtSize : '',
+      })
+    );
 
     const contact = document.createElement('div');
     contact.className = 'meta';
@@ -3295,6 +3369,13 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
   const categories = getLeagueCategories(normalized);
   const categoryIds = categories.map((category) => normalizeId(category)).filter(Boolean);
 
+  const leagueHasShirt = Boolean(detail.hasShirt);
+  const leagueShirtSizes = Array.isArray(detail.shirtSizes)
+    ? detail.shirtSizes
+        .map((size) => (typeof size === 'string' ? size.trim() : ''))
+        .filter((size) => size.length)
+    : [];
+
   if (categoryIds.length) {
     await Promise.all(categoryIds.map((categoryId) => loadEnrollments(categoryId, { force })));
   }
@@ -3322,25 +3403,61 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
       const player = enrollment?.user || {};
       const playerId = normalizeId(player);
       if (!playerId) return;
+
+      const rawShirtSize = typeof enrollment?.shirtSize === 'string' ? enrollment.shirtSize.trim() : '';
+      const shirtSize = rawShirtSize || '';
+
       if (!playerMap.has(playerId)) {
+        const playerClone = typeof player === 'object' && player !== null ? { ...player } : {};
+        if (shirtSize) {
+          playerClone.shirtSize = shirtSize;
+        }
         playerMap.set(playerId, {
-          player,
+          player: playerClone,
           categories: new Set(),
+          shirtSizes: shirtSize ? new Set([shirtSize]) : new Set(),
         });
       }
-      playerMap.get(playerId).categories.add(categoryId);
+
+      const entry = playerMap.get(playerId);
+      entry.categories.add(categoryId);
+      if (shirtSize) {
+        entry.shirtSizes.add(shirtSize);
+        if (!entry.player.shirtSize) {
+          entry.player.shirtSize = shirtSize;
+        }
+      }
     });
+  });
+
+  playerMap.forEach((entry) => {
+    if (!entry.player.shirtSize && entry.shirtSizes instanceof Set && entry.shirtSizes.size) {
+      entry.player.shirtSize = Array.from(entry.shirtSizes)[0];
+    }
   });
 
   const feeValue = Number(detail.enrollmentFee);
   const normalizedFee = Number.isFinite(feeValue) && feeValue > 0 ? feeValue : null;
 
-  const createEntry = ({ player, playerId, categories: playerCategories, payment, hasEnrollment }) => {
+  const createEntry = ({
+    player,
+    playerId,
+    categories: playerCategories,
+    payment,
+    hasEnrollment,
+    shirtSize,
+  }) => {
     const normalizedPlayer = player && typeof player === 'object' ? player : {};
     const amountValue = Number(payment?.amount);
     const resolvedAmount = Number.isFinite(amountValue) && amountValue >= 0
       ? amountValue
       : normalizedFee;
+
+    const aggregatedShirtSize = typeof shirtSize === 'string' ? shirtSize.trim() : '';
+    const playerShirtSize =
+      typeof normalizedPlayer?.shirtSize === 'string' ? normalizedPlayer.shirtSize.trim() : '';
+    const paymentShirtSize = typeof payment?.shirtSize === 'string' ? payment.shirtSize.trim() : '';
+    const resolvedShirtSize = aggregatedShirtSize || playerShirtSize || paymentShirtSize;
 
     return {
       player: normalizedPlayer,
@@ -3357,6 +3474,8 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
       recordedBy: payment?.recordedBy || null,
       updatedAt: payment?.updatedAt || payment?.createdAt || null,
       hasEnrollment,
+      shirtSize: resolvedShirtSize,
+      shirtDelivered: Boolean(payment?.shirtDelivered),
     };
   };
 
@@ -3378,6 +3497,7 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
         categories: categoriesForPlayer,
         payment,
         hasEnrollment: true,
+        shirtSize: typeof player?.shirtSize === 'string' ? player.shirtSize : '',
       })
     );
   });
@@ -3391,6 +3511,7 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
         categories: [],
         payment,
         hasEnrollment: false,
+        shirtSize: typeof player?.shirtSize === 'string' ? player.shirtSize : '',
       })
     );
   });
@@ -3414,6 +3535,8 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
   const result = {
     entries,
     fee: normalizedFee,
+    hasShirt: leagueHasShirt,
+    shirtSizes: leagueShirtSizes,
   };
 
   if (!(state.leaguePayments instanceof Map)) {
@@ -3564,6 +3687,13 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
   const categories = getTournamentCategories(normalized);
   const categoryIds = categories.map((category) => normalizeId(category)).filter(Boolean);
 
+  const tournamentHasShirt = Boolean(detail.hasShirt);
+  const tournamentShirtSizes = Array.isArray(detail.shirtSizes)
+    ? detail.shirtSizes
+        .map((size) => (typeof size === 'string' ? size.trim() : ''))
+        .filter((size) => size.length)
+    : [];
+
   const categoriesById = new Map();
   categories.forEach((category) => {
     const id = normalizeId(category);
@@ -3600,14 +3730,37 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
       const player = enrollment?.user || {};
       const playerId = normalizeId(player);
       if (!playerId) return;
+
+      const rawShirtSize = typeof enrollment?.shirtSize === 'string' ? enrollment.shirtSize.trim() : '';
+      const shirtSize = rawShirtSize || '';
+
       if (!playerMap.has(playerId)) {
+        const playerClone = typeof player === 'object' && player !== null ? { ...player } : {};
+        if (shirtSize) {
+          playerClone.shirtSize = shirtSize;
+        }
         playerMap.set(playerId, {
-          player,
+          player: playerClone,
           categories: new Set(),
+          shirtSizes: shirtSize ? new Set([shirtSize]) : new Set(),
         });
       }
-      playerMap.get(playerId).categories.add(categoryId);
+
+      const entry = playerMap.get(playerId);
+      entry.categories.add(categoryId);
+      if (shirtSize) {
+        entry.shirtSizes.add(shirtSize);
+        if (!entry.player.shirtSize) {
+          entry.player.shirtSize = shirtSize;
+        }
+      }
     });
+  });
+
+  playerMap.forEach((entry) => {
+    if (!entry.player.shirtSize && entry.shirtSizes instanceof Set && entry.shirtSizes.size) {
+      entry.player.shirtSize = Array.from(entry.shirtSizes)[0];
+    }
   });
 
   const feeInfo = resolveTournamentFeeInfo(detail);
@@ -3687,7 +3840,14 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
     };
   };
 
-  const createEntry = ({ player, playerId, categories: playerCategories, payment, hasEnrollment }) => {
+  const createEntry = ({
+    player,
+    playerId,
+    categories: playerCategories,
+    payment,
+    hasEnrollment,
+    shirtSize,
+  }) => {
     const normalizedPlayer = player && typeof player === 'object' ? player : {};
     const categoriesForPlayer = Array.isArray(playerCategories) ? playerCategories : [];
     const suggestion = computeSuggestedAmount(normalizedPlayer, categoriesForPlayer);
@@ -3702,6 +3862,12 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
         : null;
     const entryCurrency =
       (recordedAmount !== null ? baseCurrency : suggestion?.currency) || baseCurrency;
+
+    const aggregatedShirtSize = typeof shirtSize === 'string' ? shirtSize.trim() : '';
+    const playerShirtSize =
+      typeof normalizedPlayer?.shirtSize === 'string' ? normalizedPlayer.shirtSize.trim() : '';
+    const paymentShirtSize = typeof payment?.shirtSize === 'string' ? payment.shirtSize.trim() : '';
+    const resolvedShirtSize = aggregatedShirtSize || playerShirtSize || paymentShirtSize;
 
     return {
       player: normalizedPlayer,
@@ -3723,6 +3889,8 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
       updatedAt: payment?.updatedAt || payment?.createdAt || null,
       hasEnrollment,
       currency: entryCurrency,
+      shirtSize: resolvedShirtSize,
+      shirtDelivered: Boolean(payment?.shirtDelivered),
     };
   };
 
@@ -3745,6 +3913,7 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
         categories: categoriesForPlayer,
         payment,
         hasEnrollment: true,
+        shirtSize: typeof player?.shirtSize === 'string' ? player.shirtSize : '',
       })
     );
   });
@@ -3758,6 +3927,7 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
         categories: [],
         payment,
         hasEnrollment: false,
+        shirtSize: typeof player?.shirtSize === 'string' ? player.shirtSize : '',
       })
     );
   });
@@ -3784,6 +3954,8 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
     entries,
     feeInfo,
     currency: baseCurrency,
+    hasShirt: tournamentHasShirt,
+    shirtSizes: tournamentShirtSizes,
   };
 
   if (!(state.tournamentPayments instanceof Map)) {
@@ -3794,7 +3966,7 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
   return result;
 }
 
-function createLeaguePaymentItem(entry, { fee = null } = {}) {
+function createLeaguePaymentItem(entry, { fee = null, hasShirt = false, shirtSizes = [] } = {}) {
   const listItem = document.createElement('li');
   listItem.className = 'league-payment-entry';
 
@@ -3811,7 +3983,12 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   const header = document.createElement('div');
   header.className = 'league-payment-header';
 
-  const playerCell = buildPlayerCell(entry.player || {}, { includeSchedule: false, size: 'sm' });
+  const playerCell = buildPlayerCell(entry.player || {}, {
+    includeSchedule: false,
+    size: 'sm',
+    showShirt: hasShirt,
+    shirtSize: typeof entry?.shirtSize === 'string' ? entry.shirtSize : '',
+  });
   header.appendChild(playerCell);
   summary.appendChild(header);
 
@@ -3844,6 +4021,17 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
     headerMeta.appendChild(noteSpan);
   }
 
+  const resolvedShirtSize = typeof entry?.shirtSize === 'string' ? entry.shirtSize.trim() : '';
+  const shirtDelivered = Boolean(entry?.shirtDelivered);
+  if (hasShirt) {
+    const shirtStatus = document.createElement('span');
+    shirtStatus.className = `payment-shirt-status payment-shirt-status--${
+      shirtDelivered ? 'delivered' : 'pending'
+    }`;
+    shirtStatus.textContent = shirtDelivered ? 'Camiseta entregada' : 'Entrega pendiente';
+    headerMeta.appendChild(shirtStatus);
+  }
+
   summary.appendChild(headerMeta);
   item.appendChild(summary);
 
@@ -3870,6 +4058,24 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
       contactMeta.appendChild(document.createElement('span')).textContent = entry.player.phone;
     }
     body.appendChild(contactMeta);
+  }
+
+  if (hasShirt) {
+    const shirtMeta = document.createElement('div');
+    shirtMeta.className = 'league-payment-meta payment-shirt-meta';
+    const indicator = createShirtIndicatorElement(resolvedShirtSize, {
+      wrapperClass: 'payment-shirt-indicator',
+      iconClass: 'payment-shirt-icon',
+    });
+    if (indicator) {
+      shirtMeta.appendChild(indicator);
+    } else {
+      shirtMeta.appendChild(document.createElement('span')).textContent = 'Talla de camiseta no indicada';
+      if (Array.isArray(shirtSizes) && shirtSizes.length) {
+        shirtMeta.appendChild(document.createElement('span')).textContent = `Tallas disponibles: ${shirtSizes.join(', ')}`;
+      }
+    }
+    body.appendChild(shirtMeta);
   }
 
   if (entry.reference) {
@@ -4007,6 +4213,33 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   notesRow.appendChild(notesLabel);
   form.appendChild(notesRow);
 
+  if (hasShirt) {
+    const shirtRow = document.createElement('div');
+    shirtRow.className = 'form-row';
+    const shirtLabel = document.createElement('label');
+    shirtLabel.className = 'checkbox-option';
+    const shirtCheckbox = document.createElement('input');
+    shirtCheckbox.type = 'checkbox';
+    shirtCheckbox.name = 'shirtDelivered';
+    shirtCheckbox.value = 'true';
+    shirtCheckbox.checked = shirtDelivered;
+    shirtLabel.appendChild(shirtCheckbox);
+    shirtLabel.appendChild(document.createTextNode('Camiseta entregada'));
+    if (resolvedShirtSize) {
+      const hint = document.createElement('span');
+      hint.className = 'form-hint';
+      hint.textContent = `Talla solicitada: ${resolvedShirtSize}`;
+      shirtLabel.appendChild(hint);
+    } else if (Array.isArray(shirtSizes) && shirtSizes.length) {
+      const hint = document.createElement('span');
+      hint.className = 'form-hint';
+      hint.textContent = `Tallas disponibles: ${shirtSizes.join(', ')}`;
+      shirtLabel.appendChild(hint);
+    }
+    shirtRow.appendChild(shirtLabel);
+    form.appendChild(shirtRow);
+  }
+
   const actionsRow = document.createElement('div');
   actionsRow.className = 'form-actions';
   const submitButton = document.createElement('button');
@@ -4024,7 +4257,7 @@ function createLeaguePaymentItem(entry, { fee = null } = {}) {
   return listItem;
 }
 
-function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
+function createTournamentPaymentItem(entry, { feeInfo = null, hasShirt = false, shirtSizes = [] } = {}) {
   const listItem = document.createElement('li');
   listItem.className = 'tournament-payment-entry';
 
@@ -4040,7 +4273,12 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
 
   const header = document.createElement('div');
   header.className = 'tournament-payment-header';
-  const playerCell = buildPlayerCell(entry.player || {}, { includeSchedule: false, size: 'sm' });
+  const playerCell = buildPlayerCell(entry.player || {}, {
+    includeSchedule: false,
+    size: 'sm',
+    showShirt: hasShirt,
+    shirtSize: typeof entry?.shirtSize === 'string' ? entry.shirtSize : '',
+  });
   header.appendChild(playerCell);
   summary.appendChild(header);
 
@@ -4080,6 +4318,17 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
     headerMeta.appendChild(noteSpan);
   }
 
+  const resolvedShirtSize = typeof entry?.shirtSize === 'string' ? entry.shirtSize.trim() : '';
+  const shirtDelivered = Boolean(entry?.shirtDelivered);
+  if (hasShirt) {
+    const shirtStatus = document.createElement('span');
+    shirtStatus.className = `payment-shirt-status payment-shirt-status--${
+      shirtDelivered ? 'delivered' : 'pending'
+    }`;
+    shirtStatus.textContent = shirtDelivered ? 'Camiseta entregada' : 'Entrega pendiente';
+    headerMeta.appendChild(shirtStatus);
+  }
+
   summary.appendChild(headerMeta);
   item.appendChild(summary);
 
@@ -4106,6 +4355,24 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
       contactMeta.appendChild(document.createElement('span')).textContent = entry.player.phone;
     }
     body.appendChild(contactMeta);
+  }
+
+  if (hasShirt) {
+    const shirtMeta = document.createElement('div');
+    shirtMeta.className = 'tournament-payment-meta payment-shirt-meta';
+    const indicator = createShirtIndicatorElement(resolvedShirtSize, {
+      wrapperClass: 'payment-shirt-indicator',
+      iconClass: 'payment-shirt-icon',
+    });
+    if (indicator) {
+      shirtMeta.appendChild(indicator);
+    } else {
+      shirtMeta.appendChild(document.createElement('span')).textContent = 'Talla de camiseta no indicada';
+      if (Array.isArray(shirtSizes) && shirtSizes.length) {
+        shirtMeta.appendChild(document.createElement('span')).textContent = `Tallas disponibles: ${shirtSizes.join(', ')}`;
+      }
+    }
+    body.appendChild(shirtMeta);
   }
 
   if (suggestion && Number.isFinite(suggestion.amount)) {
@@ -4241,6 +4508,7 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
   referenceInput.value = entry.reference || '';
   referenceLabel.appendChild(referenceInput);
   detailsRow.appendChild(referenceLabel);
+
   form.appendChild(detailsRow);
 
   const notesRow = document.createElement('div');
@@ -4266,6 +4534,33 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
   notesRow.appendChild(notesLabel);
   form.appendChild(notesRow);
 
+  if (hasShirt) {
+    const shirtRow = document.createElement('div');
+    shirtRow.className = 'form-row';
+    const shirtLabel = document.createElement('label');
+    shirtLabel.className = 'checkbox-option';
+    const shirtCheckbox = document.createElement('input');
+    shirtCheckbox.type = 'checkbox';
+    shirtCheckbox.name = 'shirtDelivered';
+    shirtCheckbox.value = 'true';
+    shirtCheckbox.checked = shirtDelivered;
+    shirtLabel.appendChild(shirtCheckbox);
+    shirtLabel.appendChild(document.createTextNode('Camiseta entregada'));
+    if (resolvedShirtSize) {
+      const hint = document.createElement('span');
+      hint.className = 'form-hint';
+      hint.textContent = `Talla solicitada: ${resolvedShirtSize}`;
+      shirtLabel.appendChild(hint);
+    } else if (Array.isArray(shirtSizes) && shirtSizes.length) {
+      const hint = document.createElement('span');
+      hint.className = 'form-hint';
+      hint.textContent = `Tallas disponibles: ${shirtSizes.join(', ')}`;
+      shirtLabel.appendChild(hint);
+    }
+    shirtRow.appendChild(shirtLabel);
+    form.appendChild(shirtRow);
+  }
+
   const actionsRow = document.createElement('div');
   actionsRow.className = 'form-actions';
   const submitButton = document.createElement('button');
@@ -4282,102 +4577,9 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
 
   return listItem;
 }
-
-function renderLeaguePayments(entries = [], { fee = null } = {}) {
-  if (!leaguePaymentsGroups) return;
-
-  if (leaguePaymentsCount) {
-    leaguePaymentsCount.textContent = String(entries.length);
-  }
-
-  updateLeaguePaymentFeeIndicator(fee);
-
-  resetLeaguePaymentGroups();
-
-  const pendingEntries = entries.filter((entry) => (entry.status || 'pendiente') !== 'pagado');
-  const paidEntries = entries.filter((entry) => (entry.status || 'pendiente') === 'pagado');
-
-  updateLeaguePaymentTotalElement(
-    leaguePaymentsPendingTotal,
-    calculateLeaguePaymentTotal(pendingEntries)
-  );
-  updateLeaguePaymentTotalElement(leaguePaymentsPaidTotal, calculateLeaguePaymentTotal(paidEntries));
-
-  if (!entries.length) {
-    if (leaguePaymentsPendingCount) {
-      leaguePaymentsPendingCount.textContent = '0';
-    }
-    if (leaguePaymentsPaidCount) {
-      leaguePaymentsPaidCount.textContent = '0';
-    }
-    if (leaguePaymentsPendingEmpty) {
-      leaguePaymentsPendingEmpty.hidden = false;
-      leaguePaymentsPendingEmpty.textContent = 'No hay pagos pendientes.';
-    }
-    if (leaguePaymentsPaidEmpty) {
-      leaguePaymentsPaidEmpty.hidden = false;
-      leaguePaymentsPaidEmpty.textContent = 'No hay pagos registrados.';
-    }
-    if (leaguePaymentsEmpty) {
-      leaguePaymentsEmpty.hidden = false;
-      leaguePaymentsEmpty.textContent = 'No hay registros de pago para la selección actual.';
-    }
-    return;
-  }
-
-  if (leaguePaymentsEmpty) {
-    leaguePaymentsEmpty.hidden = true;
-  }
-
-  const groups = [
-    {
-      entries: pendingEntries,
-      list: leaguePaymentsPendingList,
-      emptyElement: leaguePaymentsPendingEmpty,
-      countElement: leaguePaymentsPendingCount,
-      emptyText: 'No hay pagos pendientes.',
-    },
-    {
-      entries: paidEntries,
-      list: leaguePaymentsPaidList,
-      emptyElement: leaguePaymentsPaidEmpty,
-      countElement: leaguePaymentsPaidCount,
-      emptyText: 'No hay pagos registrados.',
-    },
-  ];
-
-  groups.forEach(({ entries: groupEntries, list, emptyElement, countElement, emptyText }) => {
-    if (countElement) {
-      countElement.textContent = String(groupEntries.length);
-    }
-
-    if (!list) {
-      return;
-    }
-
-    list.innerHTML = '';
-
-    if (!groupEntries.length) {
-      if (emptyElement) {
-        emptyElement.hidden = false;
-        emptyElement.textContent = emptyText;
-      }
-      return;
-    }
-
-    if (emptyElement) {
-      emptyElement.hidden = true;
-    }
-
-    groupEntries.forEach((entry) => {
-      list.appendChild(createLeaguePaymentItem(entry, { fee }));
-    });
-  });
-}
-
 function renderTournamentPayments(
   entries = [],
-  { feeInfo = null, currency = DEFAULT_TOURNAMENT_CURRENCY } = {}
+  { feeInfo = null, currency = DEFAULT_TOURNAMENT_CURRENCY, hasShirt = false, shirtSizes = [] } = {}
 ) {
   if (!tournamentPaymentsGroups) return;
 
@@ -4470,7 +4672,7 @@ function renderTournamentPayments(
     }
 
     groupEntries.forEach((entry) => {
-      list.appendChild(createTournamentPaymentItem(entry, { feeInfo }));
+      list.appendChild(createTournamentPaymentItem(entry, { feeInfo, hasShirt, shirtSizes }));
     });
   });
 }
@@ -4538,7 +4740,13 @@ async function refreshLeaguePayments({ force = false } = {}) {
       return true;
     });
 
-    renderLeaguePayments(filteredEntries, { fee: data.fee });
+    const hasShirt = Boolean(data.hasShirt);
+    const availableShirtSizes = Array.isArray(data.shirtSizes) ? data.shirtSizes : [];
+    renderLeaguePayments(filteredEntries, {
+      fee: data.fee,
+      hasShirt,
+      shirtSizes: availableShirtSizes,
+    });
 
     if (leaguePaymentsStatusMessage) {
       setStatusMessage(leaguePaymentsStatusMessage, '', '');
@@ -4634,7 +4842,14 @@ async function refreshTournamentPayments({ force = false } = {}) {
       return true;
     });
 
-    renderTournamentPayments(filteredEntries, { feeInfo: data.feeInfo, currency: data.currency });
+    const hasShirt = Boolean(data.hasShirt);
+    const availableShirtSizes = Array.isArray(data.shirtSizes) ? data.shirtSizes : [];
+    renderTournamentPayments(filteredEntries, {
+      feeInfo: data.feeInfo,
+      currency: data.currency,
+      hasShirt,
+      shirtSizes: availableShirtSizes,
+    });
 
     if (tournamentPaymentsStatusMessage) {
       setStatusMessage(tournamentPaymentsStatusMessage, '', '');
@@ -4706,6 +4921,16 @@ async function handleLeaguePaymentFormSubmit(form) {
     payload.paidAt = paidAtValue;
   } else if (paymentId) {
     payload.paidAt = null;
+  }
+
+  const shirtDeliveredInput = form.elements?.shirtDelivered;
+  if (shirtDeliveredInput) {
+    payload.shirtDelivered = Boolean(shirtDeliveredInput.checked);
+  }
+
+  const shirtDeliveredInput = form.elements?.shirtDelivered;
+  if (shirtDeliveredInput) {
+    payload.shirtDelivered = Boolean(shirtDeliveredInput.checked);
   }
 
   try {
@@ -8059,7 +8284,7 @@ async function refreshLeagueDetail(leagueId = state.selectedLeagueId, { force = 
   }
 }
 
-function openLeagueEnrollmentModal(leagueId = '') {
+function openLeagueEnrollmentModal(leagueId = '', { preselectCategoryIds = [] } = {}) {
   const normalizedId = leagueId || '';
   if (!normalizedId) {
     return;
@@ -8079,6 +8304,23 @@ function openLeagueEnrollmentModal(leagueId = '') {
     return;
   }
 
+  const leagueDetail =
+    state.leagueDetails instanceof Map ? state.leagueDetails.get(normalizedId) : null;
+  const requiresShirtSize = Boolean(leagueDetail?.hasShirt ?? league?.hasShirt);
+  const availableShirtSizes = (leagueDetail?.shirtSizes || league?.shirtSizes || [])
+    .map((size) => (typeof size === 'string' ? size.trim() : ''))
+    .filter(Boolean);
+  const preselectedCategoryIds = new Set(
+    Array.isArray(preselectCategoryIds)
+      ? preselectCategoryIds
+          .map((value) => {
+            const normalized = typeof value === 'string' ? value : normalizeId(value);
+            return normalized || (typeof value === 'number' ? String(value) : '');
+          })
+          .filter(Boolean)
+      : []
+  );
+
   const access = getLeagueCategoryAccessSnapshot(normalizedId);
   const availableCategories = access.available
     .slice()
@@ -8095,6 +8337,8 @@ function openLeagueEnrollmentModal(leagueId = '') {
   const form = document.createElement('form');
   form.className = 'form league-enrollment-form';
   form.noValidate = true;
+
+  let shirtField = null;
 
   const intro = document.createElement('p');
   intro.className = 'meta';
@@ -8130,7 +8374,17 @@ function openLeagueEnrollmentModal(leagueId = '') {
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.name = 'categoryIds';
-    input.value = category.id;
+    const normalizedCategoryId = normalizeId(category);
+    const categoryValue = normalizedCategoryId ||
+      (category?.id !== undefined && category?.id !== null ? String(category.id) : '');
+    if (categoryValue) {
+      input.value = categoryValue;
+      if (preselectedCategoryIds.has(categoryValue)) {
+        input.checked = true;
+      }
+    } else {
+      input.value = '';
+    }
     option.appendChild(input);
 
     const labelText = document.createElement('span');
@@ -8154,6 +8408,50 @@ function openLeagueEnrollmentModal(leagueId = '') {
   });
 
   form.appendChild(checkboxGroup);
+
+  if (requiresShirtSize) {
+    const shirtLabel = document.createElement('label');
+    shirtLabel.textContent = 'Talla de camiseta';
+
+    if (availableShirtSizes.length) {
+      const shirtSelect = document.createElement('select');
+      shirtSelect.name = 'shirtSize';
+      shirtSelect.required = true;
+
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Selecciona una talla';
+      shirtSelect.appendChild(placeholder);
+
+      availableShirtSizes.forEach((size) => {
+        const option = document.createElement('option');
+        option.value = size;
+        option.textContent = size;
+        shirtSelect.appendChild(option);
+      });
+
+      shirtLabel.appendChild(shirtSelect);
+      shirtField = shirtSelect;
+    } else {
+      const shirtInput = document.createElement('input');
+      shirtInput.type = 'text';
+      shirtInput.name = 'shirtSize';
+      shirtInput.required = true;
+      shirtInput.placeholder = 'Indica tu talla';
+      shirtInput.maxLength = 20;
+      shirtLabel.appendChild(shirtInput);
+      shirtField = shirtInput;
+    }
+
+    if (availableShirtSizes.length) {
+      const hint = document.createElement('p');
+      hint.className = 'form-hint';
+      hint.textContent = `Tallas disponibles: ${availableShirtSizes.join(', ')}`;
+      shirtLabel.appendChild(hint);
+    }
+
+    form.appendChild(shirtLabel);
+  }
 
   const status = document.createElement('p');
   status.className = 'status-message';
@@ -8187,7 +8485,17 @@ function openLeagueEnrollmentModal(leagueId = '') {
       return;
     }
 
-    const controls = Array.from(form.querySelectorAll('input, button'));
+    const payload = {};
+    if (requiresShirtSize && shirtField) {
+      const value = (shirtField.value || '').trim();
+      if (!value) {
+        setStatusMessage(status, 'error', 'Indica tu talla de camiseta.');
+        return;
+      }
+      payload.shirtSize = value;
+    }
+
+    const controls = Array.from(form.querySelectorAll('input, button, select, textarea'));
     controls.forEach((control) => {
       control.disabled = true;
     });
@@ -8199,9 +8507,13 @@ function openLeagueEnrollmentModal(leagueId = '') {
     const processedIds = [];
     let shouldCloseModal = false;
 
+    const requestOptions = Object.keys(payload).length
+      ? { method: 'POST', body: payload }
+      : { method: 'POST' };
+
     try {
       for (const categoryId of selectedIds) {
-        await request(`/categories/${categoryId}/enrollment-requests`, { method: 'POST' });
+        await request(`/categories/${categoryId}/enrollment-requests`, requestOptions);
         state.enrollmentRequests.delete(categoryId);
         processedIds.push(categoryId);
       }
@@ -8560,6 +8872,14 @@ function renderCategories(categories = []) {
       requestButton.dataset.categoryId = categoryId;
       requestButton.dataset.action = 'request-enrollment';
       requestButton.textContent = 'Solicitar inscripción';
+      const leagueReference = linkedLeague || category.league || null;
+      const leagueIdentifier =
+        typeof leagueReference === 'string'
+          ? leagueReference
+          : normalizeId(leagueReference);
+      if (leagueIdentifier) {
+        requestButton.dataset.leagueId = leagueIdentifier;
+      }
       actions.appendChild(requestButton);
       hasActions = true;
     } else if (!admin && statusValue === 'en_curso') {
@@ -17622,6 +17942,20 @@ function buildLeaguePayload(formData, isEditing = false) {
     payload.categories = categories;
   }
 
+  const hasShirt = formData.get('hasShirt') === 'true';
+  if (hasShirt) {
+    payload.hasShirt = true;
+    const rawSizes = (formData.get('shirtSizes') || '').toString();
+    const sizes = rawSizes
+      .split(/\r?\n|,/)
+      .map((size) => size.trim())
+      .filter((size) => size.length);
+    payload.shirtSizes = sizes;
+  } else if (isEditing) {
+    payload.hasShirt = false;
+    payload.shirtSizes = [];
+  }
+
   return payload;
 }
 
@@ -17794,6 +18128,20 @@ function buildTournamentPayload(form, { isEditing = false } = {}) {
     payload.fees = [];
   }
 
+  const hasShirt = formData.get('hasShirt') === 'true';
+  if (hasShirt) {
+    payload.hasShirt = true;
+    const rawSizes = (formData.get('shirtSizes') || '').toString();
+    const sizes = rawSizes
+      .split(/\r?\n|,/)
+      .map((size) => size.trim())
+      .filter((size) => size.length);
+    payload.shirtSizes = sizes;
+  } else if (isEditing) {
+    payload.hasShirt = false;
+    payload.shirtSizes = [];
+  }
+
   return payload;
 }
 
@@ -17877,6 +18225,16 @@ function openTournamentModal(tournamentId = '') {
       Cierre de inscripciones
       <input type="date" name="registrationCloseDate" />
       <span class="form-hint">Déjalo vacío si las inscripciones cierran el día de inicio.</span>
+    </label>
+    <label class="checkbox-option checkbox-option--stacked">
+      <input type="checkbox" name="hasShirt" value="true" />
+      Ofrece camiseta con la inscripción
+      <span class="form-hint">Activa esta opción para solicitar la talla al inscribirse y poder registrar la entrega.</span>
+    </label>
+    <label data-shirt-sizes-wrapper hidden>
+      Tallas disponibles
+      <textarea name="shirtSizes" rows="2" placeholder="Ej.: XS, S, M, L, XL"></textarea>
+      <span class="form-hint">Introduce las tallas separadas por comas o en líneas distintas.</span>
     </label>
     <label>
       Estado
@@ -18112,6 +18470,31 @@ function openTournamentModal(tournamentId = '') {
   if (form.elements.isPrivate) {
     form.elements.isPrivate.value = tournament?.isPrivate ? 'true' : 'false';
   }
+  const tournamentHasShirtInput = form.querySelector('input[name="hasShirt"]');
+  const tournamentShirtWrapper = form.querySelector('[data-shirt-sizes-wrapper]');
+  const tournamentShirtTextarea = form.querySelector('textarea[name="shirtSizes"]');
+  if (tournamentHasShirtInput) {
+    tournamentHasShirtInput.checked = Boolean(tournament?.hasShirt);
+  }
+  if (tournamentShirtTextarea) {
+    const sizes = Array.isArray(tournament?.shirtSizes)
+      ? tournament.shirtSizes
+          .map((size) => (typeof size === 'string' ? size.trim() : ''))
+          .filter((size) => size.length)
+          .join('\n')
+      : '';
+    tournamentShirtTextarea.value = sizes;
+  }
+  const updateTournamentShirtFields = () => {
+    if (!tournamentHasShirtInput || !tournamentShirtWrapper) return;
+    const enabled = tournamentHasShirtInput.checked;
+    tournamentShirtWrapper.hidden = !enabled;
+    if (tournamentShirtTextarea) {
+      tournamentShirtTextarea.disabled = !enabled;
+    }
+  };
+  tournamentHasShirtInput?.addEventListener('change', updateTournamentShirtFields);
+  updateTournamentShirtFields();
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -20080,6 +20463,16 @@ function openLeagueModal(leagueId = '') {
         <span class="form-hint">Importe total en euros. Déjalo vacío si la inscripción es gratuita.</span>
       </label>
     </div>
+    <label class="checkbox-option checkbox-option--stacked">
+      <input type="checkbox" name="hasShirt" value="true" />
+      Incluye camiseta para los inscritos
+      <span class="form-hint">Si está activo, se solicitará la talla en las inscripciones y podrás registrar la entrega.</span>
+    </label>
+    <label data-shirt-sizes-wrapper hidden>
+      Tallas disponibles
+      <textarea name="shirtSizes" rows="2" placeholder="Ej.: XS, S, M, L, XL"></textarea>
+      <span class="form-hint">Introduce las tallas separadas por comas o en líneas distintas.</span>
+    </label>
     <label>
       Categorías asociadas
       <select name="categories" multiple size="6"></select>
@@ -20114,6 +20507,32 @@ function openLeagueModal(leagueId = '') {
     form.elements.enrollmentFee.value =
       typeof league?.enrollmentFee === 'number' ? String(league.enrollmentFee) : '';
   }
+
+  const hasShirtInput = form.querySelector('input[name="hasShirt"]');
+  const shirtSizesWrapper = form.querySelector('[data-shirt-sizes-wrapper]');
+  const shirtSizesTextarea = form.querySelector('textarea[name="shirtSizes"]');
+  if (hasShirtInput) {
+    hasShirtInput.checked = Boolean(league?.hasShirt);
+  }
+  if (shirtSizesTextarea) {
+    const existingSizes = Array.isArray(league?.shirtSizes)
+      ? league.shirtSizes
+          .map((size) => (typeof size === 'string' ? size.trim() : ''))
+          .filter((size) => size.length)
+          .join('\n')
+      : '';
+    shirtSizesTextarea.value = existingSizes;
+  }
+  const updateLeagueShirtFields = () => {
+    if (!hasShirtInput || !shirtSizesWrapper) return;
+    const enabled = hasShirtInput.checked;
+    shirtSizesWrapper.hidden = !enabled;
+    if (shirtSizesTextarea) {
+      shirtSizesTextarea.disabled = !enabled;
+    }
+  };
+  hasShirtInput?.addEventListener('change', updateLeagueShirtFields);
+  updateLeagueShirtFields();
 
   const categoriesSelect = form.elements.categories;
   if (categoriesSelect) {
@@ -23677,6 +24096,33 @@ categoriesList?.addEventListener('click', async (event) => {
   if (!categoryId) return;
 
   if (action === 'request-enrollment') {
+    const category = state.categories.find((item) => normalizeId(item) === categoryId);
+    const datasetLeagueId = button.dataset.leagueId || '';
+    const fallbackLeagueId = normalizeId(category?.league);
+    const leagueIdForRequest = datasetLeagueId || fallbackLeagueId || '';
+
+    let requiresShirtSize = false;
+    if (leagueIdForRequest) {
+      const leagueDetail =
+        state.leagueDetails instanceof Map ? state.leagueDetails.get(leagueIdForRequest) : null;
+      const leagueInfo = leagueDetail || getLeagueById(leagueIdForRequest);
+      requiresShirtSize = Boolean(leagueDetail?.hasShirt ?? leagueInfo?.hasShirt);
+      if (requiresShirtSize && leagueInfo) {
+        try {
+          if (!(state.leagueDetails instanceof Map && state.leagueDetails.has(leagueIdForRequest))) {
+            await refreshLeagueDetail(leagueIdForRequest);
+          }
+        } catch (error) {
+          console.warn('No se pudo actualizar el detalle de la liga antes de solicitar inscripción', error);
+        }
+      }
+    }
+
+    if (requiresShirtSize && leagueIdForRequest) {
+      openLeagueEnrollmentModal(leagueIdForRequest, { preselectCategoryIds: [categoryId] });
+      return;
+    }
+
     const previousLabel = button.textContent;
     button.disabled = true;
     button.textContent = 'Enviando solicitud...';

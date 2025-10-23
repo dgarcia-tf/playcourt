@@ -15,11 +15,13 @@ async function requestEnrollment(req, res) {
 
   const { categoryId } = req.params;
   const playerId = req.user.id;
+  const requestedShirtSize =
+    typeof req.body?.shirtSize === 'string' ? req.body.shirtSize.trim() : '';
 
   const [category, existingEnrollment, pendingRequest, user] = await Promise.all([
     Category.findById(categoryId).populate(
       'league',
-      'status registrationCloseDate startDate isPrivate'
+      'status registrationCloseDate startDate isPrivate hasShirt shirtSizes'
     ),
     Enrollment.findOne({ category: categoryId, user: playerId }),
     EnrollmentRequest.findOne({
@@ -87,6 +89,27 @@ async function requestEnrollment(req, res) {
       .json({ message: 'El género del jugador no coincide con la categoría seleccionada.' });
   }
 
+  const leagueHasShirt = Boolean(category.league?.hasShirt);
+  const availableShirtSizes = Array.isArray(category.league?.shirtSizes)
+    ? category.league.shirtSizes
+        .map((size) => (typeof size === 'string' ? size.trim() : ''))
+        .filter((size) => size.length)
+    : [];
+
+  if (leagueHasShirt) {
+    if (!requestedShirtSize) {
+      return res
+        .status(400)
+        .json({ message: 'Debes indicar la talla de camiseta para completar la solicitud.' });
+    }
+
+    if (availableShirtSizes.length && !availableShirtSizes.includes(requestedShirtSize)) {
+      return res
+        .status(400)
+        .json({ message: 'La talla de camiseta seleccionada no es válida para esta liga.' });
+    }
+  }
+
   const minimumAge = Number(category.minimumAge);
   if (Number.isFinite(minimumAge) && minimumAge > 0) {
     if (!user.birthDate) {
@@ -117,6 +140,7 @@ async function requestEnrollment(req, res) {
   const enrollmentRequest = await EnrollmentRequest.create({
     category: category._id,
     user: playerId,
+    shirtSize: leagueHasShirt ? requestedShirtSize || undefined : undefined,
   });
 
   await enrollmentRequest.populate('user', 'fullName email phone gender preferredSchedule birthDate');
@@ -184,7 +208,10 @@ async function updateEnrollmentRequest(req, res) {
 
   if (action === 'approve') {
     const [category, existingEnrollment] = await Promise.all([
-      Category.findById(categoryId).populate('league', 'status registrationCloseDate'),
+      Category.findById(categoryId).populate(
+        'league',
+        'status registrationCloseDate hasShirt shirtSizes'
+      ),
       Enrollment.findOne({ category: categoryId, user: enrollmentRequest.user.id }),
     ]);
 
@@ -203,6 +230,34 @@ async function updateEnrollmentRequest(req, res) {
       return res
         .status(400)
         .json({ message: 'La categoría ya no admite nuevas inscripciones.' });
+    }
+
+    const overrideShirtSize =
+      typeof req.body?.shirtSize === 'string' ? req.body.shirtSize.trim() : '';
+    const requestShirtSize =
+      typeof enrollmentRequest.shirtSize === 'string'
+        ? enrollmentRequest.shirtSize.trim()
+        : '';
+    const resolvedShirtSize = overrideShirtSize || requestShirtSize;
+    const leagueHasShirt = Boolean(category.league?.hasShirt);
+    const availableShirtSizes = Array.isArray(category.league?.shirtSizes)
+      ? category.league.shirtSizes
+          .map((size) => (typeof size === 'string' ? size.trim() : ''))
+          .filter((size) => size.length)
+      : [];
+
+    if (leagueHasShirt) {
+      if (!resolvedShirtSize) {
+        return res
+          .status(400)
+          .json({ message: 'Debe indicar la talla de camiseta para completar la inscripción.' });
+      }
+
+      if (availableShirtSizes.length && !availableShirtSizes.includes(resolvedShirtSize)) {
+        return res
+          .status(400)
+          .json({ message: 'La talla de camiseta seleccionada no es válida para esta liga.' });
+      }
     }
 
     if (category.league) {
@@ -246,6 +301,12 @@ async function updateEnrollmentRequest(req, res) {
     }
 
     if (existingEnrollment) {
+      if (leagueHasShirt && resolvedShirtSize) {
+        existingEnrollment.shirtSize = resolvedShirtSize;
+        await existingEnrollment.save();
+      }
+
+      enrollmentRequest.shirtSize = leagueHasShirt ? resolvedShirtSize || undefined : undefined;
       enrollmentRequest.status = ENROLLMENT_REQUEST_STATUSES.APPROVED;
       await enrollmentRequest.save();
 
@@ -255,10 +316,12 @@ async function updateEnrollmentRequest(req, res) {
     const enrollment = await Enrollment.create({
       category: category._id,
       user: enrollmentRequest.user.id,
+      shirtSize: leagueHasShirt ? resolvedShirtSize || undefined : undefined,
     });
 
     await enrollment.populate('user', 'fullName email gender phone preferredSchedule birthDate');
 
+    enrollmentRequest.shirtSize = leagueHasShirt ? resolvedShirtSize || undefined : undefined;
     enrollmentRequest.status = ENROLLMENT_REQUEST_STATUSES.APPROVED;
     await enrollmentRequest.save();
 

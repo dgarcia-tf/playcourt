@@ -39,6 +39,10 @@ const paymentRecordSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    shirtDelivered: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
@@ -100,6 +104,19 @@ const leagueSchema = new mongoose.Schema(
     enrollmentFee: {
       type: Number,
       min: 0,
+    },
+    hasShirt: {
+      type: Boolean,
+      default: false,
+    },
+    shirtSizes: {
+      type: [
+        {
+          type: String,
+          trim: true,
+        },
+      ],
+      default: [],
     },
     categories: [
       {
