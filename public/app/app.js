@@ -2747,15 +2747,39 @@ function calculateLeaguePaymentTotal(entries = []) {
 function updateTournamentPaymentFeeIndicator(feeInfo) {
   if (!tournamentPaymentsFeeBadge) return;
 
-  const info = feeInfo || null;
-  const amount = Number(info?.amount);
-  const currency = info?.currency || DEFAULT_TOURNAMENT_CURRENCY;
-  const label = info?.label ? info.label.toString().trim() : '';
+  const info = feeInfo || createEmptyTournamentFeeInfo();
 
-  if (Number.isFinite(amount) && amount > 0) {
-    const formatted = formatCurrencyValue(amount, currency) || `${amount.toFixed(2)} ${currency}`;
-    const labelSuffix = label ? ` (${label})` : '';
-    tournamentPaymentsFeeBadge.textContent = `Cuota sugerida: ${formatted}${labelSuffix}`;
+  const formatEntry = (entry, fallbackLabel = '') => {
+    if (!entry || !Number.isFinite(entry.amount)) {
+      return '';
+    }
+    const entryCurrency = entry.currency || info.currency || DEFAULT_TOURNAMENT_CURRENCY;
+    const formatted =
+      formatCurrencyValue(entry.amount, entryCurrency) ||
+      `${entry.amount.toFixed(2)} ${entryCurrency}`;
+    const label = (entry.label || fallbackLabel || '').toString().trim();
+    return label ? `${label}: ${formatted}` : formatted;
+  };
+
+  const parts = [];
+  const memberText = formatEntry(info.member);
+  if (memberText) {
+    parts.push(memberText);
+  }
+  const nonMemberText = formatEntry(info.nonMember);
+  if (nonMemberText) {
+    parts.push(nonMemberText);
+  }
+
+  if (!parts.length) {
+    const generalText = formatEntry(info.general, 'Cuota');
+    if (generalText) {
+      parts.push(generalText);
+    }
+  }
+
+  if (parts.length) {
+    tournamentPaymentsFeeBadge.textContent = `Cuota sugerida por categoría: ${parts.join(' · ')}`;
     tournamentPaymentsFeeBadge.hidden = false;
   } else {
     tournamentPaymentsFeeBadge.textContent = '';
@@ -3374,56 +3398,88 @@ async function getLeaguePaymentData(leagueId, { force = false } = {}) {
   return result;
 }
 
+function createEmptyTournamentFeeInfo() {
+  return {
+    currency: DEFAULT_TOURNAMENT_CURRENCY,
+    member: null,
+    nonMember: null,
+    general: null,
+  };
+}
+
 function resolveTournamentFeeInfo(detail) {
   const fees = Array.isArray(detail?.fees) ? detail.fees : [];
 
+  const info = createEmptyTournamentFeeInfo();
+
   const normalizeCurrency = (value) => {
-    if (!value) return DEFAULT_TOURNAMENT_CURRENCY;
+    if (!value) return '';
     const trimmed = value.toString().trim();
-    return trimmed ? trimmed.toUpperCase() : DEFAULT_TOURNAMENT_CURRENCY;
+    return trimmed ? trimmed.toUpperCase() : '';
   };
 
-  for (const fee of fees) {
-    const amount = Number(fee?.memberAmount);
-    if (Number.isFinite(amount) && amount >= 0) {
-      const baseLabel = fee?.label ? fee.label.toString().trim() : '';
-      return {
-        amount,
-        currency: normalizeCurrency(fee?.currency),
-        label: baseLabel ? `${baseLabel} · Socios` : 'Socios',
-      };
-    }
-  }
+  let resolvedCurrency = '';
 
-  for (const fee of fees) {
-    const amount = Number(fee?.nonMemberAmount);
-    if (Number.isFinite(amount) && amount >= 0) {
-      const baseLabel = fee?.label ? fee.label.toString().trim() : '';
-      return {
-        amount,
-        currency: normalizeCurrency(fee?.currency),
-        label: baseLabel ? `${baseLabel} · No socios` : 'No socios',
-      };
-    }
-  }
+  fees.forEach((fee) => {
+    const baseLabel = fee?.label ? fee.label.toString().trim() : '';
+    const rawCurrency = normalizeCurrency(fee?.currency);
 
-  for (const fee of fees) {
-    const amount = Number(fee?.amount);
-    if (Number.isFinite(amount) && amount >= 0) {
-      return {
-        amount,
-        currency: normalizeCurrency(fee?.currency),
-        label: fee?.label ? fee.label.toString().trim() : '',
-      };
+    if (rawCurrency) {
+      resolvedCurrency = rawCurrency;
     }
-  }
 
-  const fallbackCurrency = fees.find((fee) => fee?.currency)?.currency;
-  return {
-    amount: null,
-    currency: normalizeCurrency(fallbackCurrency),
-    label: '',
-  };
+    const entryCurrency = rawCurrency || resolvedCurrency || DEFAULT_TOURNAMENT_CURRENCY;
+
+    if (!info.member) {
+      const memberAmount = Number(fee?.memberAmount);
+      if (Number.isFinite(memberAmount) && memberAmount >= 0) {
+        info.member = {
+          amount: memberAmount,
+          currency: entryCurrency,
+          label: baseLabel ? `${baseLabel} · Socios` : 'Socios',
+        };
+      }
+    }
+
+    if (!info.nonMember) {
+      const nonMemberAmount = Number(fee?.nonMemberAmount);
+      if (Number.isFinite(nonMemberAmount) && nonMemberAmount >= 0) {
+        info.nonMember = {
+          amount: nonMemberAmount,
+          currency: entryCurrency,
+          label: baseLabel ? `${baseLabel} · No socios` : 'No socios',
+        };
+      }
+    }
+
+    if (!info.general) {
+      const legacyAmount = Number(fee?.amount);
+      if (Number.isFinite(legacyAmount) && legacyAmount >= 0) {
+        info.general = {
+          amount: legacyAmount,
+          currency: entryCurrency,
+          label: baseLabel || '',
+        };
+      }
+    }
+  });
+
+  const fallbackCurrency =
+    resolvedCurrency ||
+    info.member?.currency ||
+    info.nonMember?.currency ||
+    info.general?.currency ||
+    DEFAULT_TOURNAMENT_CURRENCY;
+
+  info.currency = fallbackCurrency;
+
+  ['member', 'nonMember', 'general'].forEach((key) => {
+    if (info[key] && !info[key].currency) {
+      info[key].currency = fallbackCurrency;
+    }
+  });
+
+  return info;
 }
 
 async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
@@ -3431,7 +3487,8 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
   if (!normalized) {
     return {
       entries: [],
-      feeInfo: { amount: null, currency: DEFAULT_TOURNAMENT_CURRENCY, label: '' },
+      feeInfo: createEmptyTournamentFeeInfo(),
+      currency: DEFAULT_TOURNAMENT_CURRENCY,
     };
   }
 
@@ -3454,7 +3511,8 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
     }
     return {
       entries: [],
-      feeInfo: { amount: null, currency: DEFAULT_TOURNAMENT_CURRENCY, label: '' },
+      feeInfo: createEmptyTournamentFeeInfo(),
+      currency: DEFAULT_TOURNAMENT_CURRENCY,
     };
   }
 
@@ -3508,22 +3566,79 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
   });
 
   const feeInfo = resolveTournamentFeeInfo(detail);
-  const defaultAmount = Number.isFinite(Number(feeInfo.amount)) ? Number(feeInfo.amount) : null;
-  const currency = feeInfo.currency || DEFAULT_TOURNAMENT_CURRENCY;
+  const baseCurrency =
+    feeInfo.currency ||
+    feeInfo.member?.currency ||
+    feeInfo.nonMember?.currency ||
+    feeInfo.general?.currency ||
+    DEFAULT_TOURNAMENT_CURRENCY;
+
+  const computeSuggestedAmount = (player, playerCategories = []) => {
+    const categoryCount = Array.isArray(playerCategories) ? playerCategories.length : 0;
+    if (categoryCount <= 0) {
+      return null;
+    }
+
+    const isMember = Boolean(player?.isMember);
+    const options = [];
+
+    if (isMember) {
+      if (feeInfo.member) options.push(feeInfo.member);
+      if (feeInfo.general) options.push(feeInfo.general);
+      if (feeInfo.nonMember) options.push(feeInfo.nonMember);
+    } else {
+      if (feeInfo.nonMember) options.push(feeInfo.nonMember);
+      if (feeInfo.general) options.push(feeInfo.general);
+      if (feeInfo.member) options.push(feeInfo.member);
+    }
+
+    const baseEntry = options.find((entry) => Number.isFinite(entry?.amount) && entry.amount >= 0);
+
+    if (!baseEntry) {
+      return null;
+    }
+
+    const amount = baseEntry.amount * categoryCount;
+    const suggestionCurrency = baseEntry.currency || baseCurrency;
+
+    return {
+      amount,
+      currency: suggestionCurrency,
+      baseAmount: baseEntry.amount,
+      baseLabel: baseEntry.label || '',
+      categoryCount,
+      isMember,
+    };
+  };
 
   const createEntry = ({ player, playerId, categories: playerCategories, payment, hasEnrollment }) => {
     const normalizedPlayer = player && typeof player === 'object' ? player : {};
+    const categoriesForPlayer = Array.isArray(playerCategories) ? playerCategories : [];
+    const suggestion = computeSuggestedAmount(normalizedPlayer, categoriesForPlayer);
     const amountValue = Number(payment?.amount);
-    const resolvedAmount = Number.isFinite(amountValue) && amountValue >= 0 ? amountValue : defaultAmount;
+    const recordedAmount = Number.isFinite(amountValue) && amountValue >= 0 ? amountValue : null;
+    const suggestionAmount = suggestion?.amount;
+    const resolvedAmount =
+      recordedAmount !== null
+        ? recordedAmount
+        : Number.isFinite(suggestionAmount)
+        ? suggestionAmount
+        : null;
+    const entryCurrency =
+      (recordedAmount !== null ? baseCurrency : suggestion?.currency) || baseCurrency;
 
     return {
       player: normalizedPlayer,
       playerId,
-      categories: playerCategories,
+      categories: categoriesForPlayer,
       paymentRecord: payment || null,
       paymentId: payment ? normalizeId(payment) : '',
       status: payment?.status && PAYMENT_STATUS_LABELS[payment.status] ? payment.status : 'pendiente',
       amount: typeof resolvedAmount === 'number' ? resolvedAmount : null,
+      recordedAmount,
+      suggestedAmount: Number.isFinite(suggestionAmount) ? suggestionAmount : null,
+      suggestion,
+      amountSource: recordedAmount !== null ? 'recorded' : suggestion ? 'suggested' : 'none',
       method: payment?.method || '',
       reference: payment?.reference || '',
       notes: payment?.notes || '',
@@ -3531,7 +3646,7 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
       recordedBy: payment?.recordedBy || null,
       updatedAt: payment?.updatedAt || payment?.createdAt || null,
       hasEnrollment,
-      currency,
+      currency: entryCurrency,
     };
   };
 
@@ -3587,10 +3702,12 @@ async function getTournamentPaymentData(tournamentId, { force = false } = {}) {
     return 0;
   });
 
+  feeInfo.currency = baseCurrency;
+
   const result = {
     entries,
     feeInfo,
-    currency,
+    currency: baseCurrency,
   };
 
   if (!(state.tournamentPayments instanceof Map)) {
@@ -3860,6 +3977,11 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
   headerMeta.appendChild(statusBadge);
 
   const entryCurrency = entry.currency || feeInfo?.currency || DEFAULT_TOURNAMENT_CURRENCY;
+  const suggestion = entry.suggestion || null;
+  const hasRecordedAmount = typeof entry.recordedAmount === 'number' && Number.isFinite(entry.recordedAmount);
+  const hasSuggestedAmount = typeof entry.suggestedAmount === 'number' && Number.isFinite(entry.suggestedAmount);
+  const recordedAmountValue = hasRecordedAmount ? entry.recordedAmount : null;
+  const suggestedAmountValue = hasSuggestedAmount ? entry.suggestedAmount : null;
 
   if (Number.isFinite(entry.amount)) {
     const amountSpan = document.createElement('span');
@@ -3908,6 +4030,19 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
       contactMeta.appendChild(document.createElement('span')).textContent = entry.player.phone;
     }
     body.appendChild(contactMeta);
+  }
+
+  if (suggestion && Number.isFinite(suggestion.amount)) {
+    const suggestionMeta = document.createElement('div');
+    suggestionMeta.className = 'tournament-payment-meta';
+    const membershipLabel = suggestion.isMember ? 'socio' : 'no socio';
+    const categoryLabel = suggestion.categoryCount === 1 ? 'categoría' : 'categorías';
+    const suggestionCurrency = suggestion.currency || entryCurrency;
+    const formattedSuggestion =
+      formatCurrencyValue(suggestion.amount, suggestionCurrency) ||
+      `${suggestion.amount.toFixed(2)} ${suggestionCurrency}`;
+    suggestionMeta.textContent = `Importe sugerido (${suggestion.categoryCount} ${categoryLabel} · ${membershipLabel}): ${formattedSuggestion}`;
+    body.appendChild(suggestionMeta);
   }
 
   if (entry.reference) {
@@ -3961,15 +4096,20 @@ function createTournamentPaymentItem(entry, { feeInfo = null } = {}) {
   amountInput.min = '0';
   amountInput.step = '0.01';
 
-  const defaultAmount = Number.isFinite(Number(feeInfo?.amount)) ? Number(feeInfo.amount) : null;
-  const defaultCurrency = feeInfo?.currency || entryCurrency;
-
-  if (Number.isFinite(entry.amount)) {
-    amountInput.value = entry.amount.toFixed(2);
-  } else if (Number.isFinite(defaultAmount) && defaultAmount > 0) {
-    const formatted =
-      formatCurrencyValue(defaultAmount, defaultCurrency) || `${defaultAmount.toFixed(2)} ${defaultCurrency}`;
-    amountInput.placeholder = formatted;
+  if (hasRecordedAmount) {
+    amountInput.value = recordedAmountValue.toFixed(2);
+  } else if (hasSuggestedAmount) {
+    amountInput.value = suggestedAmountValue.toFixed(2);
+  } else {
+    const fallbackEntry = feeInfo?.member || feeInfo?.nonMember || feeInfo?.general || null;
+    const fallbackAmount = Number(fallbackEntry?.amount);
+    const fallbackCurrency = fallbackEntry?.currency || feeInfo?.currency || entryCurrency;
+    if (Number.isFinite(fallbackAmount) && fallbackAmount >= 0) {
+      const formatted =
+        formatCurrencyValue(fallbackAmount, fallbackCurrency) ||
+        `${fallbackAmount.toFixed(2)} ${fallbackCurrency}`;
+      amountInput.placeholder = formatted;
+    }
   }
 
   amountLabel.appendChild(amountInput);
