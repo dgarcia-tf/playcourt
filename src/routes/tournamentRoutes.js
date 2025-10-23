@@ -24,6 +24,7 @@ const {
 } = require('../controllers/tournamentCategoryController');
 const {
   createTournamentEnrollment,
+  listTournamentPlayers,
   listTournamentEnrollments,
   updateEnrollmentStatus,
   removeTournamentEnrollment,
@@ -245,6 +246,8 @@ router.post(
 );
 
 // Enrollments
+router.get('/:tournamentId/enrollments', [param('tournamentId').isMongoId()], listTournamentPlayers);
+
 router.get(
   '/:tournamentId/categories/:categoryId/enrollments',
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
