@@ -177,132 +177,176 @@
                 <span class="menu-label">Notificaciones</span>
                 <span class="menu-badge" id="menu-notifications-badge" hidden>0</span>
               </button>
-              <div class="menu-group">
-                <button type="button" class="menu-button menu-button--parent" data-target="section-leagues">
-                  Ligas
+              <div class="menu-group" data-collapsible="true">
+                <button
+                  type="button"
+                  class="menu-button menu-button--parent menu-button--with-icon"
+                  data-target="section-tennis"
+                  data-submenu-toggle="true"
+                  aria-expanded="false"
+                >
+                  <span class="menu-icon" aria-hidden="true">
+                    <svg
+                      class="menu-icon__svg"
+                      viewBox="0 0 24 24"
+                      role="img"
+                      focusable="false"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4.6 4.6c3.5-3.5 9.1-3.5 12.6 0s3.5 9.1 0 12.6l-3.2-3.2"
+                      ></path>
+                      <ellipse
+                        cx="9.4"
+                        cy="9.4"
+                        rx="4.8"
+                        ry="3.4"
+                        transform="rotate(-45 9.4 9.4)"
+                      ></ellipse>
+                      <line x1="16.4" y1="16.4" x2="20" y2="20"></line>
+                    </svg>
+                  </span>
+                  <span class="menu-label">Tenis</span>
                 </button>
-                <div class="menu-submenu" role="group" aria-label="Secciones de ligas">
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-league-dashboard"
-                    data-parent-target="section-leagues"
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-categories"
-                    data-parent-target="section-leagues"
-                  >
-                    Categorías
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-league-players"
-                    data-parent-target="section-leagues"
-                  >
-                    Jugadores
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-league-payments"
-                    data-parent-target="section-leagues"
-                    data-requires-admin="true"
-                  >
-                    Pagos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-matches"
-                    data-parent-target="section-leagues"
-                  >
-                    <span class="menu-label">Partidos</span>
-                    <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-calendar"
-                    data-parent-target="section-leagues"
-                  >
-                    Calendario
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-ranking"
-                    data-parent-target="section-leagues"
-                  >
-                    Ranking
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-rules"
-                    data-parent-target="section-leagues"
-                  >
-                    Reglamento
-                  </button>
-                </div>
-              </div>
-              <div class="menu-group">
-                <button type="button" class="menu-button menu-button--parent" data-target="section-tournaments">
-                  Torneos
-                </button>
-                <div class="menu-submenu" role="group" aria-label="Secciones de torneos">
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-tournament-dashboard"
-                    data-parent-target="section-tournaments"
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-tournaments"
-                    data-parent-target="section-tournaments"
-                  >
-                    Resumen
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-tournament-categories"
-                    data-parent-target="section-tournaments"
-                  >
-                    Categorías
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-tournament-enrollments"
-                    data-parent-target="section-tournaments"
-                  >
-                    Jugadores inscritos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-tournament-matches"
-                    data-parent-target="section-tournaments"
-                  >
-                    Partidos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-tournament-rules"
-                    data-parent-target="section-tournaments"
-                  >
-                    Reglamento
-                  </button>
+                <div class="menu-submenu" role="group" aria-label="Secciones de tenis" hidden>
+                  <div class="menu-group">
+                    <button
+                      type="button"
+                      class="menu-button menu-button--parent menu-button--nested"
+                      data-target="section-leagues"
+                      data-parent-target="section-tennis"
+                    >
+                      Ligas
+                    </button>
+                    <div class="menu-submenu" role="group" aria-label="Secciones de ligas">
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-league-dashboard"
+                        data-parent-target="section-leagues"
+                      >
+                        Dashboard
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-categories"
+                        data-parent-target="section-leagues"
+                      >
+                        Categorías
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-league-players"
+                        data-parent-target="section-leagues"
+                      >
+                        Jugadores
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-league-payments"
+                        data-parent-target="section-leagues"
+                        data-requires-admin="true"
+                      >
+                        Pagos
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-matches"
+                        data-parent-target="section-leagues"
+                      >
+                        <span class="menu-label">Partidos</span>
+                        <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-calendar"
+                        data-parent-target="section-leagues"
+                      >
+                        Calendario
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-ranking"
+                        data-parent-target="section-leagues"
+                      >
+                        Ranking
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-rules"
+                        data-parent-target="section-leagues"
+                      >
+                        Reglamento
+                      </button>
+                    </div>
+                  </div>
+                  <div class="menu-group">
+                    <button
+                      type="button"
+                      class="menu-button menu-button--parent menu-button--nested"
+                      data-target="section-tournaments"
+                      data-parent-target="section-tennis"
+                    >
+                      Torneos
+                    </button>
+                    <div class="menu-submenu" role="group" aria-label="Secciones de torneos">
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-tournament-dashboard"
+                        data-parent-target="section-tournaments"
+                      >
+                        Dashboard
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-tournaments"
+                        data-parent-target="section-tournaments"
+                      >
+                        Resumen
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-tournament-categories"
+                        data-parent-target="section-tournaments"
+                      >
+                        Categorías
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-tournament-enrollments"
+                        data-parent-target="section-tournaments"
+                      >
+                        Jugadores inscritos
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-tournament-matches"
+                        data-parent-target="section-tournaments"
+                      >
+                        Partidos
+                      </button>
+                      <button
+                        type="button"
+                        class="menu-button menu-button--nested menu-button--subnested"
+                        data-target="section-tournament-rules"
+                        data-parent-target="section-tournaments"
+                      >
+                        Reglamento
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div

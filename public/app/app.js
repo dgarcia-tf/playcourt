@@ -3776,6 +3776,25 @@ function syncNoticeBoardState(messages = state.generalChatMessages) {
   updateNoticesMenuBadge(unread);
 }
 
+function addParentTargets(button, activeTargets, visitedTargets = new Set()) {
+  let currentButton = button;
+  while (currentButton) {
+    const parentTarget = currentButton.dataset?.parentTarget;
+    if (!parentTarget || visitedTargets.has(parentTarget)) {
+      return;
+    }
+
+    visitedTargets.add(parentTarget);
+    activeTargets.add(parentTarget);
+
+    const parentButton = menuButtons.find((candidate) => candidate.dataset.target === parentTarget);
+    if (!parentButton || parentButton === currentButton) {
+      return;
+    }
+    currentButton = parentButton;
+  }
+}
+
 function setActiveMenu(targetId = null) {
   if (!menuButtons.length) return;
 
@@ -3786,9 +3805,8 @@ function setActiveMenu(targetId = null) {
     const matchingButtons = menuButtons.filter((button) => button.dataset.target === targetId);
     const targetButton =
       matchingButtons.find((button) => button.dataset.submenuToggle !== 'true') || matchingButtons[0];
-    const parentTarget = targetButton?.dataset.parentTarget;
-    if (parentTarget) {
-      activeTargets.add(parentTarget);
+    if (targetButton) {
+      addParentTargets(targetButton, activeTargets);
     }
   }
 

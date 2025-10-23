@@ -869,6 +869,35 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   background: rgba(148, 163, 184, 0.08);
 }
 
+.menu-button--subnested {
+  padding-left: 3rem;
+}
+
+.menu-button--with-icon {
+  gap: 0.75rem;
+}
+
+.menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
+}
+
+.menu-icon__svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .menu-button--nested .menu-badge {
   margin-left: auto;
 }
