@@ -6541,20 +6541,6 @@ function renderLeagues(leagues = []) {
       content.appendChild(actions);
     }
 
-    const posterUrl = typeof league.poster === 'string' ? league.poster.trim() : '';
-    if (posterUrl) {
-      item.classList.add('list-item--with-poster');
-      const posterWrapper = document.createElement('div');
-      posterWrapper.className = 'list-item__poster';
-      const poster = document.createElement('img');
-      poster.className = 'list-item__poster-image';
-      poster.src = posterUrl;
-      poster.alt = league.name ? `Cartel de la liga ${league.name}` : 'Cartel de la liga';
-      poster.loading = 'lazy';
-      posterWrapper.appendChild(poster);
-      item.appendChild(posterWrapper);
-    }
-
     leaguesList.appendChild(item);
   });
 
@@ -6631,6 +6617,11 @@ function renderLeagueDetail() {
 
   leagueDetailBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
+  const layout = document.createElement('div');
+  layout.className = 'league-detail__layout';
+  const content = document.createElement('div');
+  content.className = 'league-detail__content';
+  layout.appendChild(content);
 
   const posterSource =
     typeof detail?.poster === 'string' && detail.poster.trim()
@@ -6643,7 +6634,7 @@ function renderLeagueDetail() {
     poster.className = 'league-detail__poster';
     poster.src = posterSource;
     poster.alt = info.name ? `Cartel de la liga ${info.name}` : 'Cartel de la liga';
-    fragment.appendChild(poster);
+    layout.appendChild(poster);
   }
 
   const header = document.createElement('div');
@@ -6686,7 +6677,7 @@ function renderLeagueDetail() {
     header.appendChild(loadingDescription);
   }
 
-  fragment.appendChild(header);
+  content.appendChild(header);
 
   const metaItems = [];
   const startValue = detail?.startDate || baseLeague?.startDate;
@@ -6732,8 +6723,10 @@ function renderLeagueDetail() {
       row.appendChild(valueSpan);
       metaContainer.appendChild(row);
     });
-    fragment.appendChild(metaContainer);
+    content.appendChild(metaContainer);
   }
+
+  fragment.appendChild(layout);
 
   const categories = getLeagueCategories(leagueId);
   if (categories.length) {
