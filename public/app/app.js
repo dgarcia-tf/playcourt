@@ -6430,35 +6430,6 @@ function renderLeagues(leagues = []) {
     title.textContent = league.name || 'Liga';
     button.appendChild(title);
 
-    const statusMeta = document.createElement('div');
-    statusMeta.className = 'meta meta-league';
-    if (league.year) {
-      statusMeta.appendChild(document.createElement('span')).textContent = `Temporada ${league.year}`;
-    }
-    const statusValue = league.status || 'activa';
-    const statusBadge = document.createElement('span');
-    statusBadge.className = `tag league-status league-status--${statusValue}`;
-    statusBadge.textContent = LEAGUE_STATUS_LABELS[statusValue] || LEAGUE_STATUS_LABELS.activa;
-    statusMeta.appendChild(statusBadge);
-    button.appendChild(statusMeta);
-
-    const dateParts = [];
-    if (league.startDate) {
-      dateParts.push(`Inicio: ${formatDate(league.startDate)}`);
-    }
-    if (league.endDate) {
-      dateParts.push(`Fin: ${formatDate(league.endDate)}`);
-    }
-    if (league.status === 'cerrada' && league.closedAt) {
-      dateParts.push(`Cierre: ${formatDate(league.closedAt)}`);
-    }
-    if (dateParts.length) {
-      const datesMeta = document.createElement('div');
-      datesMeta.className = 'meta meta-league-dates';
-      datesMeta.textContent = dateParts.join(' · ');
-      button.appendChild(datesMeta);
-    }
-
     if (league.description) {
       const description = document.createElement('p');
       description.className = 'note';
@@ -6640,29 +6611,7 @@ function renderLeagueDetail() {
   const header = document.createElement('div');
   header.className = 'league-detail__header';
 
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-
-  const statusValue = detail?.status || baseLeague?.status || 'activa';
-  const statusTag = document.createElement('span');
-  statusTag.className = `tag league-status league-status--${statusValue}`;
-  statusTag.textContent = LEAGUE_STATUS_LABELS[statusValue] || LEAGUE_STATUS_LABELS.activa;
-  meta.appendChild(statusTag);
-
-  if (rangeLabel) {
-    const rangeSpan = document.createElement('span');
-    rangeSpan.textContent = rangeLabel;
-    meta.appendChild(rangeSpan);
-  }
-
   const registrationClose = detail?.registrationCloseDate || baseLeague?.registrationCloseDate;
-  if (registrationClose) {
-    const registrationSpan = document.createElement('span');
-    registrationSpan.textContent = `Inscripciones: ${formatShortDate(registrationClose)}`;
-    meta.appendChild(registrationSpan);
-  }
-
-  header.appendChild(meta);
 
   const descriptionText = detail?.description || baseLeague?.description;
   if (descriptionText) {
