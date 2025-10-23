@@ -90,7 +90,6 @@ async function enrollPlayer(req, res) {
     }
   }
 
-  const league = category.league;
   if (league) {
     await ensureLeagueIsOpen(league, 'La liga está cerrada y no admite nuevas inscripciones.');
 
