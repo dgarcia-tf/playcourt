@@ -10063,6 +10063,8 @@ function renderTournamentCategories({ loading = false } = {}) {
   }
 
   const admin = isAdmin();
+  const tournamentPosterUrl = typeof detail?.poster === 'string' ? detail.poster.trim() : '';
+  const tournamentName = detail?.name || '';
   tournamentCategoriesEmpty.hidden = true;
 
   categories
@@ -10249,6 +10251,27 @@ function renderTournamentCategories({ loading = false } = {}) {
 
       if (hasActions || admin) {
         content.appendChild(actions);
+      }
+
+      const rawCategoryPoster = typeof category.poster === 'string' ? category.poster.trim() : '';
+      const posterUrl = rawCategoryPoster || tournamentPosterUrl;
+      if (posterUrl) {
+        item.classList.add('list-item--with-poster');
+        const posterWrapper = document.createElement('div');
+        posterWrapper.className = 'list-item__poster';
+        const poster = document.createElement('img');
+        poster.className = 'list-item__poster-image';
+        poster.src = posterUrl;
+        if (rawCategoryPoster && category.name) {
+          poster.alt = `Cartel de la categoría ${category.name}`;
+        } else if (tournamentName) {
+          poster.alt = `Cartel del torneo ${tournamentName}`;
+        } else {
+          poster.alt = 'Cartel del torneo';
+        }
+        poster.loading = 'lazy';
+        posterWrapper.appendChild(poster);
+        item.appendChild(posterWrapper);
       }
 
       tournamentCategoriesList.appendChild(item);
