@@ -13,6 +13,7 @@ const {
 } = require('../models/TournamentMatch');
 const { resolveMatchScheduledAt } = require('../utils/matchSchedule');
 const { TournamentEnrollment } = require('../models/TournamentEnrollment');
+const { canAccessPrivateContent } = require('../utils/accessControl');
 
 const UPCOMING_LEAGUE_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision'];
 const UPCOMING_TOURNAMENT_STATUSES = [
@@ -125,14 +126,7 @@ function summarizeDraw(category) {
 async function getGlobalOverview(req, res) {
   const now = new Date();
 
-  const [
-    leaguesRaw,
-    tournamentsRaw,
-    leagueMatchesRaw,
-    tournamentMatchesRaw,
-    leagueCategoryCount,
-    tournamentCategoryCount,
-  ] = await Promise.all([
+  const [leaguesRaw, tournamentsRaw, leagueMatchesRaw, tournamentMatchesRaw] = await Promise.all([
     League.find()
       .populate('categories', 'status')
       .sort({ startDate: 1, createdAt: 1 })
@@ -153,7 +147,7 @@ async function getGlobalOverview(req, res) {
       .populate({
         path: 'category',
         select: 'name color league',
-        populate: { path: 'league', select: 'name' },
+        populate: { path: 'league', select: 'name isPrivate' },
       })
       .sort({ scheduledAt: 1 })
       .limit(12)
@@ -168,15 +162,27 @@ async function getGlobalOverview(req, res) {
     })
       .populate('players', 'fullName photo')
       .populate('category', 'name color matchFormat')
-      .populate('tournament', 'name status')
+      .populate('tournament', 'name status isPrivate')
       .sort({ scheduledAt: 1 })
       .limit(12)
       .lean(),
-    Category.countDocuments(),
-    TournamentCategory.countDocuments(),
   ]);
 
-  const formattedLeagues = leaguesRaw.map((league) => {
+  const canSeePrivate = canAccessPrivateContent(req.user);
+
+  const visibleLeaguesRaw = canSeePrivate
+    ? leaguesRaw
+    : leaguesRaw.filter((league) => !league.isPrivate);
+  const visibleTournamentsRaw = canSeePrivate
+    ? tournamentsRaw
+    : tournamentsRaw.filter((tournament) => !tournament.isPrivate);
+
+  const visibleLeagueIds = new Set(visibleLeaguesRaw.map((league) => normalizeId(league)));
+  const visibleTournamentIds = new Set(
+    visibleTournamentsRaw.map((tournament) => normalizeId(tournament))
+  );
+
+  const formattedLeagues = visibleLeaguesRaw.map((league) => {
     const categories = Array.isArray(league.categories) ? league.categories : [];
     const activeCategories = categories.filter(
       (category) => category?.status === 'en_curso'
@@ -194,7 +200,7 @@ async function getGlobalOverview(req, res) {
     };
   });
 
-  const formattedTournaments = tournamentsRaw.map((tournament) => {
+  const formattedTournaments = visibleTournamentsRaw.map((tournament) => {
     const categories = Array.isArray(tournament.categories) ? tournament.categories : [];
     return {
       id: normalizeId(tournament),
@@ -207,14 +213,24 @@ async function getGlobalOverview(req, res) {
     };
   });
 
+  const filteredLeagueMatches = leagueMatchesRaw.filter((match) => {
+    const leagueId = normalizeId(match.category?.league || match.league);
+    return !leagueId || visibleLeagueIds.has(leagueId);
+  });
+
+  const filteredTournamentMatches = tournamentMatchesRaw.filter((match) => {
+    const tournamentId = normalizeId(match.tournament);
+    return !tournamentId || visibleTournamentIds.has(tournamentId);
+  });
+
   const courtSet = new Set();
-  [...leagueMatchesRaw, ...tournamentMatchesRaw].forEach((match) => {
+  [...filteredLeagueMatches, ...filteredTournamentMatches].forEach((match) => {
     if (match.court) {
       courtSet.add(match.court.trim().toLowerCase());
     }
   });
 
-  const upcomingMatches = [...leagueMatchesRaw, ...tournamentMatchesRaw]
+  const upcomingMatches = [...filteredLeagueMatches, ...filteredTournamentMatches]
     .map((match) =>
       match.tournament ? serializeTournamentMatch(match) : serializeLeagueMatch(match)
     )
@@ -225,7 +241,12 @@ async function getGlobalOverview(req, res) {
     })
     .slice(0, 12);
 
-  const totalCategories = Number(leagueCategoryCount || 0) + Number(tournamentCategoryCount || 0);
+  const totalCategories =
+    visibleLeaguesRaw.reduce((sum, league) => sum + (league.categories?.length || 0), 0) +
+    visibleTournamentsRaw.reduce(
+      (sum, tournament) => sum + (tournament.categories?.length || 0),
+      0
+    );
 
   const metrics = {
     leagues: formattedLeagues.filter((league) => league.status !== LEAGUE_STATUS.CLOSED).length,
@@ -413,7 +434,7 @@ async function getTournamentDashboard(req, res) {
   const now = new Date();
 
   const categories = await TournamentCategory.find()
-    .populate('tournament', 'name status')
+    .populate('tournament', 'name status isPrivate')
     .sort({ name: 1 })
     .lean();
 
@@ -425,7 +446,20 @@ async function getTournamentDashboard(req, res) {
     });
   }
 
-  const categoryIds = categories.map((category) => category._id.toString());
+  const canSeePrivate = canAccessPrivateContent(req.user);
+  const visibleCategories = canSeePrivate
+    ? categories
+    : categories.filter((category) => !category.tournament?.isPrivate);
+
+  if (!visibleCategories.length) {
+    return res.json({
+      metrics: { tournaments: 0, categories: 0, upcomingMatches: 0 },
+      categories: [],
+      upcomingMatches: [],
+    });
+  }
+
+  const categoryIds = visibleCategories.map((category) => category._id.toString());
 
   const [upcomingMatches, enrollments] = await Promise.all([
     TournamentMatch.find({
@@ -439,7 +473,7 @@ async function getTournamentDashboard(req, res) {
     })
       .populate('players', 'fullName photo')
       .populate('category', 'name color matchFormat')
-      .populate('tournament', 'name status')
+      .populate('tournament', 'name status isPrivate')
       .sort({ scheduledAt: 1 })
       .limit(20)
       .lean(),
@@ -455,7 +489,7 @@ async function getTournamentDashboard(req, res) {
   });
 
   const tournamentStatuses = new Map();
-  categories.forEach((category) => {
+  visibleCategories.forEach((category) => {
     const tournament = category.tournament;
     if (!tournament) return;
     const id = normalizeId(tournament);
@@ -464,7 +498,18 @@ async function getTournamentDashboard(req, res) {
     }
   });
 
-  const categoriesSummary = categories.map((category) => {
+  const visibleTournamentIds = new Set(
+    visibleCategories
+      .map((category) => normalizeId(category.tournament))
+      .filter(Boolean)
+  );
+
+  const filteredUpcomingMatches = upcomingMatches.filter((match) => {
+    const tournamentId = normalizeId(match.tournament);
+    return !tournamentId || visibleTournamentIds.has(tournamentId);
+  });
+
+  const categoriesSummary = visibleCategories.map((category) => {
     const categoryId = category._id.toString();
     const drawSummary = summarizeDraw(category);
     const drawMatches = drawSummary.reduce((acc, round) => acc + round.matches, 0);
@@ -495,11 +540,11 @@ async function getTournamentDashboard(req, res) {
   return res.json({
     metrics: {
       tournaments: activeTournamentCount,
-      categories: categories.length,
-      upcomingMatches: upcomingMatches.length,
+      categories: visibleCategories.length,
+      upcomingMatches: filteredUpcomingMatches.length,
     },
     categories: categoriesSummary,
-    upcomingMatches: upcomingMatches.map(serializeTournamentMatch),
+    upcomingMatches: filteredUpcomingMatches.map(serializeTournamentMatch),
   });
 }
 

@@ -17,6 +17,7 @@ const { USER_ROLES, userHasRole } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
 const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
 const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
+const { canAccessPrivateContent } = require('../utils/accessControl');
 
 async function createCategory(req, res) {
   const errors = validationResult(req);
@@ -100,15 +101,20 @@ async function listCategories(req, res) {
     .sort({ startDate: -1, endDate: -1, createdAt: -1, name: 1 })
     .populate(
       'league',
-      'name year status startDate endDate registrationCloseDate enrollmentFee'
+      'name year status startDate endDate registrationCloseDate enrollmentFee isPrivate'
     )
     .lean();
 
-  if (!categories.length) {
+  const canSeePrivate = canAccessPrivateContent(req.user);
+  const visibleCategories = canSeePrivate
+    ? categories
+    : categories.filter((category) => !category.league?.isPrivate);
+
+  if (!visibleCategories.length) {
     return res.json([]);
   }
 
-  const categoryIds = categories.map((category) => category._id);
+  const categoryIds = visibleCategories.map((category) => category._id);
 
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
   const currentGender = req.user?.gender;
@@ -166,7 +172,7 @@ async function listCategories(req, res) {
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
-  const payload = categories.map((category) => {
+  const payload = visibleCategories.map((category) => {
     const resolvedColor = resolveCategoryColor(category.color);
     const meetsMinimumAge = userMeetsCategoryMinimumAge(category, req.user);
     const minimumAgeReferenceYear =
@@ -199,10 +205,11 @@ async function listCategories(req, res) {
       pendingRequestId: pendingRequestMap.get(category._id.toString()) || null,
       canRequestEnrollment:
         Boolean(currentGender) &&
-          category.status === CATEGORY_STATUSES.REGISTRATION &&
-          category.gender === currentGender &&
-          meetsMinimumAge &&
-          !enrolledSet.has(category._id.toString()) &&
+        (!category.league?.isPrivate || canSeePrivate) &&
+        category.status === CATEGORY_STATUSES.REGISTRATION &&
+        category.gender === currentGender &&
+        meetsMinimumAge &&
+        !enrolledSet.has(category._id.toString()) &&
         !pendingRequestMap.has(category._id.toString()) &&
         registrationWindowOpen,
       pendingRequestCount: pendingCountMap.get(category._id.toString()) || 0,

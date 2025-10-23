@@ -21,6 +21,7 @@ const { Season } = require('../models/Season');
 const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const { resolveCategoryColor } = require('../utils/colors');
 const { normalizeId } = require('../utils/ranking');
+const { canAccessPrivateContent } = require('../utils/accessControl');
 
 const PAYMENT_STATUSES = ['pendiente', 'pagado', 'exento', 'fallido'];
 const PAYMENT_STATUS_SET = new Set(PAYMENT_STATUSES);
@@ -74,6 +75,7 @@ async function createLeague(req, res) {
     registrationCloseDate,
     enrollmentFee,
     status,
+    isPrivate,
     categories = [],
     newCategories = [],
   } = req.body;
@@ -200,6 +202,10 @@ async function createLeague(req, res) {
     createdBy: req.user.id,
   };
 
+  if (typeof isPrivate === 'boolean') {
+    payload.isPrivate = isPrivate;
+  }
+
   const trimmedPoster = typeof poster === 'string' ? poster.trim() : '';
   if (trimmedPoster) {
     payload.poster = trimmedPoster;
@@ -285,7 +291,12 @@ async function getLeagueOverview(req, res) {
   const leagueDocuments = await League.find(leagueQuery);
   await Promise.all(leagueDocuments.map((league) => refreshLeagueStatusIfExpired(league)));
 
-  if (!leagueDocuments.length) {
+  const canSeePrivate = canAccessPrivateContent(req.user);
+  const visibleLeagueDocuments = canSeePrivate
+    ? leagueDocuments
+    : leagueDocuments.filter((league) => !league.isPrivate);
+
+  if (!visibleLeagueDocuments.length) {
     return res.json({
       active: [],
       archived: [],
@@ -293,7 +304,7 @@ async function getLeagueOverview(req, res) {
     });
   }
 
-  const leagues = leagueDocuments.map((league) => league.toObject());
+  const leagues = visibleLeagueDocuments.map((league) => league.toObject());
 
   const leagueIds = leagues.map((league) => league._id);
 
@@ -538,6 +549,10 @@ async function listLeagues(req, res) {
     filteredLeagues = leagues.filter((league) => league.status !== LEAGUE_STATUS.CLOSED);
   }
 
+  if (!canAccessPrivateContent(req.user)) {
+    filteredLeagues = filteredLeagues.filter((league) => !league.isPrivate);
+  }
+
   const toTimestamp = (value) => {
     if (!value) {
       return Number.POSITIVE_INFINITY;
@@ -613,6 +628,10 @@ async function getLeagueDetail(req, res) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
 
+  if (league.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Liga no encontrada' });
+  }
+
   await refreshLeagueStatusIfExpired(league);
 
   const result = league.toObject();
@@ -639,10 +658,14 @@ async function listLeagueEnrollments(req, res) {
   const { leagueId } = req.params;
 
   const league = await League.findById(leagueId).select(
-    'name year status startDate endDate'
+    'name year status startDate endDate isPrivate'
   );
 
   if (!league) {
+    return res.status(404).json({ message: 'Liga no encontrada' });
+  }
+
+  if (league.isPrivate && !canAccessPrivateContent(req.user)) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
 
@@ -933,6 +956,7 @@ async function updateLeague(req, res) {
     registrationCloseDate,
     enrollmentFee,
     status,
+    isPrivate,
     categories,
   } = req.body;
 
@@ -1015,6 +1039,10 @@ async function updateLeague(req, res) {
     } else if (status === LEAGUE_STATUS.ACTIVE) {
       league.closedAt = undefined;
     }
+  }
+
+  if (typeof isPrivate !== 'undefined') {
+    league.isPrivate = Boolean(isPrivate);
   }
 
   if (Array.isArray(categories)) {

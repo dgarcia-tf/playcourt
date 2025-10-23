@@ -55,6 +55,7 @@ router.post(
       .isFloat({ min: 0 })
       .withMessage('La tarifa debe ser un número positivo')
       .toFloat(),
+    body('isPrivate').optional().isBoolean().toBoolean(),
     body('status').optional().isIn(Object.values(LEAGUE_STATUS)),
     body('categories').optional().isArray(),
     body('categories.*').optional().isMongoId(),
@@ -119,6 +120,7 @@ router.patch(
       .isFloat({ min: 0 })
       .withMessage('La tarifa debe ser un número positivo')
       .toFloat(),
+    body('isPrivate').optional().isBoolean().toBoolean(),
     body('status').optional().isIn(Object.values(LEAGUE_STATUS)),
     body('categories').optional().isArray(),
     body('categories.*').optional().isMongoId(),

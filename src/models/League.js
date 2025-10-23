@@ -90,6 +90,10 @@ const leagueSchema = new mongoose.Schema(
       enum: Object.values(LEAGUE_STATUS),
       default: LEAGUE_STATUS.ACTIVE,
     },
+    isPrivate: {
+      type: Boolean,
+      default: false,
+    },
     registrationCloseDate: {
       type: Date,
     },

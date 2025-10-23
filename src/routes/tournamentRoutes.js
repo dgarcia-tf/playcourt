@@ -105,6 +105,7 @@ router.post(
     body('hasShirt').optional().isBoolean(),
     body('shirtSizes').optional().isArray(),
     body('shirtSizes.*').optional().isString(),
+    body('isPrivate').optional().isBoolean().toBoolean(),
   ],
   createTournament
 );
@@ -142,6 +143,7 @@ router.patch(
     body('hasShirt').optional().isBoolean(),
     body('shirtSizes').optional().isArray(),
     body('shirtSizes.*').optional().isString(),
+    body('isPrivate').optional().isBoolean().toBoolean(),
   ],
   updateTournament
 );
