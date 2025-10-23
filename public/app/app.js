@@ -19524,6 +19524,11 @@ function buildPlayerPayload(formData, isEditing = false) {
     birthDate: formData.get('birthDate'),
   };
 
+  const shirtSizeRaw = (formData.get('shirtSize') || '').trim().toUpperCase();
+  if (shirtSizeRaw) {
+    payload.shirtSize = shirtSizeRaw;
+  }
+
   const roles = formData
     .getAll('roles')
     .map((value) => (typeof value === 'string' ? value.toLowerCase() : ''))
@@ -19575,6 +19580,11 @@ async function submitPlayerFormData({ form, playerId, statusElement }) {
       'error',
       'Nombre, correo, teléfono y fecha de nacimiento son obligatorios.'
     );
+    return false;
+  }
+
+  if (!payload.shirtSize) {
+    setStatusMessage(statusElement, 'error', 'Selecciona una talla de camiseta.');
     return false;
   }
 
@@ -20328,6 +20338,18 @@ function openPlayerModal(playerId = '') {
       Horario preferido
       <select name="preferredSchedule" required>${scheduleOptions}</select>
     </label>
+    <label>
+      Talla de camiseta
+      <select name="shirtSize" required>
+        <option value="">Selecciona</option>
+        <option value="XS">XS</option>
+        <option value="S">S</option>
+        <option value="M">M</option>
+        <option value="L">L</option>
+        <option value="XL">XL</option>
+        <option value="XXL">XXL</option>
+      </select>
+    </label>
     <div class="form-grid">
       <label class="checkbox-option checkbox-option--stacked">
         <input type="checkbox" name="isMember" value="true" />
@@ -20369,6 +20391,7 @@ function openPlayerModal(playerId = '') {
   form.elements.birthDate.value = formatDateInput(player?.birthDate);
   form.elements.phone.value = player?.phone || '';
   form.elements.preferredSchedule.value = player?.preferredSchedule || 'flexible';
+  form.elements.shirtSize.value = player?.shirtSize || '';
   form.elements.notes.value = player?.notes || '';
   form.elements.notifyMatchRequests.checked = player ? player.notifyMatchRequests !== false : true;
   form.elements.notifyMatchResults.checked = player ? player.notifyMatchResults !== false : true;

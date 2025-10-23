@@ -6,6 +6,7 @@ const {
   PREFERRED_SCHEDULES,
   normalizeRoles,
   normalizePreferredSchedule,
+  normalizeShirtSize,
 } = require('../models/User');
 const { hashPassword } = require('../utils/password');
 
@@ -24,6 +25,7 @@ function sanitizeUser(user) {
   payload.birthDate = user.birthDate;
   payload.isMember = Boolean(user.isMember);
   payload.membershipNumber = user.membershipNumber || null;
+  payload.shirtSize = user.shirtSize || null;
   return payload;
 }
 
@@ -71,6 +73,7 @@ async function createPlayer(req, res) {
     notifyMatchResults,
     isMember,
     membershipNumber,
+    shirtSize,
   } = req.body;
 
   const schedule = normalizePreferredSchedule(preferredSchedule);
@@ -79,6 +82,13 @@ async function createPlayer(req, res) {
   const memberFlag = typeof isMember === 'boolean' ? isMember : false;
   const normalizedMembershipNumber =
     typeof membershipNumber === 'string' ? membershipNumber.trim() : '';
+  const normalizedShirtSize = normalizeShirtSize(shirtSize);
+
+  if (!normalizedShirtSize) {
+    return res
+      .status(400)
+      .json({ message: 'Selecciona una talla de camiseta válida para el usuario.' });
+  }
 
   if (memberFlag && !normalizedMembershipNumber) {
     return res
@@ -118,6 +128,7 @@ async function createPlayer(req, res) {
     membershipNumber: memberFlag && normalizedMembershipNumber ? normalizedMembershipNumber : undefined,
     notifyMatchRequests: typeof notifyMatchRequests === 'boolean' ? notifyMatchRequests : true,
     notifyMatchResults: typeof notifyMatchResults === 'boolean' ? notifyMatchResults : true,
+    shirtSize: normalizedShirtSize,
   });
 
   return res.status(201).json(sanitizeUser(user));
@@ -146,6 +157,7 @@ async function updatePlayer(req, res) {
     birthDate,
     isMember,
     membershipNumber,
+    shirtSize,
   } = req.body;
 
   const player = await User.findById(playerId).select('+password');
@@ -195,6 +207,16 @@ async function updatePlayer(req, res) {
   if (notes !== undefined) {
     const normalizedNotes = typeof notes === 'string' ? notes.trim() : notes;
     player.notes = normalizedNotes || undefined;
+  }
+
+  if (shirtSize !== undefined) {
+    const normalizedShirtSize = normalizeShirtSize(shirtSize);
+    if (!normalizedShirtSize) {
+      return res
+        .status(400)
+        .json({ message: 'Selecciona una talla de camiseta válida para el usuario.' });
+    }
+    player.shirtSize = normalizedShirtSize;
   }
 
   let nextMemberFlag = typeof isMember === 'boolean' ? isMember : player.isMember;
