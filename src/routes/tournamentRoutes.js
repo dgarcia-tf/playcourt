@@ -250,6 +250,7 @@ router.post(
     param('categoryId').isMongoId(),
     body('userId').optional({ nullable: true }).isMongoId(),
     body('shirtSize').optional({ nullable: true }).isString(),
+    body('notes').optional({ nullable: true }).isString(),
   ],
   createTournamentEnrollment
 );
