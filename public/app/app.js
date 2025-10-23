@@ -8676,6 +8676,7 @@ async function openTournamentSelfEnrollmentModal({
     showStep('intro');
   });
 
+  const status = document.createElement('p');
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     let selectedCategories = [];
