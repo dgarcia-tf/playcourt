@@ -50,19 +50,44 @@ function normalizeFeeCollection(fees = []) {
     }
 
     const label = typeof entry.label === 'string' ? entry.label.trim() : '';
-    const amount = Number(entry.amount);
-    if (!label || !Number.isFinite(amount) || amount < 0) {
+    if (!label) {
       return;
     }
 
-    normalized.push({
-      label,
-      amount,
-      currency: typeof entry.currency === 'string' && entry.currency.trim()
+    const amount = Number(entry.amount);
+    const memberAmount = Number(entry.memberAmount);
+    const nonMemberAmount = Number(entry.nonMemberAmount);
+
+    const hasAmount = Number.isFinite(amount) && amount >= 0;
+    const hasMemberAmount = Number.isFinite(memberAmount) && memberAmount >= 0;
+    const hasNonMemberAmount = Number.isFinite(nonMemberAmount) && nonMemberAmount >= 0;
+
+    if (!hasAmount && !hasMemberAmount && !hasNonMemberAmount) {
+      return;
+    }
+
+    const currency =
+      typeof entry.currency === 'string' && entry.currency.trim()
         ? entry.currency.trim().toUpperCase()
-        : 'EUR',
+        : 'EUR';
+
+    const normalizedEntry = {
+      label,
+      currency,
       description: typeof entry.description === 'string' ? entry.description.trim() : undefined,
-    });
+    };
+
+    if (hasAmount) {
+      normalizedEntry.amount = amount;
+    }
+    if (hasMemberAmount) {
+      normalizedEntry.memberAmount = memberAmount;
+    }
+    if (hasNonMemberAmount) {
+      normalizedEntry.nonMemberAmount = nonMemberAmount;
+    }
+
+    normalized.push(normalizedEntry);
   });
 
   return normalized;

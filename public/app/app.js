@@ -8166,7 +8166,15 @@ function renderTournamentDetail() {
   }
 
   const fees = Array.isArray(detail.fees)
-    ? detail.fees.filter((fee) => Number.isFinite(Number(fee.amount)))
+    ? detail.fees.filter((fee) => {
+        const memberAmount = Number(fee.memberAmount);
+        const nonMemberAmount = Number(fee.nonMemberAmount);
+        const legacyAmount = Number(fee.amount);
+        const hasMemberAmount = Number.isFinite(memberAmount) && memberAmount >= 0;
+        const hasNonMemberAmount = Number.isFinite(nonMemberAmount) && nonMemberAmount >= 0;
+        const hasLegacyAmount = Number.isFinite(legacyAmount) && legacyAmount >= 0;
+        return hasMemberAmount || hasNonMemberAmount || hasLegacyAmount;
+      })
     : [];
   if (fees.length) {
     const feesWrapper = document.createElement('div');
@@ -8186,8 +8194,29 @@ function renderTournamentDetail() {
       labelSpan.textContent = fee.label || 'Cuota';
 
       const amountSpan = document.createElement('span');
-      const formattedAmount = formatCurrencyValue(fee.amount, fee.currency);
-      amountSpan.textContent = formattedAmount || `${Number(fee.amount) || 0}`;
+      amountSpan.className = 'tournament-fee__amounts';
+
+      const parts = [];
+      const currency = fee.currency;
+      const formatAmount = (value) =>
+        formatCurrencyValue(value, currency) || `${Number(value) || 0}`;
+
+      const memberAmount = Number(fee.memberAmount);
+      if (Number.isFinite(memberAmount) && memberAmount >= 0) {
+        parts.push(`Socios: ${formatAmount(memberAmount)}`);
+      }
+
+      const nonMemberAmount = Number(fee.nonMemberAmount);
+      if (Number.isFinite(nonMemberAmount) && nonMemberAmount >= 0) {
+        parts.push(`No socios: ${formatAmount(nonMemberAmount)}`);
+      }
+
+      const legacyAmount = Number(fee.amount);
+      if (!parts.length && Number.isFinite(legacyAmount) && legacyAmount >= 0) {
+        parts.push(formatAmount(legacyAmount));
+      }
+
+      amountSpan.textContent = parts.join(' · ');
 
       feeRow.appendChild(labelSpan);
       feeRow.appendChild(amountSpan);
@@ -16146,21 +16175,52 @@ function buildTournamentPayload(form, { isEditing = false } = {}) {
     const fees = feeEntries
       .map((entry) => {
         const label = entry.querySelector('[data-fee-field="label"]')?.value.trim();
-        const amountValue = entry.querySelector('[data-fee-field="amount"]')?.value;
-        const amount = Number.parseFloat(amountValue);
-        if (!label || Number.isNaN(amount) || amount < 0) {
+        if (!label) {
           return null;
         }
         const currencyRaw = entry.querySelector('[data-fee-field="currency"]')?.value.trim();
         const descriptionValue = entry
           .querySelector('[data-fee-field="description"]')
           ?.value.trim();
-        return {
+        const memberAmountValue = entry
+          .querySelector('[data-fee-field="memberAmount"]')
+          ?.value;
+        const nonMemberAmountValue = entry
+          .querySelector('[data-fee-field="nonMemberAmount"]')
+          ?.value;
+        const legacyAmountValue = entry.querySelector('[data-fee-field="amount"]')?.value;
+
+        const memberAmount = Number.parseFloat(memberAmountValue);
+        const nonMemberAmount = Number.parseFloat(nonMemberAmountValue);
+        const legacyAmount = Number.parseFloat(legacyAmountValue);
+
+        const hasMemberAmount = !Number.isNaN(memberAmount) && memberAmount >= 0;
+        const hasNonMemberAmount = !Number.isNaN(nonMemberAmount) && nonMemberAmount >= 0;
+        const hasLegacyAmount = !Number.isNaN(legacyAmount) && legacyAmount >= 0;
+
+        if (!hasMemberAmount && !hasNonMemberAmount && !hasLegacyAmount) {
+          return null;
+        }
+
+        const fee = {
           label,
-          amount,
           currency: currencyRaw ? currencyRaw.toUpperCase() : 'EUR',
-          description: descriptionValue || undefined,
         };
+
+        if (descriptionValue) {
+          fee.description = descriptionValue;
+        }
+        if (hasLegacyAmount) {
+          fee.amount = legacyAmount;
+        }
+        if (hasMemberAmount) {
+          fee.memberAmount = memberAmount;
+        }
+        if (hasNonMemberAmount) {
+          fee.nonMemberAmount = nonMemberAmount;
+        }
+
+        return fee;
       })
       .filter(Boolean);
     if (fees.length || isEditing) {
@@ -16289,18 +16349,36 @@ function openTournamentModal(tournamentId = '') {
           <input type="text" data-fee-field="label" placeholder="Ej. Inscripción individual" />
         </label>
         <label>
-          Importe
-          <input type="number" min="0" step="0.01" data-fee-field="amount" />
+          Importe socios
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            data-fee-field="memberAmount"
+            placeholder="0.00"
+          />
         </label>
+        <label>
+          Importe no socios
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            data-fee-field="nonMemberAmount"
+            placeholder="0.00"
+          />
+        </label>
+      </div>
+      <div class="form-grid">
         <label>
           Divisa
           <input type="text" maxlength="3" data-fee-field="currency" placeholder="EUR" />
         </label>
+        <label>
+          Notas
+          <input type="text" data-fee-field="description" placeholder="Información opcional" />
+        </label>
       </div>
-      <label>
-        Notas
-        <input type="text" data-fee-field="description" placeholder="Información opcional" />
-      </label>
       <div class="form-actions">
         <button type="button" class="ghost" data-action="remove-fee">Quitar cuota</button>
       </div>
@@ -16314,15 +16392,29 @@ function openTournamentModal(tournamentId = '') {
     feeList.appendChild(entry);
 
     const labelField = entry.querySelector('[data-fee-field="label"]');
-    const amountField = entry.querySelector('[data-fee-field="amount"]');
+    const memberAmountField = entry.querySelector('[data-fee-field="memberAmount"]');
+    const nonMemberAmountField = entry.querySelector('[data-fee-field="nonMemberAmount"]');
     const currencyField = entry.querySelector('[data-fee-field="currency"]');
     const descriptionField = entry.querySelector('[data-fee-field="description"]');
 
     if (labelField && data.label) {
       labelField.value = data.label;
     }
-    if (amountField && typeof data.amount !== 'undefined') {
-      amountField.value = data.amount;
+    const legacyAmount =
+      typeof data.amount !== 'undefined' && data.amount !== null ? data.amount : undefined;
+    if (memberAmountField) {
+      if (typeof data.memberAmount !== 'undefined') {
+        memberAmountField.value = data.memberAmount;
+      } else if (typeof legacyAmount !== 'undefined') {
+        memberAmountField.value = legacyAmount;
+      }
+    }
+    if (nonMemberAmountField) {
+      if (typeof data.nonMemberAmount !== 'undefined') {
+        nonMemberAmountField.value = data.nonMemberAmount;
+      } else if (typeof legacyAmount !== 'undefined') {
+        nonMemberAmountField.value = legacyAmount;
+      }
     }
     if (currencyField && data.currency) {
       currencyField.value = data.currency;
@@ -16338,6 +16430,77 @@ function openTournamentModal(tournamentId = '') {
 
   if (Array.isArray(tournament?.fees) && tournament.fees.length) {
     tournament.fees.forEach((fee) => addFeeEntry(fee));
+  }
+
+  const formActions = form.querySelector('.form-actions');
+  if (tournament && normalizedId && formActions) {
+    const uploadSection = document.createElement('div');
+    uploadSection.className = 'form-section tournament-poster-upload';
+    uploadSection.innerHTML = `
+      <h3>Cartel del torneo</h3>
+      <p class="form-hint">Sube una imagen en formato JPG o PNG (máximo 5&nbsp;MB).</p>
+      <label>
+        Selecciona una imagen
+        <input type="file" name="posterFile" accept="image/*" />
+      </label>
+      <div class="form-actions">
+        <button type="button" class="secondary" data-action="upload-poster">Subir cartel</button>
+      </div>
+    `;
+
+    const posterUploadStatus = document.createElement('p');
+    posterUploadStatus.className = 'status-message';
+    posterUploadStatus.style.display = 'none';
+    uploadSection.appendChild(posterUploadStatus);
+
+    formActions.before(uploadSection);
+
+    const uploadButton = uploadSection.querySelector('[data-action="upload-poster"]');
+    const fileInput = uploadSection.querySelector('input[name="posterFile"]');
+
+    uploadButton?.addEventListener('click', async () => {
+      if (!fileInput?.files?.length) {
+        setStatusMessage(posterUploadStatus, 'error', 'Selecciona una imagen para el cartel.');
+        return;
+      }
+
+      const file = fileInput.files[0];
+      if (!file.type.startsWith('image/')) {
+        setStatusMessage(posterUploadStatus, 'error', 'El archivo seleccionado debe ser una imagen.');
+        return;
+      }
+
+      if (file.size > MAX_POSTER_SIZE) {
+        setStatusMessage(
+          posterUploadStatus,
+          'error',
+          'La imagen supera el tamaño máximo permitido (5 MB).'
+        );
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('poster', file);
+
+      setStatusMessage(posterUploadStatus, 'info', 'Subiendo cartel...');
+
+      try {
+        const result = await request(`/tournaments/${normalizedId}/poster`, {
+          method: 'POST',
+          body: formData,
+        });
+        setStatusMessage(posterUploadStatus, 'success', 'Cartel actualizado.');
+        if (form.elements.poster) {
+          form.elements.poster.value = result?.poster || '';
+        }
+        fileInput.value = '';
+        await reloadTournaments({ selectTournamentId: normalizedId });
+        state.tournamentDetails.delete(normalizedId);
+        await refreshTournamentDetail(normalizedId);
+      } catch (error) {
+        setStatusMessage(posterUploadStatus, 'error', error.message);
+      }
+    });
   }
 
   form.elements.name.value = tournament?.name || '';
