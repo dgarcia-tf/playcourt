@@ -15,7 +15,14 @@ const feeSchema = new mongoose.Schema(
     },
     amount: {
       type: Number,
-      required: true,
+      min: 0,
+    },
+    memberAmount: {
+      type: Number,
+      min: 0,
+    },
+    nonMemberAmount: {
+      type: Number,
       min: 0,
     },
     currency: {
