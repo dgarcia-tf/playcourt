@@ -2129,11 +2129,30 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .tournament-detail,
 .league-detail {
   display: grid;
-  gap: 1rem;
+  gap: 1.5rem;
 }
 
-.tournament-detail__poster,
-.league-detail__poster {
+.league-detail__layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .league-detail__layout {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+}
+
+.league-detail__content {
+  display: grid;
+  gap: 1.25rem;
+  flex: 1;
+}
+
+.tournament-detail__poster {
   width: 100%;
   max-height: 280px;
   object-fit: cover;
@@ -2141,6 +2160,20 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   display: block;
   background: rgba(15, 23, 42, 0.06);
   border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.league-detail__poster {
+  width: 100%;
+  max-width: 320px;
+  max-height: 450px;
+  height: auto;
+  border-radius: var(--radius-sm);
+  display: block;
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  object-fit: cover;
+  flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .tournament-detail__header,
