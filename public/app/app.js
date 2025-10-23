@@ -22394,12 +22394,14 @@ async function loadAllData() {
       completedMatches,
       pendingReviewMatches,
     ] = await Promise.all([
-      request('/matches?statuses=programado,revision'),
-      request(`/matches?playerId=${userId}&includeDrafts=true`),
+      request('/matches?statuses=programado,revision').catch(() => []),
+      request(`/matches?playerId=${userId}&includeDrafts=true`).catch(() => []),
       request('/notifications/mine?upcoming=true').catch(() => []),
       request('/club').catch(() => null),
       request('/seasons').catch(() => []),
-      request('/matches?statuses=pendiente,propuesto,programado,revision,completado,finalizado'),
+      request('/matches?statuses=pendiente,propuesto,programado,revision,completado,finalizado').catch(
+        () => []
+      ),
       request('/matches?status=completado').catch(() => []),
       request('/matches?resultStatus=en_revision').catch(() => []),
     ]);
