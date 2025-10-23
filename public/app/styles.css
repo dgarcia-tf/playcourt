@@ -851,6 +851,16 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   gap: 0.4rem;
 }
 
+.menu-group__header {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.menu-group__header .menu-button {
+  flex: 1 1 auto;
+}
+
 .menu-button--parent {
   font-weight: 700;
 }
@@ -915,6 +925,34 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   font-weight: 600;
   border: 1px solid transparent;
   transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.menu-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.menu-toggle:focus,
+.menu-toggle:hover {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.16);
+}
+
+.menu-toggle__icon {
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .menu-button--logout {

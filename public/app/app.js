@@ -1840,9 +1840,21 @@ const adminToggleElements = document.querySelectorAll('[data-admin-visible="togg
 
 function setMenuGroupExpanded(menuGroup, expanded) {
   if (!menuGroup) return;
-  const { parentButton, submenu, group } = menuGroup;
+  const { parentButton, submenu, group, toggleButton } = menuGroup;
   if (parentButton) {
     parentButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+  if (toggleButton) {
+    toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    const toggleLabel = toggleButton.dataset.toggleLabel || parentButton?.textContent?.trim() || 'menú';
+    toggleButton.setAttribute(
+      'aria-label',
+      `${expanded ? 'Contraer' : 'Expandir'} ${toggleLabel}`
+    );
+    const icon = toggleButton.querySelector('.menu-toggle__icon');
+    if (icon) {
+      icon.textContent = expanded ? '−' : '+';
+    }
   }
   if (group) {
     group.classList.toggle('menu-group--expanded', expanded);
@@ -1857,6 +1869,7 @@ const collapsibleMenuGroups = appMenu
       .map((group) => {
         const parentButton = group.querySelector('.menu-button--parent');
         const submenu = group.querySelector('.menu-submenu');
+        const toggleButton = group.querySelector('[data-submenu-toggle="true"]');
         if (!parentButton || !submenu) {
           return null;
         }
@@ -1864,6 +1877,7 @@ const collapsibleMenuGroups = appMenu
           group,
           parentButton,
           submenu,
+          toggleButton,
           target: parentButton.dataset.target || null,
         };
         setMenuGroupExpanded(menuGroup, false);
@@ -4430,6 +4444,15 @@ tabButtons.forEach((button) => {
 
 if (appMenu) {
   appMenu.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-submenu-toggle="true"]');
+    if (toggle) {
+      event.preventDefault();
+      const toggleTargetId = toggle.dataset.target;
+      const menuGroup = collapsibleMenuGroupsByTarget.get(toggleTargetId || '');
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      setMenuGroupExpanded(menuGroup, !expanded);
+      return;
+    }
     const button = event.target.closest('.menu-button');
     if (!button || button.hidden || button.disabled) return;
     const targetId = button.dataset.target;
