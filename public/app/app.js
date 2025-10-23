@@ -17722,6 +17722,7 @@ function openMatchModal(matchId = '') {
 
   const categories = Array.isArray(state.categories) ? [...state.categories] : [];
   const leagues = Array.isArray(state.leagues) ? [...state.leagues] : [];
+  const currentMatchLeagueId = match ? normalizeId(match.league) : '';
   const stateLeagueMap = new Map();
   leagues.forEach((league) => {
     const id = normalizeId(league);
@@ -17876,6 +17877,7 @@ function openMatchModal(matchId = '') {
   const statusField = form.elements.status;
   const courtField = form.elements.court;
   const notesField = form.elements.notes;
+  const submitButton = form.querySelector('button[type="submit"]');
 
   const formatLeagueLabel = (league) => {
     if (!league || typeof league !== 'object') {
@@ -17906,6 +17908,12 @@ function openMatchModal(matchId = '') {
         const option = document.createElement('option');
         option.value = id;
         option.textContent = formatLeagueLabel(info);
+        const isClosed = info?.status === 'cerrada';
+        const isCurrentSelection = currentMatchLeagueId && currentMatchLeagueId === id;
+        if (isClosed) {
+          option.disabled = !isCurrentSelection;
+          option.textContent += ' (cerrada)';
+        }
         leagueField.appendChild(option);
       });
 
@@ -17914,6 +17922,21 @@ function openMatchModal(matchId = '') {
       option.value = UNASSIGNED_LEAGUE_VALUE;
       option.textContent = 'Sin liga asignada';
       leagueField.appendChild(option);
+    }
+
+    const enabledLeagueOptions = Array.from(leagueField.options || []).filter(
+      (option) => option.value && !option.disabled
+    );
+    if (!match && !enabledLeagueOptions.length) {
+      leagueField.disabled = true;
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      setStatusMessage(
+        status,
+        'warning',
+        'Todas las ligas activas están cerradas. No es posible crear nuevos partidos.'
+      );
     }
   }
 
@@ -17981,10 +18004,19 @@ function openMatchModal(matchId = '') {
   const selectInitialLeague = (desiredLeagueId) => {
     if (!leagueField) return '';
     const options = Array.from(leagueField.options || []);
-    if (desiredLeagueId && options.some((option) => option.value === desiredLeagueId)) {
+    const isDesiredEnabled =
+      desiredLeagueId &&
+      options.some((option) => option.value === desiredLeagueId && !option.disabled);
+    if (isDesiredEnabled) {
       leagueField.value = desiredLeagueId;
-    } else if (!leagueField.value) {
-      const availableOptions = options.filter((option) => option.value);
+    } else if (leagueField.value) {
+      const currentOption = leagueField.options[leagueField.selectedIndex];
+      if (currentOption?.disabled) {
+        leagueField.value = '';
+      }
+    }
+    if (!leagueField.value) {
+      const availableOptions = options.filter((option) => option.value && !option.disabled);
       if (availableOptions.length === 1) {
         leagueField.value = availableOptions[0].value;
       } else {
@@ -18530,6 +18562,7 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
 
   const leagueSelect = form.elements.leagueId;
   const categorySelect = form.elements.categoryId;
+  const submitButton = form.querySelector('button[type="submit"]');
 
   const formatLeagueLabel = (league) => {
     if (!league || typeof league !== 'object') {
@@ -18559,6 +18592,10 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
         const option = document.createElement('option');
         option.value = id;
         option.textContent = formatLeagueLabel(info);
+        if (info?.status === 'cerrada') {
+          option.disabled = true;
+          option.textContent += ' (cerrada)';
+        }
         leagueSelect.appendChild(option);
       });
 
@@ -18567,6 +18604,24 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
       option.value = UNASSIGNED_LEAGUE_VALUE;
       option.textContent = 'Sin liga asignada';
       leagueSelect.appendChild(option);
+    }
+
+    const enabledLeagueOptions = Array.from(leagueSelect.options || []).filter(
+      (option) => option.value && !option.disabled
+    );
+    if (!enabledLeagueOptions.length) {
+      leagueSelect.disabled = true;
+      if (categorySelect) {
+        categorySelect.disabled = true;
+      }
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      setStatusMessage(
+        status,
+        'warning',
+        'Todas las ligas activas están cerradas. No es posible generar partidos pendientes.'
+      );
     }
   }
 
@@ -18621,10 +18676,19 @@ function openGenerateMatchesModal(preselectedCategoryId = '') {
   const selectInitialLeague = (desiredLeagueId) => {
     if (!leagueSelect) return '';
     const options = Array.from(leagueSelect.options || []);
-    if (desiredLeagueId && options.some((option) => option.value === desiredLeagueId)) {
-      leagueSelect.value = desiredLeagueId;
-    } else if (!leagueSelect.value) {
-      const availableOptions = options.filter((option) => option.value);
+    const desiredOption = options.find(
+      (option) => option.value === desiredLeagueId && !option.disabled
+    );
+    if (desiredOption) {
+      leagueSelect.value = desiredOption.value;
+    } else if (leagueSelect.value) {
+      const currentOption = leagueSelect.options[leagueSelect.selectedIndex];
+      if (currentOption?.disabled) {
+        leagueSelect.value = '';
+      }
+    }
+    if (!leagueSelect.value) {
+      const availableOptions = options.filter((option) => option.value && !option.disabled);
       if (availableOptions.length === 1) {
         leagueSelect.value = availableOptions[0].value;
       } else {
