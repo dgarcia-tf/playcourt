@@ -1,6 +1,12 @@
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
-const { User, USER_ROLES, normalizeRoles, normalizePreferredSchedule } = require('../models/User');
+const {
+  User,
+  USER_ROLES,
+  normalizeRoles,
+  normalizePreferredSchedule,
+  normalizeShirtSize,
+} = require('../models/User');
 const { hashPassword, verifyPassword } = require('../utils/password');
 
 function generateToken(user) {
@@ -37,6 +43,7 @@ function serializeUser(user) {
     notes: user.notes,
     notifyMatchRequests: user.notifyMatchRequests,
     notifyMatchResults: user.notifyMatchResults,
+    shirtSize: user.shirtSize || null,
   };
 }
 
@@ -62,6 +69,7 @@ async function register(req, res) {
     notifyMatchResults,
     isMember,
     membershipNumber,
+    shirtSize,
   } = req.body;
 
   const existingUser = await User.findOne({ email });
@@ -92,6 +100,11 @@ async function register(req, res) {
   const memberFlag = typeof isMember === 'boolean' ? isMember : false;
   const normalizedMembershipNumber =
     typeof membershipNumber === 'string' ? membershipNumber.trim() : '';
+  const normalizedShirtSize = normalizeShirtSize(shirtSize);
+
+  if (!normalizedShirtSize) {
+    return res.status(400).json({ message: 'Selecciona una talla de camiseta válida' });
+  }
 
   if (memberFlag && !normalizedMembershipNumber) {
     return res
@@ -124,6 +137,7 @@ async function register(req, res) {
     membershipNumber: memberFlag && normalizedMembershipNumber ? normalizedMembershipNumber : undefined,
     notifyMatchRequests: typeof notifyMatchRequests === 'boolean' ? notifyMatchRequests : true,
     notifyMatchResults: typeof notifyMatchResults === 'boolean' ? notifyMatchResults : true,
+    shirtSize: normalizedShirtSize,
   });
 
   const token = generateToken(user);
@@ -189,6 +203,7 @@ async function updateProfile(req, res) {
     notifyMatchResults,
     isMember,
     membershipNumber,
+    shirtSize,
   } = req.body;
 
   const user = await User.findById(req.user.id).select('+password');
@@ -230,6 +245,14 @@ async function updateProfile(req, res) {
 
   if (notes !== undefined) {
     user.notes = notes ? notes.trim() : undefined;
+  }
+
+  if (shirtSize !== undefined) {
+    const normalizedShirtSize = normalizeShirtSize(shirtSize);
+    if (!normalizedShirtSize) {
+      return res.status(400).json({ message: 'Selecciona una talla de camiseta válida' });
+    }
+    user.shirtSize = normalizedShirtSize;
   }
 
   let nextMemberFlag = typeof isMember === 'boolean' ? isMember : user.isMember;

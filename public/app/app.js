@@ -1676,6 +1676,7 @@ const accountPhone = document.getElementById('account-phone');
 const accountMembershipStatus = document.getElementById('account-membership');
 const accountMembershipNumber = document.getElementById('account-membership-number');
 const accountMembershipNumberRow = document.getElementById('account-membership-number-row');
+const accountShirtSize = document.getElementById('account-shirt-size');
 const accountBirthDate = document.getElementById('account-birth-date');
 const accountSchedule = document.getElementById('account-schedule');
 const accountNotes = document.getElementById('account-notes');
@@ -5787,6 +5788,10 @@ function updateProfileCard() {
       : '—';
   }
 
+  if (accountShirtSize) {
+    accountShirtSize.textContent = state.user.shirtSize || '—';
+  }
+
   if (accountSchedule) {
     accountSchedule.textContent = state.user.preferredSchedule
       ? translateSchedule(state.user.preferredSchedule)
@@ -5817,6 +5822,9 @@ function fillProfileForm() {
   elements.phone.value = state.user.phone || '';
   if (elements.preferredSchedule) {
     elements.preferredSchedule.value = state.user.preferredSchedule || 'flexible';
+  }
+  if (elements.shirtSize) {
+    elements.shirtSize.value = state.user.shirtSize || '';
   }
   if (elements.gender) {
     elements.gender.value = state.user.gender || 'masculino';
@@ -22573,6 +22581,13 @@ registerForm.addEventListener('submit', async (event) => {
     notes: formData.get('notes') || undefined,
   };
 
+  const shirtSizeRaw = (formData.get('shirtSize') || '').trim().toUpperCase();
+  if (!shirtSizeRaw) {
+    setStatusMessage(registerStatus, 'error', 'Selecciona tu talla de camiseta para completar el registro.');
+    return;
+  }
+  payload.shirtSize = shirtSizeRaw;
+
   const registerIsMember = formData.has('isMember');
   payload.isMember = registerIsMember;
   const registerMembershipNumber = (formData.get('membershipNumber') || '').trim();
@@ -22955,6 +22970,13 @@ profileForm?.addEventListener('submit', async (event) => {
     notifyMatchRequests: formData.has('notifyMatchRequests'),
     notifyMatchResults: formData.has('notifyMatchResults'),
   };
+
+  const shirtSizeRaw = (formData.get('shirtSize') || '').trim().toUpperCase();
+  if (!shirtSizeRaw) {
+    setStatusMessage(profileStatus, 'error', 'Selecciona tu talla de camiseta para continuar.');
+    return;
+  }
+  payload.shirtSize = shirtSizeRaw;
 
   const isMember = formData.has('isMember');
   payload.isMember = isMember;

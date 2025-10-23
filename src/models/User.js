@@ -7,6 +7,15 @@ const USER_ROLES = {
   COURT_MANAGER: 'court_manager',
 };
 
+const SHIRT_SIZES = {
+  XS: 'XS',
+  S: 'S',
+  M: 'M',
+  L: 'L',
+  XL: 'XL',
+  XXL: 'XXL',
+};
+
 const GENDERS = {
   MALE: 'masculino',
   FEMALE: 'femenino',
@@ -146,6 +155,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    shirtSize: {
+      type: String,
+      enum: Object.values(SHIRT_SIZES),
+      set: (value) => (typeof value === 'string' ? value.trim().toUpperCase() : value),
+    },
   },
   {
     timestamps: true,
@@ -219,12 +233,27 @@ function userHasRole(user, role) {
   return roles.includes(role);
 }
 
+function normalizeShirtSize(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim().toUpperCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  return Object.values(SHIRT_SIZES).includes(trimmed) ? trimmed : null;
+}
+
 module.exports = {
   User: mongoose.model('User', userSchema),
   USER_ROLES,
   GENDERS,
   PREFERRED_SCHEDULES,
+  SHIRT_SIZES,
   normalizeRoles,
   normalizePreferredSchedule,
+  normalizeShirtSize,
   userHasRole,
 };

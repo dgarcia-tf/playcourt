@@ -1,7 +1,13 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { register, login, getSetupStatus, getProfile, updateProfile } = require('../controllers/authController');
-const { GENDERS, USER_ROLES, PREFERRED_SCHEDULES, normalizePreferredSchedule } = require('../models/User');
+const {
+  GENDERS,
+  USER_ROLES,
+  PREFERRED_SCHEDULES,
+  SHIRT_SIZES,
+  normalizePreferredSchedule,
+} = require('../models/User');
 const { authenticate } = require('../middleware/auth');
 const { isValidImageDataUrl, sanitizeBoolean } = require('../utils/validators');
 
@@ -28,6 +34,9 @@ router.post(
       .customSanitizer((value) => normalizePreferredSchedule(value))
       .isIn(Object.values(PREFERRED_SCHEDULES))
       .withMessage('Horario preferido inválido'),
+    body('shirtSize')
+      .isIn(Object.values(SHIRT_SIZES))
+      .withMessage('Selecciona una talla de camiseta válida'),
     body('role').optional().isIn(Object.values(USER_ROLES)).withMessage('Rol inválido'),
     body('roles')
       .optional()
@@ -104,6 +113,10 @@ router.patch(
       .customSanitizer((value) => normalizePreferredSchedule(value))
       .isIn(Object.values(PREFERRED_SCHEDULES))
       .withMessage('Horario preferido inválido'),
+    body('shirtSize')
+      .optional()
+      .isIn(Object.values(SHIRT_SIZES))
+      .withMessage('Selecciona una talla de camiseta válida'),
     body('notes').optional().isString().trim().isLength({ max: 500 }).withMessage('Las notas son demasiado largas'),
     body('password')
       .optional()
