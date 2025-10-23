@@ -15,6 +15,7 @@ const UPCOMING_TOURNAMENT_MATCH_STATUSES = [
 ];
 const COMPLETED_TOURNAMENT_MATCH_STATUSES = [TOURNAMENT_MATCH_STATUS.COMPLETED];
 const MAX_MATCHES_PER_SECTION = 10;
+const RECENT_MATCHES_LIMIT = 5;
 
 function normalizeId(value) {
   if (!value) return null;
@@ -331,11 +332,13 @@ async function getAccountSummary(req, res) {
   const recentMatches = [
     ...recentLeagueMatchesRaw.map((match) => mapLeagueMatch(match)),
     ...recentTournamentMatchesRaw.map((match) => mapTournamentMatch(match)),
-  ].sort((a, b) => {
-    const dateA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0;
-    const dateB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0;
-    return dateB - dateA;
-  });
+  ]
+    .sort((a, b) => {
+      const dateA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0;
+      const dateB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0;
+      return dateB - dateA;
+    })
+    .slice(0, RECENT_MATCHES_LIMIT);
 
   const leaguePayments = leaguesWithPayments.flatMap((league) => {
     const payments = Array.isArray(league.payments) ? league.payments : [];
