@@ -1521,6 +1521,7 @@ const state = {
   pendingApprovalMatches: [],
   completedMatches: [],
   selectedCategoryId: null,
+  selectedLeagueId: '',
   selectedApp: 'tennis',
   rankingFilters: { league: '' },
   needsSetup: false,
@@ -1808,6 +1809,7 @@ let pushServiceWorkerRegistrationPromise = null;
 const pendingApprovalsList = document.getElementById('pending-approvals');
 const completedMatchesList = document.getElementById('completed-matches');
 let pendingTournamentDetailId = null;
+let pendingLeagueDetailId = null;
 let pendingTournamentEnrollmentKey = '';
 let pendingTournamentMatchesKey = '';
 const generalChatMessagesList = document.getElementById('general-chat-messages');
@@ -2050,6 +2052,11 @@ const playerDirectoryCategory = document.getElementById('user-directory-category
 const playerDirectoryEmpty = document.getElementById('user-directory-empty');
 const categoryCreateButton = document.getElementById('category-create-button');
 const leagueCreateButton = document.getElementById('league-create-button');
+const leagueDetailCard = document.getElementById('league-detail-card');
+const leagueDetailTitle = document.getElementById('league-detail-title');
+const leagueDetailSubtitle = document.getElementById('league-detail-subtitle');
+const leagueDetailBody = document.getElementById('league-detail-body');
+const leagueEditButton = document.getElementById('league-edit-button');
 const matchCreateButton = document.getElementById('match-create-button');
 const matchGenerateButton = document.getElementById('match-generate-button');
 const playerCreateButton = document.getElementById('player-create-button');
@@ -2254,6 +2261,12 @@ function showGlobalMessage(message = '', type = 'info') {
   globalMessage.classList.add('show');
 }
 
+function updateLeagueActionAvailability() {
+  if (leagueEditButton) {
+    leagueEditButton.disabled = !state.selectedLeagueId;
+  }
+}
+
 function updateTournamentActionAvailability() {
   if (tournamentEditButton) {
     tournamentEditButton.disabled = !state.selectedTournamentId;
@@ -2402,6 +2415,13 @@ function compareLeaguesByHistory(leagueA, leagueB) {
     formatLeagueOptionLabel(leagueB),
     'es'
   );
+}
+
+function getLeagueById(leagueId) {
+  const normalized = normalizeId(leagueId);
+  if (!normalized) return null;
+  if (!Array.isArray(state.leagues)) return null;
+  return state.leagues.find((league) => normalizeId(league) === normalized) || null;
 }
 
 function getLeagueCategories(leagueId) {
@@ -3603,6 +3623,9 @@ async function handleLeaguePaymentFormSubmit(form) {
     }
 
     await fetchLeagueDetail(leagueId, { force: true });
+    if (state.selectedLeagueId === leagueId) {
+      renderLeagueDetail();
+    }
     if (state.leaguePayments instanceof Map) {
       state.leaguePayments.delete(leagueId);
     }
@@ -6344,59 +6367,80 @@ function renderLeagues(leagues = []) {
   updateLeaguePaymentControls({ resetSelection: filtersReset });
   leaguesList.innerHTML = '';
 
-  if (!Array.isArray(leagues) || !leagues.length) {
+  const list = Array.isArray(leagues) ? leagues.slice() : [];
+  if (!list.length) {
     leaguesList.innerHTML =
       '<li class="empty-state">Crea una liga para iniciar una nueva temporada.</li>';
+    state.selectedLeagueId = '';
+    renderLeagueDetail();
+    updateLeagueActionAvailability();
     updateCategoryFilterControls();
     updateRankingFilterControls();
     return;
   }
 
-  const sorted = leagues
-    .slice()
-    .sort((a, b) => {
-      if (a.status !== b.status) {
-        return a.status === 'activa' ? -1 : 1;
-      }
-      const yearA = Number(a.year) || 0;
-      const yearB = Number(b.year) || 0;
-      if (yearA !== yearB) {
-        return yearB - yearA;
-      }
-      const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
-      const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
-      return dateB - dateA;
-    });
+  const sorted = list.sort((a, b) => {
+    if (a.status !== b.status) {
+      return a.status === 'activa' ? -1 : 1;
+    }
+    const yearA = Number(a.year) || 0;
+    const yearB = Number(b.year) || 0;
+    if (yearA !== yearB) {
+      return yearB - yearA;
+    }
+    const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
+    const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
+    return dateB - dateA;
+  });
 
+  const availableIds = sorted
+    .map((league) => normalizeId(league))
+    .filter((value) => Boolean(value));
+
+  if (!availableIds.includes(state.selectedLeagueId)) {
+    state.selectedLeagueId = availableIds[0] || '';
+  }
+
+  const activeId = state.selectedLeagueId;
   const admin = isAdmin();
 
   sorted.forEach((league) => {
+    const leagueId = normalizeId(league);
+    if (!leagueId) {
+      return;
+    }
+
     const item = document.createElement('li');
+    if (leagueId === activeId) {
+      item.classList.add('is-active');
+    }
+    item.dataset.leagueId = leagueId;
+
     const content = document.createElement('div');
     content.className = 'list-item__content';
     item.appendChild(content);
 
-    const leagueId = normalizeId(league);
-    if (leagueId) {
-      item.dataset.leagueId = leagueId;
-    }
-
-    const posterUrl = typeof league.poster === 'string' ? league.poster.trim() : '';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'list-item-button';
+    button.dataset.leagueId = leagueId;
+    content.appendChild(button);
 
     const title = document.createElement('strong');
     title.textContent = league.name || 'Liga';
-    content.appendChild(title);
+    button.appendChild(title);
 
     const statusMeta = document.createElement('div');
     statusMeta.className = 'meta meta-league';
     if (league.year) {
       statusMeta.appendChild(document.createElement('span')).textContent = `Temporada ${league.year}`;
     }
+    const statusValue = league.status || 'activa';
     const statusBadge = document.createElement('span');
-    statusBadge.className = `tag league-status league-status--${league.status || 'activa'}`;
-    statusBadge.textContent = LEAGUE_STATUS_LABELS[league.status] || LEAGUE_STATUS_LABELS.activa;
+    statusBadge.className = `tag league-status league-status--${statusValue}`;
+    statusBadge.textContent = LEAGUE_STATUS_LABELS[statusValue] || LEAGUE_STATUS_LABELS.activa;
     statusMeta.appendChild(statusBadge);
-    content.appendChild(statusMeta);
+    button.appendChild(statusMeta);
 
     const dateParts = [];
     if (league.startDate) {
@@ -6412,14 +6456,14 @@ function renderLeagues(leagues = []) {
       const datesMeta = document.createElement('div');
       datesMeta.className = 'meta meta-league-dates';
       datesMeta.textContent = dateParts.join(' · ');
-      content.appendChild(datesMeta);
+      button.appendChild(datesMeta);
     }
 
     if (league.description) {
       const description = document.createElement('p');
       description.className = 'note';
       description.textContent = league.description;
-      content.appendChild(description);
+      button.appendChild(description);
     }
 
     const categories = Array.isArray(league.categories) ? league.categories : [];
@@ -6431,12 +6475,12 @@ function renderLeagues(leagues = []) {
         chip.textContent = category.name || 'Categoría';
         categoryList.appendChild(chip);
       });
-      content.appendChild(categoryList);
+      button.appendChild(categoryList);
     } else {
       const emptyMeta = document.createElement('div');
       emptyMeta.className = 'meta note';
       emptyMeta.textContent = 'Sin categorías asociadas por el momento.';
-      content.appendChild(emptyMeta);
+      button.appendChild(emptyMeta);
     }
 
     const actions = document.createElement('div');
@@ -6449,12 +6493,10 @@ function renderLeagues(leagues = []) {
       editButton.className = 'secondary';
       editButton.textContent = 'Editar';
       editButton.dataset.action = 'edit';
-      if (leagueId) {
-        editButton.dataset.leagueId = leagueId;
-      }
+      editButton.dataset.leagueId = leagueId;
       actions.appendChild(editButton);
       hasActions = true;
-    } else if (leagueId) {
+    } else {
       const access = getLeagueCategoryAccessSnapshot(leagueId);
       const isUserEnrolled = access.enrolled.length > 0;
       const hasPending = access.pending.length > 0;
@@ -6499,6 +6541,7 @@ function renderLeagues(leagues = []) {
       content.appendChild(actions);
     }
 
+    const posterUrl = typeof league.poster === 'string' ? league.poster.trim() : '';
     if (posterUrl) {
       item.classList.add('list-item--with-poster');
       const posterWrapper = document.createElement('div');
@@ -6517,6 +6560,279 @@ function renderLeagues(leagues = []) {
 
   updateCategoryFilterControls();
   updateRankingFilterControls({ renderOnChange: false });
+  renderLeagueDetail();
+  updateLeagueActionAvailability();
+
+  if (
+    state.selectedLeagueId &&
+    !(state.leagueDetails instanceof Map && state.leagueDetails.has(state.selectedLeagueId))
+  ) {
+    refreshLeagueDetail(state.selectedLeagueId).catch((error) => {
+      console.warn('No se pudo cargar el detalle de la liga', error);
+    });
+  }
+}
+
+function renderLeagueDetail() {
+  if (!leagueDetailBody) return;
+
+  const leagueId = state.selectedLeagueId || '';
+  updateLeagueActionAvailability();
+
+  if (!leagueId) {
+    if (leagueDetailTitle) {
+      leagueDetailTitle.textContent = 'Detalle de la liga';
+    }
+    if (leagueDetailSubtitle) {
+      leagueDetailSubtitle.textContent = 'Selecciona una liga para ver la información ampliada.';
+    }
+    leagueDetailBody.innerHTML =
+      '<p class="empty-state">Selecciona una liga de la lista para ver sus detalles.</p>';
+    return;
+  }
+
+  const baseLeague = getLeagueById(leagueId);
+  const detail = state.leagueDetails instanceof Map ? state.leagueDetails.get(leagueId) : null;
+  const info = detail || baseLeague;
+
+  if (!info) {
+    if (leagueDetailTitle) {
+      leagueDetailTitle.textContent = 'Detalle de la liga';
+    }
+    if (leagueDetailSubtitle) {
+      leagueDetailSubtitle.textContent = 'Selecciona una liga para ver la información ampliada.';
+    }
+    leagueDetailBody.innerHTML =
+      '<p class="empty-state">No se encontró información de la liga seleccionada.</p>';
+    return;
+  }
+
+  if (leagueDetailTitle) {
+    leagueDetailTitle.textContent = info.name || 'Liga';
+  }
+
+  const subtitleParts = [];
+  const seasonValue = detail?.year ?? baseLeague?.year;
+  if (seasonValue) {
+    subtitleParts.push(`Temporada ${seasonValue}`);
+  }
+  const rangeLabel = formatDateRangeLabel(
+    detail?.startDate ?? baseLeague?.startDate,
+    detail?.endDate ?? baseLeague?.endDate
+  );
+  if (rangeLabel) {
+    subtitleParts.push(rangeLabel);
+  }
+  if (leagueDetailSubtitle) {
+    leagueDetailSubtitle.textContent = subtitleParts.length
+      ? subtitleParts.join(' · ')
+      : 'Liga del club';
+  }
+
+  leagueDetailBody.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+
+  const posterSource =
+    typeof detail?.poster === 'string' && detail.poster.trim()
+      ? detail.poster.trim()
+      : typeof baseLeague?.poster === 'string' && baseLeague.poster.trim()
+      ? baseLeague.poster.trim()
+      : '';
+  if (posterSource) {
+    const poster = document.createElement('img');
+    poster.className = 'league-detail__poster';
+    poster.src = posterSource;
+    poster.alt = info.name ? `Cartel de la liga ${info.name}` : 'Cartel de la liga';
+    fragment.appendChild(poster);
+  }
+
+  const header = document.createElement('div');
+  header.className = 'league-detail__header';
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+
+  const statusValue = detail?.status || baseLeague?.status || 'activa';
+  const statusTag = document.createElement('span');
+  statusTag.className = `tag league-status league-status--${statusValue}`;
+  statusTag.textContent = LEAGUE_STATUS_LABELS[statusValue] || LEAGUE_STATUS_LABELS.activa;
+  meta.appendChild(statusTag);
+
+  if (rangeLabel) {
+    const rangeSpan = document.createElement('span');
+    rangeSpan.textContent = rangeLabel;
+    meta.appendChild(rangeSpan);
+  }
+
+  const registrationClose = detail?.registrationCloseDate || baseLeague?.registrationCloseDate;
+  if (registrationClose) {
+    const registrationSpan = document.createElement('span');
+    registrationSpan.textContent = `Inscripciones: ${formatShortDate(registrationClose)}`;
+    meta.appendChild(registrationSpan);
+  }
+
+  header.appendChild(meta);
+
+  const descriptionText = detail?.description || baseLeague?.description;
+  if (descriptionText) {
+    const description = document.createElement('p');
+    description.className = 'league-detail__description';
+    description.textContent = descriptionText;
+    header.appendChild(description);
+  } else if (pendingLeagueDetailId === leagueId && !detail) {
+    const loadingDescription = document.createElement('p');
+    loadingDescription.className = 'league-detail__description';
+    loadingDescription.textContent = 'Cargando información de la liga...';
+    header.appendChild(loadingDescription);
+  }
+
+  fragment.appendChild(header);
+
+  const metaItems = [];
+  const startValue = detail?.startDate || baseLeague?.startDate;
+  const endValue = detail?.endDate || baseLeague?.endDate;
+  if (startValue) {
+    metaItems.push(['Inicio', formatShortDate(startValue)]);
+  }
+  if (endValue) {
+    metaItems.push(['Finalización', formatShortDate(endValue)]);
+  }
+  if (registrationClose) {
+    metaItems.push(['Cierre de inscripciones', formatShortDate(registrationClose)]);
+  }
+  const closedAtValue = detail?.closedAt || baseLeague?.closedAt;
+  if (closedAtValue) {
+    metaItems.push(['Cierre administrativo', formatShortDate(closedAtValue)]);
+  }
+  const enrollmentFeeValue = detail?.enrollmentFee ?? baseLeague?.enrollmentFee;
+  if (enrollmentFeeValue !== undefined && enrollmentFeeValue !== null) {
+    const formattedFee = formatCurrencyValue(enrollmentFeeValue);
+    metaItems.push([
+      'Cuota de inscripción',
+      formattedFee || `${Number(enrollmentFeeValue) || 0}`,
+    ]);
+  }
+  const createdAtValue = detail?.createdAt || baseLeague?.createdAt;
+  if (createdAtValue) {
+    metaItems.push(['Creada', formatDate(createdAtValue)]);
+  }
+
+  if (metaItems.length) {
+    const metaContainer = document.createElement('div');
+    metaContainer.className = 'league-detail__meta';
+    metaItems.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'league-detail__meta-item';
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'league-detail__meta-label';
+      labelSpan.textContent = label;
+      const valueSpan = document.createElement('span');
+      valueSpan.textContent = value;
+      row.appendChild(labelSpan);
+      row.appendChild(valueSpan);
+      metaContainer.appendChild(row);
+    });
+    fragment.appendChild(metaContainer);
+  }
+
+  const categories = getLeagueCategories(leagueId);
+  if (categories.length) {
+    const categoryWrapper = document.createElement('div');
+    const heading = document.createElement('h4');
+    heading.className = 'league-section-title';
+    heading.textContent = `Categorías (${categories.length})`;
+    categoryWrapper.appendChild(heading);
+
+    const categoryList = document.createElement('div');
+    categoryList.className = 'league-detail__categories';
+
+    categories
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+      .forEach((category) => {
+        const categoryCard = document.createElement('div');
+        categoryCard.className = 'league-detail__category';
+
+        const name = document.createElement('strong');
+        name.textContent = category.name || 'Categoría';
+        categoryCard.appendChild(name);
+
+        const metaLine = document.createElement('div');
+        metaLine.className = 'meta';
+
+        if (category.gender) {
+          const genderSpan = document.createElement('span');
+          genderSpan.textContent = translateGender(category.gender);
+          metaLine.appendChild(genderSpan);
+        }
+
+        if (category.skillLevel) {
+          const skillSpan = document.createElement('span');
+          skillSpan.textContent = formatSkillLevelLabel(category.skillLevel);
+          metaLine.appendChild(skillSpan);
+        }
+
+        const enrollmentCount = Number.isFinite(Number(category.enrollmentCount))
+          ? Number(category.enrollmentCount)
+          : Number.isFinite(Number(category.playerCount))
+          ? Number(category.playerCount)
+          : null;
+
+        if (enrollmentCount !== null) {
+          const enrollmentSpan = document.createElement('span');
+          enrollmentSpan.textContent =
+            enrollmentCount === 1
+              ? '1 jugador inscrito'
+              : `${enrollmentCount} jugadores inscritos`;
+          metaLine.appendChild(enrollmentSpan);
+        }
+
+        if (metaLine.childNodes.length) {
+          categoryCard.appendChild(metaLine);
+        }
+
+        categoryList.appendChild(categoryCard);
+      });
+
+    categoryWrapper.appendChild(categoryList);
+    fragment.appendChild(categoryWrapper);
+  } else {
+    const note = document.createElement('p');
+    note.className = 'league-section-note';
+    note.textContent = state.categoriesLoaded
+      ? 'Esta liga aún no tiene categorías asociadas.'
+      : 'Cargando categorías de la liga...';
+    fragment.appendChild(note);
+  }
+
+  leagueDetailBody.appendChild(fragment);
+}
+
+async function refreshLeagueDetail(leagueId = state.selectedLeagueId, { force = false } = {}) {
+  const normalized = typeof leagueId === 'string' ? leagueId : normalizeId(leagueId);
+  if (!normalized) {
+    return;
+  }
+
+  pendingLeagueDetailId = normalized;
+  try {
+    renderLeagueDetail();
+    const detail = await fetchLeagueDetail(normalized, { force });
+    if (pendingLeagueDetailId !== normalized) {
+      return;
+    }
+    renderLeagueDetail();
+  } catch (error) {
+    if (pendingLeagueDetailId === normalized && leagueDetailBody) {
+      leagueDetailBody.innerHTML = `<p class="empty-state">${escapeHtml(
+        error.message || 'No fue posible cargar el detalle de la liga.'
+      )}</p>`;
+    }
+  } finally {
+    if (pendingLeagueDetailId === normalized) {
+      pendingLeagueDetailId = null;
+    }
+  }
 }
 
 function openLeagueEnrollmentModal(leagueId = '') {
@@ -19645,6 +19961,9 @@ async function loadAllData() {
     renderLeagues(state.leagues);
     updateLeaguePlayersControls();
     updateLeaguePaymentControls();
+    if (state.selectedLeagueId) {
+      await refreshLeagueDetail(state.selectedLeagueId, { force: true });
+    }
     await refreshLeaguePlayers();
     await refreshAllRankings({ forceReload: true });
 
@@ -20404,6 +20723,7 @@ logoutButtons.forEach((button) => {
     state.token = null;
     state.user = null;
     state.leagues = [];
+    state.selectedLeagueId = '';
     state.categories = [];
     state.categoriesLoaded = false;
     state.players = [];
@@ -20417,6 +20737,7 @@ logoutButtons.forEach((button) => {
     state.globalCalendarDate = new Date();
     state.globalCalendarViewMode = 'month';
     state.matchPagination = { upcoming: {}, pending: {}, completed: {} };
+    renderLeagues([]);
     clearSession();
     updateNotificationCounts([]);
     updateAuthUI();
@@ -20966,16 +21287,34 @@ completedMatchesList?.addEventListener('click', async (event) => {
 });
 
 leaguesList?.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-action]');
-  if (!button) return;
-  const { action, leagueId } = button.dataset;
-  if (action === 'request-league-enrollment' && leagueId) {
-    openLeagueEnrollmentModal(leagueId);
+  const actionButton = event.target.closest('button[data-action]');
+  if (actionButton) {
+    const { action, leagueId } = actionButton.dataset;
+    if (action === 'request-league-enrollment' && leagueId) {
+      openLeagueEnrollmentModal(leagueId);
+      return;
+    }
+    if (action === 'edit' && leagueId) {
+      openLeagueModal(leagueId);
+    }
     return;
   }
-  if (action === 'edit' && leagueId) {
-    openLeagueModal(leagueId);
+
+  if (event.target.closest('.league-actions')) {
+    return;
   }
+
+  const button = event.target.closest('.list-item-button[data-league-id]');
+  const item = button || event.target.closest('li[data-league-id]');
+  if (!item) return;
+
+  const leagueId = normalizeId(button ? button.dataset.leagueId : item.dataset.leagueId);
+  if (!leagueId || leagueId === state.selectedLeagueId) {
+    return;
+  }
+
+  state.selectedLeagueId = leagueId;
+  renderLeagues(state.leagues);
 });
 
 categoryLeagueFilter?.addEventListener('change', () => {
@@ -20992,6 +21331,15 @@ categoryCreateButton?.addEventListener('click', () => {
 leagueCreateButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
   openLeagueModal();
+});
+
+leagueEditButton?.addEventListener('click', () => {
+  if (!isAdmin()) return;
+  const leagueId = state.selectedLeagueId;
+  if (!leagueId) {
+    return;
+  }
+  openLeagueModal(leagueId);
 });
 
 tournamentCreateButton?.addEventListener('click', () => {

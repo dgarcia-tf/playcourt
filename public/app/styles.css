@@ -2112,24 +2112,28 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   outline-offset: 4px;
 }
 
-.tournament-grid {
+.tournament-grid,
+.league-grid {
   display: grid;
   gap: 1.5rem;
   align-items: start;
 }
 
 @media (min-width: 1024px) {
-  .tournament-grid {
+  .tournament-grid,
+  .league-grid {
     grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
   }
 }
 
-.tournament-detail { 
+.tournament-detail,
+.league-detail {
   display: grid;
   gap: 1rem;
 }
 
-.tournament-detail__poster {
+.tournament-detail__poster,
+.league-detail__poster {
   width: 100%;
   max-height: 280px;
   object-fit: cover;
@@ -2139,37 +2143,43 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
-.tournament-detail__header {
+.tournament-detail__header,
+.league-detail__header {
   display: grid;
   gap: 0.4rem;
 }
 
-.tournament-detail__description {
+.tournament-detail__description,
+.league-detail__description {
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.5;
 }
 
-.tournament-detail__meta {
+.tournament-detail__meta,
+.league-detail__meta {
   display: grid;
   gap: 0.4rem;
   font-size: 0.9rem;
   color: var(--text-secondary);
 }
 
-.tournament-detail__meta-item {
+.tournament-detail__meta-item,
+.league-detail__meta-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
 
-.tournament-detail__meta-label {
+.tournament-detail__meta-label,
+.league-detail__meta-label {
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.tournament-detail__fees {
+.tournament-detail__fees,
+.league-detail__fees {
   display: grid;
   gap: 0.5rem;
 }
@@ -2189,14 +2199,16 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   font-weight: 600;
 }
 
-.tournament-section-title {
+.tournament-section-title,
+.league-section-title {
   font-size: 0.95rem;
   font-weight: 700;
   margin: 0;
   color: var(--text-primary);
 }
 
-.tournament-section-note {
+.tournament-section-note,
+.league-section-note {
   margin: 0;
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -2218,12 +2230,14 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-secondary);
 }
 
-.tournament-detail__categories {
+.tournament-detail__categories,
+.league-detail__categories {
   display: grid;
   gap: 0.6rem;
 }
 
-.tournament-detail__category {
+.tournament-detail__category,
+.league-detail__category {
   background: rgba(15, 23, 42, 0.04);
   border-radius: var(--radius-sm);
   padding: 0.75rem 0.85rem;
@@ -2231,12 +2245,14 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   gap: 0.35rem;
 }
 
-.tournament-detail__category strong {
+.tournament-detail__category strong,
+.league-detail__category strong {
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.tournament-detail__category .meta {
+.tournament-detail__category .meta,
+.league-detail__category .meta {
   font-size: 0.85rem;
   color: var(--text-secondary);
   display: flex;

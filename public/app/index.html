@@ -634,24 +634,51 @@
             </section>
 
             <section id="section-leagues" class="app-section" hidden>
-              <article class="card" id="leagues-card">
-                <div class="card-header">
-                  <h3>Ligas registradas</h3>
-                  <button
-                    type="button"
-                    class="primary"
-                    id="league-create-button"
-                    data-admin-only="true"
-                    data-admin-visible="toggle"
-                    hidden
-                  >
-                    Nueva liga
-                  </button>
-                </div>
-                <ul class="list" id="leagues-list">
-                  <li class="empty-state">Crea una liga para iniciar una nueva temporada.</li>
-                </ul>
-              </article>
+              <div class="league-grid">
+                <article class="card" id="leagues-card">
+                  <div class="card-header">
+                    <h3>Ligas registradas</h3>
+                    <button
+                      type="button"
+                      class="primary"
+                      id="league-create-button"
+                      data-admin-only="true"
+                      data-admin-visible="toggle"
+                      hidden
+                    >
+                      Nueva liga
+                    </button>
+                  </div>
+                  <ul class="list" id="leagues-list">
+                    <li class="empty-state">Crea una liga para iniciar una nueva temporada.</li>
+                  </ul>
+                </article>
+                <article class="card" id="league-detail-card">
+                  <div class="card-header">
+                    <div>
+                      <h3 id="league-detail-title">Detalle de la liga</h3>
+                      <p class="card-subtitle" id="league-detail-subtitle">
+                        Selecciona una liga para ver la información ampliada.
+                      </p>
+                    </div>
+                    <div class="card-actions">
+                      <button
+                        type="button"
+                        class="secondary"
+                        id="league-edit-button"
+                        data-admin-only="true"
+                        data-admin-visible="toggle"
+                        hidden
+                      >
+                        Editar liga
+                      </button>
+                    </div>
+                  </div>
+                  <div class="league-detail" id="league-detail-body">
+                    <p class="empty-state">Selecciona una liga de la lista para ver sus detalles.</p>
+                  </div>
+                </article>
+              </div>
             </section>
 
             <section id="section-categories" class="app-section" hidden>
