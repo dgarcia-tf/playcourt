@@ -1101,7 +1101,7 @@ async function reportResult(req, res) {
     .populate('result.winner', 'fullName email');
 
   if (match.result.status === 'confirmado') {
-    await notifyResultConfirmed(populated, userId);
+    await notifyResultConfirmed(populated, requesterId);
   } else if (!isAdmin) {
     await notifyPendingResultConfirmation(populated, requesterId);
   }
