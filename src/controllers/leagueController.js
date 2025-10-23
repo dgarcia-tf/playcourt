@@ -34,6 +34,50 @@ function normalizePaymentStatus(value) {
   return value.trim().toLowerCase();
 }
 
+function normalizeShirtSizes(sizes, hasShirt) {
+  if (!hasShirt) {
+    return [];
+  }
+
+  let values = sizes;
+  if (typeof values === 'string') {
+    values = values.split(/\r?\n|,/);
+  }
+
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const normalized = values
+    .map((size) => (typeof size === 'string' ? size.trim() : ''))
+    .filter((size) => size.length);
+
+  const unique = Array.from(new Set(normalized));
+
+  return unique;
+}
+
+function parseBoolean(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    return ['true', '1', 'yes', 'on', 'si', 'sí'].includes(normalized);
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  return Boolean(value);
+}
+
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 const LEAGUE_POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'leagues');
 
@@ -76,6 +120,8 @@ async function createLeague(req, res) {
     enrollmentFee,
     status,
     isPrivate,
+    hasShirt = false,
+    shirtSizes = [],
     categories = [],
     newCategories = [],
   } = req.body;
@@ -200,6 +246,8 @@ async function createLeague(req, res) {
     enrollmentFee: typeof enrollmentFee === 'number' ? enrollmentFee : undefined,
     categories: distinctCategories.map((id) => new mongoose.Types.ObjectId(id)),
     createdBy: req.user.id,
+    hasShirt: Boolean(hasShirt),
+    shirtSizes: normalizeShirtSizes(shirtSizes, Boolean(hasShirt)),
   };
 
   if (typeof isPrivate === 'boolean') {
@@ -636,6 +684,10 @@ async function getLeagueDetail(req, res) {
 
   const result = league.toObject();
   const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
+  result.hasShirt = Boolean(result.hasShirt);
+  result.shirtSizes = Array.isArray(result.shirtSizes)
+    ? result.shirtSizes.filter((size) => typeof size === 'string' && size.trim()).map((size) => size.trim())
+    : [];
   result.payments = Array.isArray(result.payments)
     ? [...result.payments].sort((a, b) => {
         const paidDiff = toTimestamp(b.paidAt) - toTimestamp(a.paidAt);
@@ -682,6 +734,8 @@ async function listLeagueEnrollments(req, res) {
     status: league.status,
     startDate: league.startDate || null,
     endDate: league.endDate || null,
+    hasShirt: Boolean(league.hasShirt),
+    shirtSizes: normalizeShirtSizes(league.shirtSizes || [], Boolean(league.hasShirt)),
   };
 
   const normalizeMinimumAge = (value) => {
@@ -731,6 +785,8 @@ async function listLeagueEnrollments(req, res) {
 
     const categoryId = category._id ? category._id.toString() : String(category);
     const userId = user._id ? user._id.toString() : String(user);
+    const rawShirtSize = typeof enrollment.shirtSize === 'string' ? enrollment.shirtSize.trim() : '';
+    const shirtSize = rawShirtSize || null;
 
     const categoryPayload = {
       id: categoryId,
@@ -752,6 +808,7 @@ async function listLeagueEnrollments(req, res) {
       photo: user.photo || null,
       preferredSchedule: user.preferredSchedule || null,
       birthDate: user.birthDate || null,
+      shirtSize,
     };
 
     if (!playerMap.has(userId)) {
@@ -759,6 +816,9 @@ async function listLeagueEnrollments(req, res) {
     }
 
     const playerEntry = playerMap.get(userId);
+    if (shirtSize && !playerEntry.shirtSize) {
+      playerEntry.shirtSize = shirtSize;
+    }
     if (!playerEntry.categories.some((entry) => entry.id === categoryId)) {
       playerEntry.categories.push(categoryPayload);
     }
@@ -769,7 +829,7 @@ async function listLeagueEnrollments(req, res) {
 
     const categoryPlayers = categoryPlayerMap.get(categoryId);
     if (!categoryPlayers.some((player) => player.id === userId)) {
-      categoryPlayers.push(userPayload);
+      categoryPlayers.push({ ...userPayload });
     }
   });
 
@@ -823,7 +883,7 @@ async function addLeaguePaymentRecord(req, res) {
   }
 
   const { leagueId } = req.params;
-  const { user, amount, status, method, reference, notes, paidAt } = req.body;
+  const { user, amount, status, method, reference, notes, paidAt, shirtDelivered } = req.body;
 
   const league = await League.findById(leagueId);
   if (!league) {
@@ -865,6 +925,8 @@ async function addLeaguePaymentRecord(req, res) {
   if (paidAt) {
     record.paidAt = new Date(paidAt);
   }
+
+  record.shirtDelivered = parseBoolean(shirtDelivered);
 
   league.payments.push(record);
   await league.save();
@@ -925,6 +987,10 @@ async function updateLeaguePaymentRecord(req, res) {
     payment.paidAt = updates.paidAt ? new Date(updates.paidAt) : undefined;
   }
 
+  if (Object.prototype.hasOwnProperty.call(updates, 'shirtDelivered')) {
+    payment.shirtDelivered = parseBoolean(updates.shirtDelivered);
+  }
+
   payment.recordedBy = req.user.id;
 
   await league.save();
@@ -957,6 +1023,8 @@ async function updateLeague(req, res) {
     enrollmentFee,
     status,
     isPrivate,
+    hasShirt,
+    shirtSizes,
     categories,
   } = req.body;
 
@@ -1023,6 +1091,17 @@ async function updateLeague(req, res) {
     return res.status(400).json({
       message: 'La fecha máxima de inscripción debe ser anterior o igual al inicio de la liga',
     });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'hasShirt')) {
+    league.hasShirt = Boolean(hasShirt);
+    if (!league.hasShirt) {
+      league.shirtSizes = [];
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'shirtSizes')) {
+    league.shirtSizes = normalizeShirtSizes(shirtSizes, league.hasShirt);
   }
 
   if (typeof enrollmentFee !== 'undefined') {

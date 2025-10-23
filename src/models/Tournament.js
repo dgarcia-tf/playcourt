@@ -102,6 +102,10 @@ const paymentRecordSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    shirtDelivered: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

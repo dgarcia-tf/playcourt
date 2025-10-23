@@ -23,6 +23,10 @@ const enrollmentRequestSchema = new mongoose.Schema(
       enum: Object.values(ENROLLMENT_REQUEST_STATUSES),
       default: ENROLLMENT_REQUEST_STATUSES.PENDING,
     },
+    shirtSize: {
+      type: String,
+      trim: true,
+    },
     decisionBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
