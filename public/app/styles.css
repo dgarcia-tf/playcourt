@@ -1104,7 +1104,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .tournament-categories__poster {
   margin: 0 0 1.5rem;
   padding: 0;
-  display: flex;
+  display: none;
   justify-content: center;
 }
 
