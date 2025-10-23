@@ -281,7 +281,10 @@ async function getTournamentDetail(req, res) {
         select: 'fullName gender rating photo',
       },
     })
-    .populate({ path: 'payments.user', select: 'fullName email phone photo preferredSchedule' })
+    .populate({
+      path: 'payments.user',
+      select: 'fullName email phone photo preferredSchedule isMember',
+    })
     .populate({ path: 'payments.recordedBy', select: 'fullName email' });
 
   if (!tournament) {
@@ -667,7 +670,10 @@ async function addPaymentRecord(req, res) {
   await tournament.save();
 
   await tournament.populate([
-    { path: 'payments.user', select: 'fullName email phone photo preferredSchedule' },
+    {
+      path: 'payments.user',
+      select: 'fullName email phone photo preferredSchedule isMember',
+    },
     { path: 'payments.recordedBy', select: 'fullName email' },
   ]);
 
@@ -725,7 +731,10 @@ async function updatePaymentRecord(req, res) {
   await tournament.save();
 
   await tournament.populate([
-    { path: 'payments.user', select: 'fullName email phone photo preferredSchedule' },
+    {
+      path: 'payments.user',
+      select: 'fullName email phone photo preferredSchedule isMember',
+    },
     { path: 'payments.recordedBy', select: 'fullName email' },
   ]);
 

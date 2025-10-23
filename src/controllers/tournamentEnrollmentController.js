@@ -94,7 +94,7 @@ async function createTournamentEnrollment(req, res) {
       shirtSize: requestedShirtSize || undefined,
     });
 
-    await enrollment.populate('user', 'fullName email gender phone photo');
+    await enrollment.populate('user', 'fullName email gender phone photo isMember');
     return res.status(201).json(enrollment);
   } catch (error) {
     if (error.code === 11000) {
@@ -116,7 +116,7 @@ async function listTournamentEnrollments(req, res) {
     tournament: tournamentId,
     category: categoryId,
   })
-    .populate('user', 'fullName email gender phone photo birthDate')
+    .populate('user', 'fullName email gender phone photo birthDate isMember')
     .sort({ createdAt: 1 });
 
   return res.json(enrollments);
