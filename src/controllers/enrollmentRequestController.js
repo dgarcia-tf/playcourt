@@ -6,6 +6,7 @@ const { LEAGUE_STATUS } = require('../models/League');
 const { User } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
 const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
+const { categoryAllowsGender } = require('../utils/gender');
 
 async function requestEnrollment(req, res) {
   const errors = validationResult(req);
@@ -81,7 +82,7 @@ async function requestEnrollment(req, res) {
       .json({ message: 'La categoría no admite nuevas inscripciones en este momento.' });
   }
 
-  if (category.gender !== user.gender) {
+  if (!categoryAllowsGender(category.gender, user.gender)) {
     return res
       .status(400)
       .json({ message: 'El género del jugador no coincide con la categoría seleccionada.' });
@@ -222,7 +223,7 @@ async function updateEnrollmentRequest(req, res) {
       }
     }
 
-    if (category.gender !== enrollmentRequest.user.gender) {
+    if (!categoryAllowsGender(category.gender, enrollmentRequest.user.gender)) {
       return res
         .status(400)
         .json({ message: 'El género del jugador no coincide con la categoría seleccionada.' });

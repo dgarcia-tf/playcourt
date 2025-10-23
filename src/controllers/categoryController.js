@@ -18,6 +18,7 @@ const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../ut
 const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
 const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
 const { canAccessPrivateContent } = require('../utils/accessControl');
+const { categoryAllowsGender } = require('../utils/gender');
 
 async function createCategory(req, res) {
   const errors = validationResult(req);
@@ -207,7 +208,7 @@ async function listCategories(req, res) {
         Boolean(currentGender) &&
         (!category.league?.isPrivate || canSeePrivate) &&
         category.status === CATEGORY_STATUSES.REGISTRATION &&
-        category.gender === currentGender &&
+        categoryAllowsGender(category.gender, currentGender) &&
         meetsMinimumAge &&
         !enrolledSet.has(category._id.toString()) &&
         !pendingRequestMap.has(category._id.toString()) &&
