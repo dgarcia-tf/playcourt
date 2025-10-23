@@ -165,6 +165,10 @@ function normalizeRoles(input) {
   const valid = cleaned.filter((value) => Object.values(USER_ROLES).includes(value));
   const unique = Array.from(new Set(valid));
 
+  if (unique.includes(USER_ROLES.ADMIN) && !unique.includes(USER_ROLES.PLAYER)) {
+    unique.push(USER_ROLES.PLAYER);
+  }
+
   if (!unique.length) {
     return [USER_ROLES.PLAYER];
   }
