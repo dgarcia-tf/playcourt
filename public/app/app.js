@@ -59,6 +59,7 @@ const MATCH_CALENDAR_DEFAULT_DURATION_MINUTES = 90;
 const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const TOURNAMENT_BRACKET_SIZES = [8, 16, 24, 32, 64];
 
 const PUSH_SUPPORTED =
   typeof window !== 'undefined' &&
@@ -1557,12 +1558,15 @@ const state = {
   selectedMatchTournamentId: '',
   selectedMatchCategoryId: '',
   selectedDoublesTournamentId: '',
+  selectedBracketTournamentId: '',
+  selectedBracketCategoryId: '',
   tournamentEnrollments: new Map(),
   tournamentEnrollmentFilters: {
     search: '',
     gender: '',
   },
   tournamentMatches: new Map(),
+  tournamentBracketMatches: new Map(),
   tournamentPayments: new Map(),
   tournamentDoubles: new Map(),
   tournamentPaymentFilters: {
@@ -1592,6 +1596,7 @@ const state = {
   rankingsLoading: false,
   generalChatMessages: [],
   noticeUnreadCount: 0,
+  tournamentBracketSeedsDirty: false,
   playerDirectoryFilters: {
     search: '',
     gender: '',
@@ -1730,6 +1735,17 @@ const tournamentMetricCategories = document.getElementById('tournament-metric-ca
 const tournamentMetricUpcoming = document.getElementById('tournament-metric-upcoming');
 const tournamentDrawCards = document.getElementById('tournament-draw-cards');
 const tournamentUpcomingMatchesList = document.getElementById('tournament-upcoming-matches');
+const tournamentBracketTournamentSelect = document.getElementById('tournament-bracket-tournament');
+const tournamentBracketCategorySelect = document.getElementById('tournament-bracket-category');
+const tournamentBracketSizeSelect = document.getElementById('tournament-bracket-size');
+const tournamentBracketSizeWrapper = document.getElementById('tournament-bracket-size-wrapper');
+const tournamentBracketSeedsContainer = document.getElementById('tournament-bracket-seeds');
+const tournamentBracketView = document.getElementById('tournament-bracket-view');
+const tournamentBracketEmpty = document.getElementById('tournament-bracket-empty');
+const tournamentBracketStatus = document.getElementById('tournament-bracket-status');
+const tournamentBracketSaveSeedsButton = document.getElementById('tournament-bracket-save-seeds');
+const tournamentBracketGenerateButton = document.getElementById('tournament-bracket-generate');
+const tournamentBracketRecalculateButton = document.getElementById('tournament-bracket-recalculate');
 const topbarLogo = document.getElementById('topbar-logo');
 const clubNameHeading = document.getElementById('club-name-heading');
 const clubSloganHeading = document.getElementById('club-slogan');
@@ -1851,6 +1867,7 @@ let pendingTournamentDetailId = null;
 let pendingLeagueDetailId = null;
 let pendingTournamentEnrollmentKey = '';
 let pendingTournamentMatchesKey = '';
+let pendingTournamentBracketKey = '';
 let pendingTournamentDoublesId = '';
 const generalChatMessagesList = document.getElementById('general-chat-messages');
 const generalChatForm = document.getElementById('general-chat-form');
@@ -2354,6 +2371,22 @@ function updateTournamentActionAvailability() {
 
   if (tournamentDrawGenerateButton) {
     tournamentDrawGenerateButton.disabled = !hasTournaments;
+  }
+
+  const hasBracketSelection =
+    Boolean(state.selectedBracketTournamentId) && Boolean(state.selectedBracketCategoryId);
+
+  if (tournamentBracketSaveSeedsButton) {
+    tournamentBracketSaveSeedsButton.disabled =
+      !isAdmin() || !hasBracketSelection || !state.tournamentBracketSeedsDirty;
+  }
+
+  if (tournamentBracketGenerateButton) {
+    tournamentBracketGenerateButton.disabled = !isAdmin() || !hasBracketSelection;
+  }
+
+  if (tournamentBracketRecalculateButton) {
+    tournamentBracketRecalculateButton.disabled = !isAdmin() || !hasBracketSelection;
   }
 }
 
@@ -5235,6 +5268,18 @@ function showSection(sectionId) {
     loadTournamentDashboard({ force: false });
   } else if (resolvedSectionId === 'section-tournament-doubles') {
     refreshTournamentDoubles();
+  } else if (resolvedSectionId === 'section-tournament-brackets') {
+    if (state.selectedBracketTournamentId && !state.tournamentDetails.has(state.selectedBracketTournamentId)) {
+      refreshTournamentDetail(state.selectedBracketTournamentId).catch((error) => {
+        setStatusMessage(tournamentBracketStatus, 'error', error.message);
+      });
+    } else {
+      updateBracketCategoryOptions();
+    }
+
+    if (state.selectedBracketTournamentId && state.selectedBracketCategoryId) {
+      loadTournamentBracketContext({ forceMatches: false });
+    }
   } else if (resolvedSectionId === 'section-account') {
     loadAccountSummary({ force: false });
   }
@@ -9289,6 +9334,93 @@ function getTournamentCategories(tournamentId) {
   return [];
 }
 
+function getTournamentCategoryById(tournamentId, categoryId) {
+  const normalizedCategoryId = normalizeId(categoryId);
+  if (!normalizedCategoryId) {
+    return null;
+  }
+
+  const categories = getTournamentCategories(tournamentId);
+  return (
+    categories.find((category) => normalizeId(category) === normalizedCategoryId) || null
+  );
+}
+
+function buildSeedLookup(category) {
+  const seeds = Array.isArray(category?.seeds) ? category.seeds : [];
+  const bySeed = new Map();
+  const byPlayer = new Map();
+
+  seeds.forEach((entry) => {
+    const playerId = normalizeId(entry?.player);
+    const seedNumber = Number(entry?.seedNumber);
+    if (playerId && Number.isFinite(seedNumber) && seedNumber > 0) {
+      if (!bySeed.has(seedNumber)) {
+        bySeed.set(seedNumber, playerId);
+      }
+      if (!byPlayer.has(playerId)) {
+        byPlayer.set(playerId, seedNumber);
+      }
+    }
+  });
+
+  return { bySeed, byPlayer };
+}
+
+function updateTournamentCategoryCache(tournamentId, updatedCategory) {
+  const normalizedTournamentId = normalizeId(tournamentId);
+  const normalizedCategoryId = normalizeId(updatedCategory);
+
+  if (!normalizedTournamentId || !normalizedCategoryId) {
+    return;
+  }
+
+  const normalizedCategory = {
+    ...updatedCategory,
+    _id: normalizedCategoryId,
+  };
+
+  const mergeCategories = (categories) => {
+    if (!Array.isArray(categories)) {
+      return [normalizedCategory];
+    }
+
+    let found = false;
+    const next = categories.map((category) => {
+      if (normalizeId(category) === normalizedCategoryId) {
+        found = true;
+        return { ...category, ...normalizedCategory };
+      }
+      return category;
+    });
+
+    if (!found) {
+      next.push(normalizedCategory);
+    }
+
+    return next;
+  };
+
+  if (state.tournamentDetails instanceof Map && state.tournamentDetails.has(normalizedTournamentId)) {
+    const detail = state.tournamentDetails.get(normalizedTournamentId);
+    const categories = mergeCategories(detail?.categories);
+    state.tournamentDetails.set(normalizedTournamentId, {
+      ...detail,
+      categories,
+    });
+  }
+
+  if (Array.isArray(state.tournaments) && state.tournaments.length) {
+    state.tournaments = state.tournaments.map((tournament) => {
+      if (normalizeId(tournament) !== normalizedTournamentId) {
+        return tournament;
+      }
+      const categories = mergeCategories(tournament?.categories);
+      return { ...tournament, categories };
+    });
+  }
+}
+
 function renderTournaments(tournaments = state.tournaments) {
   if (!tournamentsList) return;
   tournamentsList.innerHTML = '';
@@ -10023,14 +10155,18 @@ async function openTournamentSelfEnrollmentModal({
   });
 }
 
-async function loadTournamentDetail(tournamentId) {
+async function loadTournamentDetail(tournamentId, { force = false } = {}) {
   const normalized = typeof tournamentId === 'string' ? tournamentId : normalizeId(tournamentId);
   if (!normalized) {
     return null;
   }
 
-  if (state.tournamentDetails.has(normalized)) {
+  if (!force && state.tournamentDetails.has(normalized)) {
     return state.tournamentDetails.get(normalized);
+  }
+
+  if (force && state.tournamentDetails instanceof Map) {
+    state.tournamentDetails.delete(normalized);
   }
 
   const detail = await request(`/tournaments/${normalized}`);
@@ -10049,7 +10185,7 @@ async function refreshTournamentDetail(tournamentId = state.selectedTournamentId
   pendingTournamentDetailId = normalized;
   try {
     renderTournamentDetail();
-    const detail = await loadTournamentDetail(normalized);
+    const detail = await loadTournamentDetail(normalized, { force: true });
     if (!detail || pendingTournamentDetailId !== normalized) {
       return;
     }
@@ -10066,6 +10202,10 @@ async function refreshTournamentDetail(tournamentId = state.selectedTournamentId
 
     if (state.selectedMatchTournamentId === normalized) {
       updateMatchCategoryOptions();
+    }
+
+    if (state.selectedBracketTournamentId === normalized) {
+      updateBracketCategoryOptions();
     }
   } catch (error) {
     if (pendingTournamentDetailId === normalized && tournamentDetailBody) {
@@ -10643,6 +10783,7 @@ function updateTournamentSelectors() {
   state.selectedEnrollmentTournamentId = resolveSelection(state.selectedEnrollmentTournamentId);
   state.selectedMatchTournamentId = resolveSelection(state.selectedMatchTournamentId);
   state.selectedDoublesTournamentId = resolveSelection(state.selectedDoublesTournamentId);
+  state.selectedBracketTournamentId = resolveSelection(state.selectedBracketTournamentId);
 
   fillTournamentSelect(
     tournamentCategoryTournamentSelect,
@@ -10668,12 +10809,19 @@ function updateTournamentSelectors() {
     state.selectedDoublesTournamentId,
     'Selecciona un torneo'
   );
+  fillTournamentSelect(
+    tournamentBracketTournamentSelect,
+    tournaments,
+    state.selectedBracketTournamentId,
+    'Selecciona un torneo'
+  );
 
   renderTournaments(tournaments);
   renderTournamentDetail();
   renderTournamentCategories();
   updateEnrollmentCategoryOptions();
   updateMatchCategoryOptions();
+  updateBracketCategoryOptions();
   renderTournamentDoubles();
   updateTournamentActionAvailability();
 }
@@ -10775,6 +10923,68 @@ function updateMatchCategoryOptions() {
   }
 }
 
+function updateBracketCategoryOptions() {
+  if (!tournamentBracketCategorySelect) {
+    return;
+  }
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categories = getTournamentCategories(tournamentId);
+
+  tournamentBracketCategorySelect.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = categories.length
+    ? 'Selecciona una categoría'
+    : 'Sin categorías disponibles';
+  tournamentBracketCategorySelect.appendChild(placeholder);
+
+  if (!tournamentId || !categories.length) {
+    tournamentBracketCategorySelect.disabled = true;
+    state.selectedBracketCategoryId = '';
+    renderTournamentBracketSeeds();
+    renderTournamentBracket([], { loading: false });
+    updateTournamentActionAvailability();
+    return;
+  }
+
+  categories
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+    .forEach((category) => {
+      const categoryId = normalizeId(category);
+      if (!categoryId) {
+        return;
+      }
+      const option = document.createElement('option');
+      option.value = categoryId;
+      option.textContent = category.menuTitle || category.name || 'Categoría';
+      tournamentBracketCategorySelect.appendChild(option);
+    });
+
+  tournamentBracketCategorySelect.disabled = false;
+
+  const availableIds = categories.map((category) => normalizeId(category)).filter(Boolean);
+  if (!availableIds.includes(state.selectedBracketCategoryId)) {
+    state.selectedBracketCategoryId = '';
+  }
+
+  tournamentBracketCategorySelect.value = state.selectedBracketCategoryId || '';
+
+  if (state.selectedBracketCategoryId) {
+    loadTournamentBracketContext({
+      tournamentId,
+      categoryId: state.selectedBracketCategoryId,
+      forceMatches: false,
+    });
+  } else {
+    renderTournamentBracketSeeds({ tournamentId, categoryId: '', enrollments: [], category: null });
+    renderTournamentBracket([], { loading: false });
+  }
+
+  updateTournamentActionAvailability();
+}
+
 function ensureTournamentEnrollmentFilters() {
   if (!state.tournamentEnrollmentFilters) {
     state.tournamentEnrollmentFilters = { search: '', gender: '' };
@@ -10819,6 +11029,13 @@ function updateTournamentEnrollmentCount(total) {
 }
 
 function getTournamentEnrollmentCacheKey(tournamentId, categoryId) {
+  if (!tournamentId || !categoryId) {
+    return '';
+  }
+  return `${tournamentId}:${categoryId}`;
+}
+
+function getTournamentBracketCacheKey(tournamentId, categoryId) {
   if (!tournamentId || !categoryId) {
     return '';
   }
@@ -11200,6 +11417,516 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
   }
 }
 
+function createBracketMatchCard(match, seedByPlayer = new Map()) {
+  const card = document.createElement('div');
+  card.className = 'bracket-match';
+
+  const header = document.createElement('div');
+  header.className = 'bracket-match__header';
+
+  const label = document.createElement('span');
+  label.textContent = `Partido ${match.matchNumber || '-'}`;
+  header.appendChild(label);
+
+  const statusValue = match.status || 'pendiente';
+  const statusLabel = formatTournamentMatchStatusLabel(statusValue) || statusValue;
+  const statusSpan = document.createElement('span');
+  statusSpan.textContent = statusLabel;
+  header.appendChild(statusSpan);
+
+  card.appendChild(header);
+
+  const playersContainer = document.createElement('div');
+  playersContainer.className = 'bracket-match__players';
+
+  const players = Array.isArray(match.players) ? match.players : [];
+  const winnerId = resolveWinnerId(match);
+
+  for (let index = 0; index < 2; index += 1) {
+    const player = players[index];
+    const wrapper = document.createElement('div');
+    wrapper.className = 'bracket-player';
+
+    const seedSpan = document.createElement('span');
+    seedSpan.className = 'bracket-player__seed';
+    if (player) {
+      const playerId = normalizeId(player);
+      const seedNumber = seedByPlayer.get(playerId);
+      seedSpan.textContent = seedNumber ? `#${seedNumber}` : '';
+    } else {
+      seedSpan.textContent = '';
+    }
+    wrapper.appendChild(seedSpan);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'bracket-player__name';
+    if (player) {
+      const playerName =
+        typeof player === 'object'
+          ? player.fullName || player.email || 'Jugador'
+          : 'Jugador';
+      nameSpan.textContent = playerName;
+    } else {
+      nameSpan.textContent = 'Pendiente';
+      nameSpan.classList.add('bracket-player__name--placeholder');
+    }
+    wrapper.appendChild(nameSpan);
+
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'bracket-player__status';
+    if (player) {
+      const playerId = normalizeId(player);
+      if (winnerId && playerId === winnerId) {
+        statusSpan.textContent = 'Ganador';
+      } else if (winnerId) {
+        statusSpan.textContent = 'Eliminado';
+      }
+    }
+    wrapper.appendChild(statusSpan);
+
+    playersContainer.appendChild(wrapper);
+  }
+
+  card.appendChild(playersContainer);
+
+  const scoreboard = createResultScoreboard(match);
+  if (scoreboard) {
+    card.appendChild(scoreboard);
+  } else if (match?.result?.score) {
+    const scoreMeta = document.createElement('div');
+    scoreMeta.className = 'bracket-match__meta';
+    scoreMeta.textContent = match.result.score;
+    card.appendChild(scoreMeta);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'bracket-match__meta';
+  if (match.scheduledAt) {
+    const dateSpan = document.createElement('span');
+    dateSpan.textContent = formatDate(match.scheduledAt);
+    meta.appendChild(dateSpan);
+  }
+  if (match.court) {
+    const courtSpan = document.createElement('span');
+    courtSpan.textContent = `Pista: ${match.court}`;
+    meta.appendChild(courtSpan);
+  }
+  if (match.result?.notes) {
+    const notesSpan = document.createElement('span');
+    notesSpan.textContent = match.result.notes;
+    meta.appendChild(notesSpan);
+  }
+
+  if (meta.childElementCount) {
+    card.appendChild(meta);
+  }
+
+  return card;
+}
+
+function renderTournamentBracket(matches = [], { loading = false, error = '' } = {}) {
+  if (!tournamentBracketView || !tournamentBracketEmpty) {
+    return;
+  }
+
+  tournamentBracketView.innerHTML = '';
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+
+  if (!tournamentId || !categoryId) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent =
+      'Selecciona una categoría para visualizar su cuadro de juego.';
+    return;
+  }
+
+  if (loading) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent = 'Cargando cuadro de juego...';
+    return;
+  }
+
+  if (error) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent = error;
+    return;
+  }
+
+  const mainMatches = Array.isArray(matches)
+    ? matches.filter((match) => match?.bracketType === 'principal')
+    : [];
+
+  if (!mainMatches.length) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent = 'Aún no se ha generado el cuadro para esta categoría.';
+    return;
+  }
+
+  const category = getTournamentCategoryById(tournamentId, categoryId);
+  const seedLookup = buildSeedLookup(category);
+  const seedByPlayer = seedLookup.byPlayer;
+
+  const grouped = new Map();
+  mainMatches.forEach((match) => {
+    const order = Number(match.roundOrder) || 0;
+    if (!grouped.has(order)) {
+      grouped.set(order, []);
+    }
+    grouped.get(order).push(match);
+  });
+
+  const sortedRounds = Array.from(grouped.entries()).sort((a, b) => a[0] - b[0]);
+
+  const grid = document.createElement('div');
+  grid.className = 'tournament-bracket-grid';
+
+  sortedRounds.forEach(([order, roundMatches]) => {
+    const roundSection = document.createElement('section');
+    roundSection.className = 'bracket-round';
+
+    const roundTitle = document.createElement('h5');
+    roundTitle.className = 'bracket-round__title';
+    const firstMatch = roundMatches[0];
+    roundTitle.textContent = firstMatch?.round || `Ronda ${order || 1}`;
+    roundSection.appendChild(roundTitle);
+
+    const matchList = document.createElement('div');
+    matchList.className = 'bracket-round__matches';
+
+    roundMatches
+      .slice()
+      .sort((a, b) => (Number(a.matchNumber) || 0) - (Number(b.matchNumber) || 0))
+      .forEach((match) => {
+        matchList.appendChild(createBracketMatchCard(match, seedByPlayer));
+      });
+
+    roundSection.appendChild(matchList);
+    grid.appendChild(roundSection);
+  });
+
+  tournamentBracketView.appendChild(grid);
+  tournamentBracketEmpty.hidden = true;
+}
+
+function renderTournamentBracketSeeds({
+  tournamentId = '',
+  categoryId = '',
+  enrollments = [],
+  category = null,
+} = {}) {
+  if (!tournamentBracketSeedsContainer) {
+    return;
+  }
+
+  tournamentBracketSeedsContainer.innerHTML = '';
+
+  const hasSelection = Boolean(tournamentId && categoryId);
+  if (!hasSelection) {
+    const message = document.createElement('p');
+    message.className = 'empty-state';
+    message.textContent = 'Selecciona un torneo y categoría para configurar las siembras.';
+    tournamentBracketSeedsContainer.appendChild(message);
+    state.tournamentBracketSeedsDirty = false;
+    if (tournamentBracketSaveSeedsButton) {
+      tournamentBracketSaveSeedsButton.disabled = true;
+    }
+    return;
+  }
+
+  const activeEnrollments = Array.isArray(enrollments)
+    ? enrollments.filter((entry) => entry && entry.status !== 'cancelada' && entry.user)
+    : [];
+
+  const players = activeEnrollments
+    .map((entry) => entry.user)
+    .filter(Boolean)
+    .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+
+  const seedLookup = buildSeedLookup(category);
+  const drawSizeValue = Number(tournamentBracketSizeSelect?.value);
+  const baseDrawSize = Number(category?.drawSize);
+  const drawSize = drawSizeValue || baseDrawSize || players.length;
+  const maxSeeds = Math.max(
+    seedLookup.bySeed.size,
+    Math.min(players.length, drawSize || players.length)
+  );
+
+  const editable = isAdmin();
+
+  if (!players.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'No hay jugadores inscritos disponibles para asignar siembras.';
+    tournamentBracketSeedsContainer.appendChild(empty);
+    state.tournamentBracketSeedsDirty = false;
+    if (tournamentBracketSaveSeedsButton) {
+      tournamentBracketSaveSeedsButton.disabled = true;
+    }
+    return;
+  }
+
+  for (let seedNumber = 1; seedNumber <= Math.max(maxSeeds, 1); seedNumber += 1) {
+    const entry = document.createElement('div');
+    entry.className = 'tournament-seed-entry';
+
+    const label = document.createElement('div');
+    label.className = 'tournament-seed-entry__label';
+    label.textContent = `Cabeza de serie #${seedNumber}`;
+    entry.appendChild(label);
+
+    const assignedPlayerId = seedLookup.bySeed.get(seedNumber);
+    if (editable) {
+      const select = document.createElement('select');
+      select.dataset.seedNumber = String(seedNumber);
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Sin asignar';
+      select.appendChild(placeholder);
+
+      players.forEach((player) => {
+        const option = document.createElement('option');
+        const playerId = normalizeId(player);
+        option.value = playerId;
+        option.textContent = player.fullName || player.email || 'Jugador';
+        if (assignedPlayerId && playerId === assignedPlayerId) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+
+      select.addEventListener('change', () => {
+        state.tournamentBracketSeedsDirty = true;
+        if (tournamentBracketSaveSeedsButton) {
+          tournamentBracketSaveSeedsButton.disabled = false;
+        }
+        updateTournamentActionAvailability();
+      });
+
+      entry.appendChild(select);
+    } else {
+      const info = document.createElement('div');
+      info.className = 'tournament-seed-entry__player';
+      if (assignedPlayerId) {
+        const player =
+          players.find((item) => normalizeId(item) === assignedPlayerId) ||
+          (Array.isArray(category?.seeds)
+            ? category.seeds.find((seed) => normalizeId(seed.player) === assignedPlayerId)?.player
+            : null);
+        const playerName =
+          typeof player === 'object'
+            ? player.fullName || player.email || 'Jugador'
+            : '';
+        info.textContent = playerName || 'Sin asignar';
+      } else {
+        info.textContent = 'Sin asignar';
+      }
+      entry.appendChild(info);
+    }
+
+    tournamentBracketSeedsContainer.appendChild(entry);
+  }
+
+  state.tournamentBracketSeedsDirty = false;
+  if (tournamentBracketSaveSeedsButton) {
+    tournamentBracketSaveSeedsButton.disabled = !editable;
+  }
+
+  updateTournamentActionAvailability();
+}
+
+function collectTournamentSeedAssignments() {
+  if (!tournamentBracketSeedsContainer) {
+    return [];
+  }
+
+  const selects = tournamentBracketSeedsContainer.querySelectorAll('select[data-seed-number]');
+  const assignments = [];
+  selects.forEach((select) => {
+    const seedNumber = Number(select.dataset.seedNumber);
+    const playerId = select.value;
+    if (Number.isFinite(seedNumber) && seedNumber > 0 && playerId) {
+      assignments.push({ seedNumber, player: playerId });
+    }
+  });
+  return assignments;
+}
+
+function validateTournamentSeedAssignments(assignments = []) {
+  const seenSeeds = new Set();
+  const seenPlayers = new Set();
+  for (const entry of assignments) {
+    const seedNumber = Number(entry?.seedNumber);
+    const playerId = normalizeId(entry?.player);
+    if (!seedNumber || !playerId) {
+      continue;
+    }
+    if (seenSeeds.has(seedNumber)) {
+      return 'Cada número de siembra solo se puede asignar a un jugador.';
+    }
+    if (seenPlayers.has(playerId)) {
+      return 'Un jugador no puede tener más de una siembra asignada.';
+    }
+    seenSeeds.add(seedNumber);
+    seenPlayers.add(playerId);
+  }
+  return '';
+}
+
+async function persistTournamentBracketSeeds(assignments, { silent = false } = {}) {
+  if (!isAdmin()) {
+    return true;
+  }
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+  if (!tournamentId || !categoryId) {
+    return false;
+  }
+
+  const payload = Array.isArray(assignments) ? assignments : [];
+
+  try {
+    const response = await request(`/tournaments/${tournamentId}/categories/${categoryId}/seeds`, {
+      method: 'POST',
+      body: { seeds: payload },
+    });
+    if (response && typeof response === 'object') {
+      updateTournamentCategoryCache(tournamentId, response);
+    }
+    state.tournamentBracketSeedsDirty = false;
+    if (tournamentBracketSaveSeedsButton) {
+      tournamentBracketSaveSeedsButton.disabled = true;
+    }
+    if (!silent) {
+      setStatusMessage(
+        tournamentBracketStatus,
+        'success',
+        'Cabezas de serie actualizadas correctamente.'
+      );
+    }
+    await refreshTournamentDetail(tournamentId);
+    return true;
+  } catch (error) {
+    if (!silent) {
+      setStatusMessage(tournamentBracketStatus, 'error', error.message);
+    }
+    return false;
+  }
+}
+
+function updateBracketSizeSelect(category) {
+  if (!tournamentBracketSizeSelect) {
+    return;
+  }
+
+  if (!tournamentBracketSizeSelect.childElementCount) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Selecciona un tamaño';
+    tournamentBracketSizeSelect.appendChild(placeholder);
+    TOURNAMENT_BRACKET_SIZES.forEach((size) => {
+      const option = document.createElement('option');
+      option.value = String(size);
+      option.textContent = `${size} jugadores`;
+      tournamentBracketSizeSelect.appendChild(option);
+    });
+  }
+
+  const drawSize = Number(category?.drawSize);
+  if (TOURNAMENT_BRACKET_SIZES.includes(drawSize)) {
+    tournamentBracketSizeSelect.value = String(drawSize);
+  } else {
+    tournamentBracketSizeSelect.value = '';
+  }
+
+  tournamentBracketSizeSelect.disabled = !isAdmin();
+
+  if (tournamentBracketSizeWrapper) {
+    tournamentBracketSizeWrapper.hidden = !isAdmin();
+  }
+}
+
+async function refreshTournamentBracketMatches({ forceReload = false } = {}) {
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+
+  if (!tournamentId || !categoryId) {
+    renderTournamentBracket([], { loading: false });
+    return;
+  }
+
+  const cacheKey = getTournamentBracketCacheKey(tournamentId, categoryId);
+  if (!forceReload && state.tournamentBracketMatches.has(cacheKey)) {
+    renderTournamentBracket(state.tournamentBracketMatches.get(cacheKey) || []);
+    return;
+  }
+
+  pendingTournamentBracketKey = cacheKey;
+  renderTournamentBracket([], { loading: true });
+
+  try {
+    const response = await request(`/tournaments/${tournamentId}/categories/${categoryId}/matches`);
+    const list = Array.isArray(response) ? response : [];
+    state.tournamentBracketMatches.set(cacheKey, list);
+    if (pendingTournamentBracketKey === cacheKey) {
+      renderTournamentBracket(list);
+    }
+  } catch (error) {
+    if (pendingTournamentBracketKey === cacheKey) {
+      renderTournamentBracket([], {
+        error: error.message || 'No fue posible cargar el cuadro.',
+      });
+    }
+  } finally {
+    if (pendingTournamentBracketKey === cacheKey) {
+      pendingTournamentBracketKey = '';
+    }
+  }
+}
+
+async function loadTournamentBracketContext({
+  tournamentId = state.selectedBracketTournamentId,
+  categoryId = state.selectedBracketCategoryId,
+  forceMatches = false,
+} = {}) {
+  if (!tournamentId || !categoryId) {
+    renderTournamentBracketSeeds();
+    renderTournamentBracket([], { loading: false });
+    return;
+  }
+
+  setStatusMessage(tournamentBracketStatus, '', '');
+
+  let category = getTournamentCategoryById(tournamentId, categoryId);
+  if (!category) {
+    try {
+      await refreshTournamentDetail(tournamentId);
+      category = getTournamentCategoryById(tournamentId, categoryId);
+    } catch (error) {
+      setStatusMessage(tournamentBracketStatus, 'error', error.message);
+    }
+  }
+
+  updateBracketSizeSelect(category);
+
+  let enrollments = [];
+  try {
+    enrollments = await fetchTournamentEnrollments(tournamentId, categoryId, { forceReload: false });
+  } catch (error) {
+    setStatusMessage(tournamentBracketStatus, 'error', error.message);
+  }
+
+  renderTournamentBracketSeeds({
+    tournamentId,
+    categoryId,
+    enrollments,
+    category,
+  });
+
+  await refreshTournamentBracketMatches({ forceReload: forceMatches });
+}
+
 async function reloadTournaments({ selectTournamentId } = {}) {
   let tournaments = [];
 
@@ -11227,6 +11954,12 @@ async function reloadTournaments({ selectTournamentId } = {}) {
   );
   state.tournamentDoubles = new Map(
     Array.from(state.tournamentDoubles.entries()).filter(([id]) => validTournamentIds.has(id))
+  );
+  state.tournamentBracketMatches = new Map(
+    Array.from(state.tournamentBracketMatches.entries()).filter(([key]) => {
+      const [tournamentKey] = String(key).split(':');
+      return validTournamentIds.has(tournamentKey);
+    })
   );
 
   updateTournamentSelectors();
@@ -24034,6 +24767,209 @@ tournamentMatchCategorySelect?.addEventListener('change', async (event) => {
     renderTournamentMatches([], { loading: false });
   }
   updateTournamentActionAvailability();
+});
+
+tournamentBracketTournamentSelect?.addEventListener('change', async (event) => {
+  const value = event.target.value || '';
+  state.selectedBracketTournamentId = value;
+  state.selectedBracketCategoryId = '';
+  state.tournamentBracketSeedsDirty = false;
+  setStatusMessage(tournamentBracketStatus, '', '');
+  if (value && !state.tournamentDetails.has(value)) {
+    try {
+      await refreshTournamentDetail(value);
+    } catch (error) {
+      setStatusMessage(tournamentBracketStatus, 'error', error.message);
+    }
+  }
+  updateBracketCategoryOptions();
+  updateTournamentActionAvailability();
+});
+
+tournamentBracketCategorySelect?.addEventListener('change', async (event) => {
+  const value = event.target.value || '';
+  state.selectedBracketCategoryId = value;
+  state.tournamentBracketSeedsDirty = false;
+  setStatusMessage(tournamentBracketStatus, '', '');
+  if (value) {
+    await loadTournamentBracketContext({
+      tournamentId: state.selectedBracketTournamentId,
+      categoryId: value,
+      forceMatches: true,
+    });
+  } else {
+    renderTournamentBracketSeeds();
+    renderTournamentBracket([], { loading: false });
+  }
+  updateTournamentActionAvailability();
+});
+
+tournamentBracketSizeSelect?.addEventListener('change', async () => {
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+  if (!tournamentId || !categoryId) {
+    return;
+  }
+  let enrollments = [];
+  try {
+    enrollments = await fetchTournamentEnrollments(tournamentId, categoryId, {
+      forceReload: false,
+    });
+  } catch (error) {
+    setStatusMessage(tournamentBracketStatus, 'error', error.message);
+  }
+  const category = getTournamentCategoryById(tournamentId, categoryId);
+  renderTournamentBracketSeeds({
+    tournamentId,
+    categoryId,
+    enrollments,
+    category,
+  });
+  updateTournamentActionAvailability();
+});
+
+tournamentBracketSaveSeedsButton?.addEventListener('click', async () => {
+  if (!isAdmin()) {
+    return;
+  }
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+  if (!tournamentId || !categoryId) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      'Selecciona un torneo y una categoría válidos.'
+    );
+    return;
+  }
+
+  const assignments = collectTournamentSeedAssignments();
+  const validationError = validateTournamentSeedAssignments(assignments);
+  if (validationError) {
+    setStatusMessage(tournamentBracketStatus, 'error', validationError);
+    return;
+  }
+
+  const success = await persistTournamentBracketSeeds(assignments, { silent: false });
+  if (success) {
+    await loadTournamentBracketContext({
+      tournamentId,
+      categoryId,
+      forceMatches: false,
+    });
+  }
+  updateTournamentActionAvailability();
+});
+
+tournamentBracketGenerateButton?.addEventListener('click', async () => {
+  if (!isAdmin()) {
+    return;
+  }
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+  if (!tournamentId || !categoryId) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      'Selecciona un torneo y una categoría válidos.'
+    );
+    return;
+  }
+
+  const assignments = collectTournamentSeedAssignments();
+  const validationError = validateTournamentSeedAssignments(assignments);
+  if (validationError) {
+    setStatusMessage(tournamentBracketStatus, 'error', validationError);
+    return;
+  }
+
+  const category = getTournamentCategoryById(tournamentId, categoryId);
+  const drawSizeValue = Number(tournamentBracketSizeSelect?.value);
+  const currentDrawSize = Number(category?.drawSize);
+
+  tournamentBracketGenerateButton.disabled = true;
+  setStatusMessage(tournamentBracketStatus, 'info', 'Generando cuadro automáticamente...');
+
+  try {
+    const saved = await persistTournamentBracketSeeds(assignments, { silent: true });
+    if (!saved) {
+      tournamentBracketGenerateButton.disabled = false;
+      updateTournamentActionAvailability();
+      return;
+    }
+
+    if (drawSizeValue && drawSizeValue !== currentDrawSize) {
+      await request(`/tournaments/${tournamentId}/categories/${categoryId}`, {
+        method: 'PATCH',
+        body: { drawSize: drawSizeValue },
+      });
+    }
+
+    await request(`/tournaments/${tournamentId}/categories/${categoryId}/brackets/auto`, {
+      method: 'POST',
+    });
+
+    state.tournamentBracketMatches.delete(
+      getTournamentBracketCacheKey(tournamentId, categoryId)
+    );
+
+    await refreshTournamentDetail(tournamentId);
+    await loadTournamentBracketContext({
+      tournamentId,
+      categoryId,
+      forceMatches: true,
+    });
+
+    setStatusMessage(tournamentBracketStatus, 'success', 'Cuadro generado correctamente.');
+  } catch (error) {
+    setStatusMessage(tournamentBracketStatus, 'error', error.message);
+  } finally {
+    tournamentBracketGenerateButton.disabled = false;
+    updateTournamentActionAvailability();
+  }
+});
+
+tournamentBracketRecalculateButton?.addEventListener('click', async () => {
+  if (!isAdmin()) {
+    return;
+  }
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+  if (!tournamentId || !categoryId) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      'Selecciona un torneo y una categoría válidos.'
+    );
+    return;
+  }
+
+  tournamentBracketRecalculateButton.disabled = true;
+  setStatusMessage(tournamentBracketStatus, 'info', 'Recalculando cuadro...');
+
+  try {
+    await request(`/tournaments/${tournamentId}/categories/${categoryId}/brackets/recalculate`, {
+      method: 'POST',
+    });
+    state.tournamentBracketMatches.delete(
+      getTournamentBracketCacheKey(tournamentId, categoryId)
+    );
+    await refreshTournamentDetail(tournamentId);
+    await loadTournamentBracketContext({
+      tournamentId,
+      categoryId,
+      forceMatches: true,
+    });
+    setStatusMessage(tournamentBracketStatus, 'success', 'Cuadro actualizado correctamente.');
+  } catch (error) {
+    setStatusMessage(tournamentBracketStatus, 'error', error.message);
+  } finally {
+    tournamentBracketRecalculateButton.disabled = false;
+    updateTournamentActionAvailability();
+  }
 });
 
 notificationsList?.addEventListener('click', async (event) => {
