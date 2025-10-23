@@ -246,7 +246,7 @@ async function createLeague(req, res) {
 }
 
 async function getLeagueOverview(req, res) {
-  const { leagueId } = req.query;
+  const { leagueId, includeClosed } = req.query;
 
   const rawLeagueIds = Array.isArray(leagueId)
     ? leagueId.filter((value) => typeof value === 'string')
@@ -263,6 +263,7 @@ async function getLeagueOverview(req, res) {
   }
 
   const leagueQuery = normalizedLeagueIds.length ? { _id: { $in: normalizedLeagueIds } } : {};
+  const includeClosedLeagues = includeClosed || normalizedLeagueIds.length > 0;
 
   const leagueDocuments = await League.find(leagueQuery);
   await Promise.all(leagueDocuments.map((league) => refreshLeagueStatusIfExpired(league)));
@@ -438,6 +439,10 @@ async function getLeagueOverview(req, res) {
   leagues.forEach((league) => {
     const payload = buildLeaguePayload(league);
     if (league.status === LEAGUE_STATUS.CLOSED) {
+      if (!includeClosedLeagues) {
+        return;
+      }
+
       payload.players = [];
       payload.playerCount = 0;
       archivedLeagues.push(payload);
@@ -494,7 +499,7 @@ async function listLeagues(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { year, status } = req.query;
+  const { year, status, includeClosed } = req.query;
 
   const query = {};
   if (year) {
@@ -508,10 +513,13 @@ async function listLeagues(req, res) {
 
   await Promise.all(leagues.map((league) => refreshLeagueStatusIfExpired(league)));
 
-  const filteredLeagues =
-    status && typeof status === 'string'
-      ? leagues.filter((league) => league.status === status)
-      : leagues;
+  let filteredLeagues = leagues;
+
+  if (status && typeof status === 'string') {
+    filteredLeagues = leagues.filter((league) => league.status === status);
+  } else if (!includeClosed) {
+    filteredLeagues = leagues.filter((league) => league.status !== LEAGUE_STATUS.CLOSED);
+  }
 
   const toTimestamp = (value) => {
     if (!value) {

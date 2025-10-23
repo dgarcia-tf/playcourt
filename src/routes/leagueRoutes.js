@@ -23,6 +23,7 @@ const router = express.Router();
 router.get(
   '/overview',
   authenticate,
+  [query('includeClosed').optional().isBoolean().toBoolean()],
   getLeagueOverview
 );
 
@@ -32,6 +33,7 @@ router.get(
   [
     query('year').optional().isInt({ min: 2000 }).toInt(),
     query('status').optional().isIn(Object.values(LEAGUE_STATUS)),
+    query('includeClosed').optional().isBoolean().toBoolean(),
   ],
   listLeagues
 );
