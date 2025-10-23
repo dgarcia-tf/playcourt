@@ -1,0 +1,19 @@
+const DEFAULT_AUTO_CONFIRM_MINUTES = 30;
+const DEFAULT_RESULT_CHECK_INTERVAL_MS = 60 * 1000;
+
+const parsedMinutes = Number(process.env.MATCH_RESULT_AUTO_CONFIRM_MINUTES);
+const parsedInterval = Number(process.env.MATCH_RESULT_CHECK_INTERVAL_MS);
+
+const MATCH_RESULT_AUTO_CONFIRM_MINUTES =
+  Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : DEFAULT_AUTO_CONFIRM_MINUTES;
+
+const MATCH_RESULT_AUTO_CONFIRM_MS = MATCH_RESULT_AUTO_CONFIRM_MINUTES * 60 * 1000;
+
+const MATCH_RESULT_CHECK_INTERVAL_MS =
+  Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : DEFAULT_RESULT_CHECK_INTERVAL_MS;
+
+module.exports = {
+  MATCH_RESULT_AUTO_CONFIRM_MINUTES,
+  MATCH_RESULT_AUTO_CONFIRM_MS,
+  MATCH_RESULT_CHECK_INTERVAL_MS,
+};

@@ -10,6 +10,11 @@ const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { refreshCategoryRanking } = require('../services/rankingService');
 const { MATCH_EXPIRATION_DAYS } = require('../services/matchExpirationService');
+const { MATCH_RESULT_AUTO_CONFIRM_MS } = require('../config/matchResults');
+const {
+  notifyPendingResultConfirmation,
+  notifyResultConfirmed,
+} = require('../services/matchNotificationService');
 const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
 const {
   ensureReservationAvailability: ensureCourtReservationAvailability,
@@ -24,6 +29,7 @@ const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caduc
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MIN_MATCH_DURATION_MS = 75 * 60 * 1000;
 const MATCH_EXPIRATION_MS = MATCH_EXPIRATION_DAYS * DAY_IN_MS;
+const MATCH_RESULT_AUTO_CONFIRM_TIMEOUT_MS = MATCH_RESULT_AUTO_CONFIRM_MS;
 const ACTIVE_RESERVATION_STATUSES = [RESERVATION_STATUS.RESERVED, RESERVATION_STATUS.PRE_RESERVED];
 
 async function ensureCategoryLeagueAllowsChanges(category, message) {
@@ -1054,6 +1060,9 @@ async function reportResult(req, res) {
   match.result.reportedAt = now;
   match.result.confirmedBy = undefined;
   match.result.confirmedAt = undefined;
+  match.result.autoConfirmAt = isAdmin
+    ? undefined
+    : new Date(now.getTime() + MATCH_RESULT_AUTO_CONFIRM_TIMEOUT_MS);
 
   const confirmationMap = new Map();
   playerIds.forEach((playerId) => {
@@ -1070,6 +1079,7 @@ async function reportResult(req, res) {
     match.status = 'completado';
     match.result.confirmedBy = requesterId;
     match.result.confirmedAt = now;
+    match.result.autoConfirmAt = undefined;
   } else {
     match.result.status = 'en_revision';
     match.status = 'revision';
@@ -1091,56 +1101,9 @@ async function reportResult(req, res) {
     .populate('result.winner', 'fullName email');
 
   if (match.result.status === 'confirmado') {
-    const participantEnrollments = await Enrollment.find({
-      category: match.category,
-      user: { $in: match.players },
-    }).populate('user', 'fullName email notifyMatchResults');
-
-    const playerRecipients = participantEnrollments
-      .map((enrollment) => enrollment.user)
-      .filter((user) => user && user.notifyMatchResults !== false)
-      .map((user) => user._id.toString());
-
-    const adminRecipients = await User.find({
-      roles: USER_ROLES.ADMIN,
-      notifyMatchResults: { $ne: false },
-    })
-      .select('_id')
-      .lean();
-
-    const recipientSet = new Set(playerRecipients);
-    adminRecipients.forEach(({ _id }) => {
-      if (_id) {
-        recipientSet.add(_id.toString());
-      }
-    });
-
-    if (recipientSet.size) {
-      const opponentNames = participantEnrollments
-        .map((enrollment) => enrollment.user?.fullName || enrollment.user?.email)
-        .filter(Boolean)
-        .join(' vs ');
-
-      try {
-        await Notification.create({
-          title: 'Partido finalizado',
-          message: opponentNames
-            ? `Se confirmó el partido ${opponentNames}.`
-            : 'Se confirmó un partido de la liga.',
-          channel: 'app',
-          scheduledFor: new Date(),
-          recipients: Array.from(recipientSet),
-          match: match._id,
-          metadata: {
-            categoria: populated.category?.name,
-            estado: populated.status,
-          },
-          createdBy: userId,
-        });
-      } catch (error) {
-        console.error('No se pudo crear la notificación de resultado confirmado', error);
-      }
-    }
+    await notifyResultConfirmed(populated, userId);
+  } else if (!isAdmin) {
+    await notifyPendingResultConfirmation(populated, requesterId);
   }
 
   return res.json(populated);
@@ -1193,6 +1156,7 @@ async function confirmResult(req, res) {
     match.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
     match.result.confirmedBy = isAdmin ? userId : undefined;
     match.result.confirmedAt = undefined;
+    match.result.autoConfirmAt = undefined;
     playerIds.forEach((playerId) => {
       confirmations.set(playerId, {
         status: playerId === userId ? 'rechazado' : 'pendiente',
@@ -1237,6 +1201,7 @@ async function confirmResult(req, res) {
         respondedAt: now,
       });
     });
+    match.result.autoConfirmAt = undefined;
   }
 
   match.result.confirmations = confirmations;
@@ -1247,6 +1212,7 @@ async function confirmResult(req, res) {
     match.status = 'completado';
     match.result.confirmedBy = userId;
     match.result.confirmedAt = now;
+    match.result.autoConfirmAt = undefined;
   } else {
     match.result.status = 'en_revision';
     if (match.status !== 'revision') {
@@ -1268,6 +1234,10 @@ async function confirmResult(req, res) {
     .populate('proposal.requestedBy', 'fullName email phone')
     .populate('proposal.requestedTo', 'fullName email phone')
     .populate('result.winner', 'fullName email');
+
+  if (match.result.status === 'confirmado') {
+    await notifyResultConfirmed(populated, userId);
+  }
 
   return res.json(populated);
 }

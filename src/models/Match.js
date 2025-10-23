@@ -138,6 +138,9 @@ const matchSchema = new mongoose.Schema(
       confirmedAt: {
         type: Date,
       },
+      autoConfirmAt: {
+        type: Date,
+      },
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -159,6 +162,7 @@ matchSchema.set('toObject', { virtuals: true, flattenMaps: true });
 matchSchema.index({ category: 1, scheduledAt: 1 });
 matchSchema.index({ category: 1, status: 1 });
 matchSchema.index({ status: 1, expiresAt: 1 });
+matchSchema.index({ 'result.status': 1, 'result.autoConfirmAt': 1 });
 module.exports = {
   Match: mongoose.model('Match', matchSchema),
 };
