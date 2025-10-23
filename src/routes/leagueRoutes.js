@@ -23,6 +23,7 @@ const router = express.Router();
 router.get(
   '/overview',
   authenticate,
+  [query('includeClosed').optional().isBoolean().toBoolean()],
   getLeagueOverview
 );
 
