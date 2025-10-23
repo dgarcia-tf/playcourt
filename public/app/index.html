@@ -976,36 +976,59 @@
 
             <section id="section-tournament-enrollments" class="app-section" hidden>
               <article class="card" id="tournament-enrollments-card">
-                  <div class="card-header">
-                    <div>
-                      <h3>Jugadores inscritos</h3>
-                      <p class="card-subtitle">Filtra por torneo y categoría para ver las inscripciones.</p>
-                    </div>
-                  <div class="card-actions">
-                    <label class="inline-field">
-                      Torneo
-                      <select id="tournament-enrollment-tournament"></select>
-                    </label>
-                    <label class="inline-field">
-                      Categoría
-                      <select id="tournament-enrollment-category" disabled></select>
-                    </label>
-                    <button
-                      type="button"
-                      class="secondary"
-                      id="tournament-enrollment-add-button"
-                      data-admin-only="true"
-                      data-admin-visible="toggle"
-                      hidden
-                    >
+                <div class="card-header">
+                  <div>
+                    <h3>Jugadores inscritos</h3>
+                    <p class="card-subtitle">
+                      Consulta y filtra a los participantes inscritos en cada torneo y categoría.
+                    </p>
+                  </div>
+                </div>
+                <div class="player-directory-summary">
+                  Resultados: <strong id="tournament-enrollment-count">0</strong>
+                </div>
+                <div class="player-directory-controls">
+                  <label class="inline-field">
+                    Torneo
+                    <select id="tournament-enrollment-tournament" disabled></select>
+                  </label>
+                  <label class="inline-field">
+                    Categoría
+                    <select id="tournament-enrollment-category" disabled></select>
+                  </label>
+                  <label class="inline-field">
+                    Búsqueda
+                    <input
+                      type="search"
+                      id="tournament-enrollment-search"
+                      placeholder="Nombre, correo o teléfono"
+                      disabled
+                    />
+                  </label>
+                  <label class="inline-field">
+                    Género
+                    <select id="tournament-enrollment-gender" disabled>
+                      <option value="">Todos</option>
+                      <option value="masculino">Masculino</option>
+                      <option value="femenino">Femenino</option>
+                      <option value="mixto">Mixto</option>
+                    </select>
+                  </label>
+                  <div
+                    class="player-directory-controls__action"
+                    data-admin-only="true"
+                    data-admin-visible="toggle"
+                    hidden
+                  >
+                    <button type="button" class="secondary" id="tournament-enrollment-add-button">
                       Inscribir jugador
                     </button>
                   </div>
                 </div>
                 <ul class="list" id="tournament-enrollment-list"></ul>
-                <p class="empty-state" id="tournament-enrollment-empty">
-                  Selecciona una categoría para mostrar las inscripciones registradas.
-                </p>
+                <div class="empty-state" id="tournament-enrollment-empty">
+                  Selecciona un torneo para consultar los jugadores inscritos.
+                </div>
               </article>
             </section>
 
