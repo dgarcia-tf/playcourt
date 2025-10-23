@@ -16319,10 +16319,6 @@ function openTournamentModal(tournamentId = '') {
         ${statusOptions}
       </select>
     </label>
-    <label>
-      Cartel o imagen destacada
-      <input type="url" name="poster" placeholder="URL opcional del póster" />
-    </label>
     <div class="form-section" data-fees-section>
       <div class="form-section__header">
         <h3>Cuotas de inscripción</h3>
