@@ -6459,12 +6459,7 @@ function renderLeagues(leagues = []) {
       button.appendChild(datesMeta);
     }
 
-    if (league.description) {
-      const description = document.createElement('p');
-      description.className = 'note';
-      description.textContent = league.description;
-      button.appendChild(description);
-    }
+
 
     const categories = Array.isArray(league.categories) ? league.categories : [];
     if (categories.length) {
@@ -6649,33 +6644,15 @@ function renderLeagueDetail() {
   statusTag.textContent = LEAGUE_STATUS_LABELS[statusValue] || LEAGUE_STATUS_LABELS.activa;
   meta.appendChild(statusTag);
 
-  if (rangeLabel) {
-    const rangeSpan = document.createElement('span');
-    rangeSpan.textContent = rangeLabel;
-    meta.appendChild(rangeSpan);
-  }
+
 
   const registrationClose = detail?.registrationCloseDate || baseLeague?.registrationCloseDate;
-  if (registrationClose) {
-    const registrationSpan = document.createElement('span');
-    registrationSpan.textContent = `Inscripciones: ${formatShortDate(registrationClose)}`;
-    meta.appendChild(registrationSpan);
-  }
+
 
   header.appendChild(meta);
 
   const descriptionText = detail?.description || baseLeague?.description;
-  if (descriptionText) {
-    const description = document.createElement('p');
-    description.className = 'league-detail__description';
-    description.textContent = descriptionText;
-    header.appendChild(description);
-  } else if (pendingLeagueDetailId === leagueId && !detail) {
-    const loadingDescription = document.createElement('p');
-    loadingDescription.className = 'league-detail__description';
-    loadingDescription.textContent = 'Cargando información de la liga...';
-    header.appendChild(loadingDescription);
-  }
+
 
   content.appendChild(header);
 
