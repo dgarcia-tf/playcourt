@@ -42,7 +42,10 @@ const {
 const { authenticate, authenticateOptional, authorizeRoles } = require('../middleware/auth');
 const { TOURNAMENT_STATUS } = require('../models/Tournament');
 const { GENDERS } = require('../models/User');
-const { CATEGORY_SKILL_LEVELS } = require('../models/Category');
+const {
+  TOURNAMENT_CATEGORY_MATCH_TYPES,
+  TOURNAMENT_CATEGORY_MATCH_FORMATS,
+} = require('../models/TournamentCategory');
 const { tournamentPosterUpload } = require('../middleware/upload');
 const { CATEGORY_COLOR_PALETTE, isValidCategoryColor, normalizeHexColor } = require('../utils/colors');
 
@@ -154,7 +157,8 @@ router.post(
     body('name').trim().notEmpty(),
     body('description').optional({ nullable: true }).isString(),
     body('gender').isIn(Object.values(GENDERS)),
-    body('skillLevel').optional().isIn(Object.values(CATEGORY_SKILL_LEVELS)),
+    body('matchType').isIn(Object.values(TOURNAMENT_CATEGORY_MATCH_TYPES)),
+    body('matchFormat').isIn(Object.values(TOURNAMENT_CATEGORY_MATCH_FORMATS)),
     body('menuTitle').optional({ nullable: true }).isString(),
     body('color')
       .optional({ nullable: true })
@@ -180,7 +184,9 @@ router.patch(
     param('categoryId').isMongoId(),
     body('name').optional().isString().trim().notEmpty(),
     body('description').optional({ nullable: true }).isString(),
-    body('skillLevel').optional().isIn(Object.values(CATEGORY_SKILL_LEVELS)),
+    body('gender').optional().isIn(Object.values(GENDERS)),
+    body('matchType').optional().isIn(Object.values(TOURNAMENT_CATEGORY_MATCH_TYPES)),
+    body('matchFormat').optional().isIn(Object.values(TOURNAMENT_CATEGORY_MATCH_FORMATS)),
     body('menuTitle').optional({ nullable: true }).isString(),
     body('color')
       .optional({ nullable: true })

@@ -4,6 +4,9 @@ const { Tournament } = require('../models/Tournament');
 const {
   TournamentCategory,
   TOURNAMENT_CATEGORY_STATUSES,
+  TOURNAMENT_CATEGORY_MATCH_TYPES,
+  TOURNAMENT_CATEGORY_MATCH_FORMATS,
+  DEFAULT_TOURNAMENT_CATEGORY_MATCH_FORMAT,
 } = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
@@ -66,7 +69,7 @@ async function createTournamentCategory(req, res) {
   }
 
   const { tournamentId } = req.params;
-  const { name, description, gender, skillLevel, menuTitle, color, drawSize } = req.body;
+  const { name, description, gender, menuTitle, color, drawSize, matchType, matchFormat } = req.body;
 
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) {
@@ -77,13 +80,18 @@ async function createTournamentCategory(req, res) {
     name,
     description,
     gender,
-    skillLevel,
     menuTitle,
     color:
       color && isValidCategoryColor(color)
         ? resolveCategoryColor(color)
         : DEFAULT_CATEGORY_COLOR,
     drawSize,
+    matchType: Object.values(TOURNAMENT_CATEGORY_MATCH_TYPES).includes(matchType)
+      ? matchType
+      : TOURNAMENT_CATEGORY_MATCH_TYPES.SINGLES,
+    matchFormat: Object.values(TOURNAMENT_CATEGORY_MATCH_FORMATS).includes(matchFormat)
+      ? matchFormat
+      : DEFAULT_TOURNAMENT_CATEGORY_MATCH_FORMAT,
     tournament: tournament.id,
   };
 
@@ -157,19 +165,27 @@ async function updateTournamentCategory(req, res) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
   }
 
-  ['name', 'description', 'menuTitle', 'color'].forEach((field) => {
+  ['name', 'description', 'menuTitle', 'color', 'gender'].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(updates, field)) {
       category[field] = updates[field];
     }
   });
 
-  if (Object.prototype.hasOwnProperty.call(updates, 'skillLevel')) {
-    category.skillLevel = updates.skillLevel;
-  }
-
   if (Object.prototype.hasOwnProperty.call(updates, 'drawSize')) {
     const size = Number(updates.drawSize);
     category.drawSize = Number.isFinite(size) && size >= 0 ? size : category.drawSize;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'matchType')) {
+    if (Object.values(TOURNAMENT_CATEGORY_MATCH_TYPES).includes(updates.matchType)) {
+      category.matchType = updates.matchType;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'matchFormat')) {
+    if (Object.values(TOURNAMENT_CATEGORY_MATCH_FORMATS).includes(updates.matchFormat)) {
+      category.matchFormat = updates.matchFormat;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'status')) {
