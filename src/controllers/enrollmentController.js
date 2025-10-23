@@ -27,7 +27,7 @@ async function enrollPlayer(req, res) {
   const playerId = userId || req.user.id;
 
   const [category, user] = await Promise.all([
-    Category.findById(categoryId).populate('league', 'status registrationCloseDate'),
+    Category.findById(categoryId).populate('league', 'status registrationCloseDate isPrivate'),
     User.findById(playerId),
   ]);
 
@@ -71,6 +71,12 @@ async function enrollPlayer(req, res) {
       return res
         .status(400)
         .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
+    }
+
+    if (league.isPrivate && !user.isMember) {
+      return res
+        .status(403)
+        .json({ message: 'Solo los socios pueden inscribirse en esta liga.' });
     }
 
     const registrationCloseDate =

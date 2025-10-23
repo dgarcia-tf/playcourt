@@ -12,6 +12,7 @@ const {
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
 const { TournamentMatch } = require('../models/TournamentMatch');
+const { canAccessPrivateContent } = require('../utils/accessControl');
 
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 const POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'tournaments');
@@ -137,6 +138,7 @@ async function createTournament(req, res) {
     status,
     hasShirt = false,
     shirtSizes = [],
+    isPrivate,
   } = req.body;
 
   if (startDate && endDate && endDate < startDate) {
@@ -162,6 +164,10 @@ async function createTournament(req, res) {
 
   if (status && Object.values(TOURNAMENT_STATUS).includes(status)) {
     payload.status = status;
+  }
+
+  if (typeof isPrivate === 'boolean') {
+    payload.isPrivate = isPrivate;
   }
 
   const tournament = await Tournament.create(payload);
@@ -192,8 +198,17 @@ async function listTournaments(req, res) {
     return res.json([]);
   }
 
+  const canSeePrivate = canAccessPrivateContent(req.user);
+  const visibleTournaments = canSeePrivate
+    ? tournaments
+    : tournaments.filter((tournament) => !tournament.isPrivate);
+
+  if (!visibleTournaments.length) {
+    return res.json([]);
+  }
+
   const categoryIdSet = new Set();
-  tournaments.forEach((tournament) => {
+  visibleTournaments.forEach((tournament) => {
     (tournament.categories || []).forEach((category) => {
       const id = category?._id ? category._id.toString() : category?.toString?.();
       if (id) {
@@ -241,7 +256,7 @@ async function listTournaments(req, res) {
     }, new Map());
   }
 
-  const result = tournaments.map((tournament) => {
+  const result = visibleTournaments.map((tournament) => {
     const plain = tournament.toObject();
     if (Array.isArray(plain.categories)) {
       plain.categories = plain.categories.map((category) => {
@@ -291,9 +306,14 @@ async function getTournamentDetail(req, res) {
     return res.status(404).json({ message: 'Torneo no encontrado' });
   }
 
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
   const categoryIds = (tournament.categories || []).map((category) => category._id || category);
 
   const userId = req.user?.id || req.user?._id;
+  const hasPrivateAccess = canAccessPrivateContent(req.user);
   const [enrollmentStats, matchCounts, userEnrollments] = await Promise.all([
     TournamentEnrollment.aggregate([
       {
@@ -381,6 +401,7 @@ async function getTournamentDetail(req, res) {
     const canRequestEnrollment = Boolean(req.user) &&
       tournamentAllowsEnrollment &&
       categoryAllowsEnrollment &&
+      (!tournament.isPrivate || hasPrivateAccess) &&
       (!userEnrollment || userEnrollment.status === TOURNAMENT_ENROLLMENT_STATUS.CANCELLED);
 
     return {
@@ -469,6 +490,10 @@ async function updateTournament(req, res) {
 
   if (updates.status && Object.values(TOURNAMENT_STATUS).includes(updates.status)) {
     tournament.status = updates.status;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'isPrivate')) {
+    tournament.isPrivate = Boolean(updates.isPrivate);
   }
 
   await tournament.save();

@@ -131,6 +131,10 @@ const tournamentSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    isPrivate: {
+      type: Boolean,
+      default: false,
+    },
     posterFile: {
       filename: {
         type: String,

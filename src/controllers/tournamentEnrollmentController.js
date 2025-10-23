@@ -6,6 +6,7 @@ const {
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
+const { canAccessPrivateContent } = require('../utils/accessControl');
 
 async function ensureTournamentAndCategory(tournamentId, categoryId) {
   const [tournament, category] = await Promise.all([
@@ -54,6 +55,10 @@ async function createTournamentEnrollment(req, res) {
     return res.status(error.statusCode || 500).json({ message: error.message });
   }
 
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
   if (tournament.status !== TOURNAMENT_STATUS.REGISTRATION) {
     return res.status(400).json({ message: 'El torneo no acepta nuevas inscripciones' });
   }
@@ -65,6 +70,10 @@ async function createTournamentEnrollment(req, res) {
   const user = await User.findById(playerId);
   if (!user) {
     return res.status(404).json({ message: 'Jugador no encontrado' });
+  }
+
+  if (tournament.isPrivate && !user.isMember) {
+    return res.status(403).json({ message: 'Solo los socios pueden inscribirse en este torneo.' });
   }
 
   if (user.gender && category.gender && user.gender !== category.gender) {
@@ -111,6 +120,17 @@ async function listTournamentEnrollments(req, res) {
   }
 
   const { tournamentId, categoryId } = req.params;
+
+  let context;
+  try {
+    context = await ensureTournamentAndCategory(tournamentId, categoryId);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
+
+  if (context.tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
 
   const enrollments = await TournamentEnrollment.find({
     tournament: tournamentId,

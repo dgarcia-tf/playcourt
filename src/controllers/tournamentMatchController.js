@@ -12,6 +12,7 @@ const {
   TOURNAMENT_BRACKETS,
 } = require('../models/TournamentMatch');
 const { notifyTournamentMatchScheduled } = require('../services/tournamentNotificationService');
+const { canAccessPrivateContent } = require('../utils/accessControl');
 
 const ROUND_NAME_LABELS = {
   1: 'Final',
@@ -90,6 +91,15 @@ async function listTournamentMatches(req, res) {
   }
 
   const { tournamentId, categoryId } = req.params;
+
+  const tournament = await Tournament.findById(tournamentId).select('isPrivate');
+  if (!tournament) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
 
   const matches = await TournamentMatch.find({
     tournament: tournamentId,
@@ -765,6 +775,15 @@ async function submitTournamentMatchResult(req, res) {
   const { tournamentId, categoryId, matchId } = req.params;
   const { winner, score, notes } = req.body;
 
+  const tournament = await Tournament.findById(tournamentId).select('isPrivate');
+  if (!tournament) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
   const match = await TournamentMatch.findOne({
     _id: matchId,
     tournament: tournamentId,
@@ -902,6 +921,15 @@ async function resetTournamentMatchResult(req, res) {
   }
 
   const { tournamentId, categoryId, matchId } = req.params;
+
+  const tournament = await Tournament.findById(tournamentId).select('isPrivate');
+  if (!tournament) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
 
   const match = await TournamentMatch.findOne({
     _id: matchId,

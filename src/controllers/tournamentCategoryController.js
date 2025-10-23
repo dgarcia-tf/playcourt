@@ -13,6 +13,7 @@ const {
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
 const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
+const { canAccessPrivateContent } = require('../utils/accessControl');
 
 function sanitizeDrawRounds(rounds = []) {
   if (!Array.isArray(rounds)) {
@@ -120,6 +121,16 @@ async function listTournamentCategories(req, res) {
   }
 
   const { tournamentId } = req.params;
+
+  const tournament = await Tournament.findById(tournamentId).select('isPrivate');
+  if (!tournament) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
   const categories = await TournamentCategory.find({ tournament: tournamentId })
     .sort({ createdAt: 1 })
     .populate('seeds.player', 'fullName gender rating photo');
@@ -134,6 +145,15 @@ async function getTournamentCategory(req, res) {
   }
 
   const { tournamentId, categoryId } = req.params;
+
+  const tournament = await Tournament.findById(tournamentId).select('isPrivate');
+  if (!tournament) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
 
   const category = await TournamentCategory.findOne({ _id: categoryId, tournament: tournamentId })
     .populate('seeds.player', 'fullName gender rating photo')

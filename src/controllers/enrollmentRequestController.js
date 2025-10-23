@@ -19,7 +19,7 @@ async function requestEnrollment(req, res) {
   const [category, existingEnrollment, pendingRequest, user] = await Promise.all([
     Category.findById(categoryId).populate(
       'league',
-      'status registrationCloseDate startDate'
+      'status registrationCloseDate startDate isPrivate'
     ),
     Enrollment.findOne({ category: categoryId, user: playerId }),
     EnrollmentRequest.findOne({
@@ -48,6 +48,12 @@ async function requestEnrollment(req, res) {
       return res
         .status(400)
         .json({ message: 'La liga está cerrada y no admite nuevas inscripciones.' });
+    }
+
+    if (league.isPrivate && !req.user.isMember) {
+      return res
+        .status(403)
+        .json({ message: 'Solo los socios pueden solicitar la inscripción en esta liga.' });
     }
 
     if (league.startDate) {
