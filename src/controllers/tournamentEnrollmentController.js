@@ -37,6 +37,7 @@ async function createTournamentEnrollment(req, res) {
   const { tournamentId, categoryId } = req.params;
   const requestedUserId = req.body?.userId;
   const requestedShirtSize = typeof req.body?.shirtSize === 'string' ? req.body.shirtSize.trim() : '';
+  const requestedNotes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
   const playerId = requestedUserId && (isAdmin || requestedUserId === req.user.id)
     ? requestedUserId
@@ -91,6 +92,7 @@ async function createTournamentEnrollment(req, res) {
       category: category.id,
       user: user.id,
       status: TOURNAMENT_ENROLLMENT_STATUS.PENDING,
+      notes: requestedNotes || undefined,
       shirtSize: requestedShirtSize || undefined,
     });
 

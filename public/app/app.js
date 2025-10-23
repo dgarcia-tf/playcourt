@@ -8428,6 +8428,82 @@ async function openTournamentSelfEnrollmentModal({
   const form = document.createElement('form');
   form.className = 'form';
 
+  const introStep = document.createElement('div');
+  introStep.className = 'form-step';
+  form.appendChild(introStep);
+
+  const introHint = document.createElement('p');
+  introHint.className = 'form-hint';
+  introHint.textContent = 'Te pediremos la categoría en el siguiente paso.';
+  introStep.appendChild(introHint);
+
+  const notesLabel = document.createElement('label');
+  notesLabel.textContent = 'Notas para la organización (opcional)';
+  const notesField = document.createElement('textarea');
+  notesField.name = 'notes';
+  notesField.rows = 3;
+  notesField.maxLength = 500;
+  notesField.placeholder = 'Disponibilidad, preferencias u otros comentarios relevantes';
+  notesLabel.appendChild(notesField);
+  introStep.appendChild(notesLabel);
+
+  let shirtField = null;
+
+  if (requiresShirtSize) {
+    const shirtLabel = document.createElement('label');
+    shirtLabel.textContent = 'Talla de camiseta';
+    if (availableSizes.length) {
+      const shirtSelect = document.createElement('select');
+      shirtSelect.name = 'shirtSize';
+      shirtSelect.required = true;
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Selecciona una talla';
+      shirtSelect.appendChild(placeholder);
+      availableSizes.forEach((size) => {
+        const option = document.createElement('option');
+        option.value = size;
+        option.textContent = size;
+        shirtSelect.appendChild(option);
+      });
+      shirtLabel.appendChild(shirtSelect);
+      shirtField = shirtSelect;
+    } else {
+      const shirtInput = document.createElement('input');
+      shirtInput.type = 'text';
+      shirtInput.name = 'shirtSize';
+      shirtInput.required = true;
+      shirtInput.placeholder = 'Indica tu talla';
+      shirtInput.maxLength = 20;
+      shirtLabel.appendChild(shirtInput);
+      shirtField = shirtInput;
+    }
+    introStep.appendChild(shirtLabel);
+  }
+
+  const introActions = document.createElement('div');
+  introActions.className = 'form-actions';
+
+  const introCancelButton = document.createElement('button');
+  introCancelButton.type = 'button';
+  introCancelButton.className = 'ghost';
+  introCancelButton.dataset.action = 'cancel';
+  introCancelButton.textContent = 'Cancelar';
+  introActions.appendChild(introCancelButton);
+
+  const continueButton = document.createElement('button');
+  continueButton.type = 'button';
+  continueButton.className = 'primary';
+  continueButton.textContent = 'Continuar';
+  introActions.appendChild(continueButton);
+
+  introStep.appendChild(introActions);
+
+  const categoryStep = document.createElement('div');
+  categoryStep.className = 'form-step';
+  categoryStep.hidden = true;
+  form.appendChild(categoryStep);
+
   let categorySelect = null;
   let categoryCountSelect = null;
   let categoryCheckboxes = [];
@@ -8453,7 +8529,7 @@ async function openTournamentSelfEnrollmentModal({
     });
 
     countLabel.appendChild(countSelect);
-    form.appendChild(countLabel);
+    categoryStep.appendChild(countLabel);
 
     const categoryFieldset = document.createElement('fieldset');
     categoryFieldset.className = 'checkbox-group';
@@ -8465,24 +8541,26 @@ async function openTournamentSelfEnrollmentModal({
     selectionHint.className = 'form-hint';
     categoryFieldset.appendChild(selectionHint);
 
-    categoryCheckboxes = sortedCategories.map((category) => {
-      const id = normalizeId(category);
-      if (!id) return null;
-      const optionLabel = document.createElement('label');
-      optionLabel.className = 'checkbox-option';
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.name = 'categoryIds';
-      checkbox.value = id;
-      optionLabel.appendChild(checkbox);
-      const text = document.createElement('span');
-      text.textContent = category.name || 'Categoría';
-      optionLabel.appendChild(text);
-      categoryFieldset.appendChild(optionLabel);
-      return checkbox;
-    }).filter(Boolean);
+    categoryCheckboxes = sortedCategories
+      .map((category) => {
+        const id = normalizeId(category);
+        if (!id) return null;
+        const optionLabel = document.createElement('label');
+        optionLabel.className = 'checkbox-option';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.name = 'categoryIds';
+        checkbox.value = id;
+        optionLabel.appendChild(checkbox);
+        const text = document.createElement('span');
+        text.textContent = category.name || 'Categoría';
+        optionLabel.appendChild(text);
+        categoryFieldset.appendChild(optionLabel);
+        return checkbox;
+      })
+      .filter(Boolean);
 
-    form.appendChild(categoryFieldset);
+    categoryStep.appendChild(categoryFieldset);
 
     const updateSelectionHint = () => {
       const desired = Number(countSelect.value || '0');
@@ -8530,65 +8608,73 @@ async function openTournamentSelfEnrollmentModal({
     }
 
     categoryLabel.appendChild(singleSelect);
-    form.appendChild(categoryLabel);
+    categoryStep.appendChild(categoryLabel);
     categorySelect = singleSelect;
   }
 
-  let shirtField = null;
+  const categoryActions = document.createElement('div');
+  categoryActions.className = 'form-actions';
 
-  if (requiresShirtSize) {
-    const shirtLabel = document.createElement('label');
-    shirtLabel.textContent = 'Talla de camiseta';
-    if (availableSizes.length) {
-      const shirtSelect = document.createElement('select');
-      shirtSelect.name = 'shirtSize';
-      shirtSelect.required = true;
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = 'Selecciona una talla';
-      shirtSelect.appendChild(placeholder);
-      availableSizes.forEach((size) => {
-        const option = document.createElement('option');
-        option.value = size;
-        option.textContent = size;
-        shirtSelect.appendChild(option);
-      });
-      shirtLabel.appendChild(shirtSelect);
-      shirtField = shirtSelect;
-    } else {
-      const shirtInput = document.createElement('input');
-      shirtInput.type = 'text';
-      shirtInput.name = 'shirtSize';
-      shirtInput.required = true;
-      shirtInput.placeholder = 'Indica tu talla';
-      shirtInput.maxLength = 20;
-      shirtLabel.appendChild(shirtInput);
-      shirtField = shirtInput;
-    }
-    form.appendChild(shirtLabel);
-  }
-
-  const actions = document.createElement('div');
-  actions.className = 'form-actions';
+  const backButton = document.createElement('button');
+  backButton.type = 'button';
+  backButton.className = 'ghost';
+  backButton.textContent = 'Atrás';
+  categoryActions.appendChild(backButton);
 
   const submitButton = document.createElement('button');
   submitButton.type = 'submit';
   submitButton.className = 'primary';
   submitButton.textContent = allowMultiple ? 'Enviar solicitudes' : 'Enviar solicitud';
-  actions.appendChild(submitButton);
+  categoryActions.appendChild(submitButton);
 
   const cancelButton = document.createElement('button');
   cancelButton.type = 'button';
   cancelButton.className = 'ghost';
   cancelButton.dataset.action = 'cancel';
   cancelButton.textContent = 'Cancelar';
-  actions.appendChild(cancelButton);
+  categoryActions.appendChild(cancelButton);
 
-  form.appendChild(actions);
+  categoryStep.appendChild(categoryActions);
 
   const status = document.createElement('p');
   status.className = 'status-message';
   status.style.display = 'none';
+
+  function showStep(step) {
+    if (step === 'intro') {
+      introStep.hidden = false;
+      categoryStep.hidden = true;
+      continueButton.focus();
+    } else {
+      introStep.hidden = true;
+      categoryStep.hidden = false;
+      if (!allowMultiple && categorySelect) {
+        categorySelect.focus();
+      } else if (allowMultiple && categoryCheckboxes.length) {
+        categoryCheckboxes[0].focus();
+      }
+    }
+  }
+
+  continueButton.addEventListener('click', () => {
+    setStatusMessage(status, '', '');
+    if (requiresShirtSize && shirtField) {
+      const value = (shirtField.value || '').trim();
+      if (!value) {
+        setStatusMessage(status, 'error', 'Indica tu talla de camiseta.');
+        if (typeof shirtField.focus === 'function') {
+          shirtField.focus();
+        }
+        return;
+      }
+    }
+    showStep('categories');
+  });
+
+  backButton.addEventListener('click', () => {
+    setStatusMessage(status, '', '');
+    showStep('intro');
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -8626,9 +8712,18 @@ async function openTournamentSelfEnrollmentModal({
       const value = (shirtField.value || '').trim();
       if (!value) {
         setStatusMessage(status, 'error', 'Indica tu talla de camiseta.');
+        showStep('intro');
+        if (typeof shirtField.focus === 'function') {
+          shirtField.focus();
+        }
         return;
       }
       payload.shirtSize = value;
+    }
+
+    const notesValue = (notesField.value || '').trim();
+    if (notesValue) {
+      payload.notes = notesValue;
     }
 
     submitButton.disabled = true;
@@ -8676,9 +8771,11 @@ async function openTournamentSelfEnrollmentModal({
     }
   });
 
-  cancelButton.addEventListener('click', () => {
-    setStatusMessage(status, '', '');
-    closeModal();
+  [introCancelButton, cancelButton].forEach((button) => {
+    button.addEventListener('click', () => {
+      setStatusMessage(status, '', '');
+      closeModal();
+    });
   });
 
   openModal({
@@ -9063,6 +9160,14 @@ function renderTournamentEnrollments(enrollments = [], { loading = false } = {})
     }
 
     item.appendChild(meta);
+
+    if (typeof enrollment?.notes === 'string' && enrollment.notes.trim().length) {
+      const notesParagraph = document.createElement('p');
+      notesParagraph.className = 'list-item-notes';
+      notesParagraph.textContent = enrollment.notes.trim();
+      item.appendChild(notesParagraph);
+    }
+
     tournamentEnrollmentList.appendChild(item);
   });
 }
