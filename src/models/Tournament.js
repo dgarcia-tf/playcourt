@@ -160,6 +160,10 @@ const tournamentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    hasGiftBag: {
+      type: Boolean,
+      default: false,
+    },
     shirtSizes: {
       type: [
         {

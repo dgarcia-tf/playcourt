@@ -137,6 +137,7 @@ async function createTournament(req, res) {
     fees = [],
     status,
     hasShirt = false,
+    hasGiftBag = false,
     shirtSizes = [],
     isPrivate,
   } = req.body;
@@ -159,6 +160,7 @@ async function createTournament(req, res) {
     fees: normalizeFeeCollection(fees),
     createdBy: req.user.id,
     hasShirt: Boolean(hasShirt),
+    hasGiftBag: Boolean(hasGiftBag),
     shirtSizes: normalizeShirtSizes(shirtSizes, Boolean(hasShirt)),
   };
 
@@ -482,6 +484,10 @@ async function updateTournament(req, res) {
     if (!tournament.hasShirt) {
       tournament.shirtSizes = [];
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'hasGiftBag')) {
+    tournament.hasGiftBag = Boolean(updates.hasGiftBag);
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'shirtSizes')) {

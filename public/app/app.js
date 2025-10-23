@@ -9455,6 +9455,14 @@ function renderTournamentDetail() {
     metaItems.push(['Creado', formatDate(detail.createdAt)]);
   }
 
+  if (typeof detail.hasShirt === 'boolean') {
+    metaItems.push(['Camiseta', detail.hasShirt ? 'Sí' : 'No']);
+  }
+
+  if (typeof detail.hasGiftBag === 'boolean') {
+    metaItems.push(['Bolsa de regalo', detail.hasGiftBag ? 'Sí' : 'No']);
+  }
+
   if (metaItems.length) {
     const metaContainer = document.createElement('div');
     metaContainer.className = 'tournament-detail__meta';
@@ -17991,6 +17999,20 @@ function buildTournamentPayload(form, { isEditing = false } = {}) {
     payload.isPrivate = false;
   }
 
+  const hasShirtValue = formData.get('hasShirt');
+  if (hasShirtValue === 'true') {
+    payload.hasShirt = true;
+  } else if (hasShirtValue === 'false') {
+    payload.hasShirt = false;
+  }
+
+  const hasGiftBagValue = formData.get('hasGiftBag');
+  if (hasGiftBagValue === 'true') {
+    payload.hasGiftBag = true;
+  } else if (hasGiftBagValue === 'false') {
+    payload.hasGiftBag = false;
+  }
+
   const feeEntries = Array.from(form.querySelectorAll('[data-fee-entry]'));
   if (feeEntries.length) {
     const fees = feeEntries
@@ -18141,6 +18163,23 @@ function openTournamentModal(tournamentId = '') {
         ${statusOptions}
       </select>
     </label>
+    <div class="form-grid">
+      <label>
+        Camiseta
+        <select name="hasShirt" required>
+          <option value="false">No</option>
+          <option value="true">Sí</option>
+        </select>
+        <span class="form-hint">Indica si el torneo incluye camiseta para los participantes.</span>
+      </label>
+      <label>
+        Bolsa regalo
+        <select name="hasGiftBag" required>
+          <option value="false">No</option>
+          <option value="true">Sí</option>
+        </select>
+      </label>
+    </div>
     <div class="form-section" data-fees-section>
       <div class="form-section__header">
         <h3>Cuotas de inscripción</h3>
@@ -18368,6 +18407,12 @@ function openTournamentModal(tournamentId = '') {
   }
   if (form.elements.isPrivate) {
     form.elements.isPrivate.value = tournament?.isPrivate ? 'true' : 'false';
+  }
+  if (form.elements.hasShirt) {
+    form.elements.hasShirt.value = tournament?.hasShirt ? 'true' : 'false';
+  }
+  if (form.elements.hasGiftBag) {
+    form.elements.hasGiftBag.value = tournament?.hasGiftBag ? 'true' : 'false';
   }
 
   form.addEventListener('submit', async (event) => {
