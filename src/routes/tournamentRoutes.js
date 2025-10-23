@@ -88,6 +88,13 @@ router.get(
   listTournamentMatches
 );
 
+router.get(
+  '/:tournamentId/doubles',
+  authenticateOptional,
+  [param('tournamentId').isMongoId()],
+  listTournamentDoublesPlayers
+);
+
 router.use(authenticate);
 
 router.post(
@@ -250,12 +257,6 @@ router.post(
 
 // Enrollments
 router.get('/:tournamentId/enrollments', [param('tournamentId').isMongoId()], listTournamentPlayers);
-router.get(
-  '/:tournamentId/doubles',
-  [param('tournamentId').isMongoId()],
-  listTournamentDoublesPlayers
-);
-
 router.get(
   '/:tournamentId/categories/:categoryId/enrollments',
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
