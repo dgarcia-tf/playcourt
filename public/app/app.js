@@ -16348,8 +16348,16 @@ function openTournamentModal(tournamentId = '') {
     entry.innerHTML = `
       <div class="form-grid">
         <label>
-          Concepto
-          <input type="text" data-fee-field="label" placeholder="Ej. Inscripción individual" />
+          ¿En cuantas categorías se quiere inscribir?
+          <select data-fee-field="label" required>
+            <option value="">Selecciona una opción</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
         </label>
         <label>
           Importe socios
@@ -16401,7 +16409,18 @@ function openTournamentModal(tournamentId = '') {
     const descriptionField = entry.querySelector('[data-fee-field="description"]');
 
     if (labelField && data.label) {
-      labelField.value = data.label;
+      const labelValue = data.label.toString().trim();
+      if (labelValue) {
+        const options = Array.from(labelField.options || []);
+        const hasMatchingOption = options.some((option) => option.value === labelValue);
+        if (!hasMatchingOption) {
+          const customOption = document.createElement('option');
+          customOption.value = labelValue;
+          customOption.textContent = labelValue;
+          labelField.appendChild(customOption);
+        }
+        labelField.value = labelValue;
+      }
     }
     const legacyAmount =
       typeof data.amount !== 'undefined' && data.amount !== null ? data.amount : undefined;
