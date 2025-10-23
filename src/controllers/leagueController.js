@@ -13,6 +13,12 @@ const {
 } = require('../models/Category');
 const { GENDERS } = require('../models/User');
 const { Enrollment } = require('../models/Enrollment');
+const { EnrollmentRequest } = require('../models/EnrollmentRequest');
+const { Match } = require('../models/Match');
+const { CourtReservation } = require('../models/CourtReservation');
+const { Notification } = require('../models/Notification');
+const { Season } = require('../models/Season');
+const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const { resolveCategoryColor } = require('../utils/colors');
 const { normalizeId } = require('../utils/ranking');
 
@@ -1095,18 +1101,61 @@ async function deleteLeague(req, res) {
     return res.status(404).json({ message: 'Liga no encontrada' });
   }
 
-  if (Array.isArray(league.categories) && league.categories.length) {
-    await Category.updateMany(
-      { _id: { $in: league.categories.map((id) => id.toString()) } },
-      { $unset: { league: '' } }
-    );
-  }
-
   const posterPath = league.posterFile?.filename
     ? path.join(LEAGUE_POSTER_UPLOAD_DIR, league.posterFile.filename)
     : null;
+  const session = await mongoose.startSession();
 
-  await league.deleteOne();
+  try {
+    await session.withTransaction(async () => {
+      const categories = await Category.find({ league: league._id })
+        .session(session)
+        .select('_id')
+        .lean();
+      const categoryIds = categories.map((category) => category._id);
+
+      const matchQuery = { $or: [{ league: league._id }] };
+      if (categoryIds.length) {
+        matchQuery.$or.push({ category: { $in: categoryIds } });
+      }
+
+      const matches = await Match.find(matchQuery).session(session).select('_id').lean();
+      const matchIds = matches.map((match) => match._id);
+
+      const tasks = [
+        Match.deleteMany(matchQuery).session(session),
+        CourtBlock.deleteMany({
+          contextType: COURT_BLOCK_CONTEXTS.LEAGUE,
+          context: league._id,
+        }).session(session),
+      ];
+
+      if (categoryIds.length) {
+        tasks.push(
+          Enrollment.deleteMany({ category: { $in: categoryIds } }).session(session),
+          EnrollmentRequest.deleteMany({ category: { $in: categoryIds } }).session(session),
+          Season.updateMany(
+            { categories: { $in: categoryIds } },
+            { $pull: { categories: { $in: categoryIds } } }
+          ).session(session),
+          Category.deleteMany({ _id: { $in: categoryIds } }).session(session)
+        );
+      }
+
+      if (matchIds.length) {
+        tasks.push(
+          CourtReservation.deleteMany({ match: { $in: matchIds } }).session(session),
+          Notification.deleteMany({ match: { $in: matchIds } }).session(session)
+        );
+      }
+
+      await Promise.all(tasks);
+
+      await League.deleteOne({ _id: league._id }).session(session);
+    });
+  } finally {
+    await session.endSession();
+  }
 
   if (posterPath) {
     await removeFileIfExists(posterPath);
