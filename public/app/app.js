@@ -17597,6 +17597,13 @@ function buildLeaguePayload(formData, isEditing = false) {
     payload.registrationCloseDate = null;
   }
 
+  const visibility = formData.get('isPrivate');
+  if (visibility === 'true') {
+    payload.isPrivate = true;
+  } else if (visibility === 'false') {
+    payload.isPrivate = false;
+  }
+
   const enrollmentFeeRaw = formData.get('enrollmentFee');
   if (enrollmentFeeRaw !== null && enrollmentFeeRaw !== undefined) {
     const trimmed = String(enrollmentFeeRaw).trim();
@@ -17720,6 +17727,13 @@ function buildTournamentPayload(form, { isEditing = false } = {}) {
     payload.status = status;
   }
 
+  const visibility = formData.get('isPrivate');
+  if (visibility === 'true') {
+    payload.isPrivate = true;
+  } else if (visibility === 'false') {
+    payload.isPrivate = false;
+  }
+
   const feeEntries = Array.from(form.querySelectorAll('[data-fee-entry]'));
   if (feeEntries.length) {
     const fees = feeEntries
@@ -17840,6 +17854,14 @@ function openTournamentModal(tournamentId = '') {
     <label>
       Descripción
       <textarea name="description" rows="3" placeholder="Detalles opcionales"></textarea>
+    </label>
+    <label>
+      Visibilidad
+      <select name="isPrivate" required>
+        <option value="false">Público</option>
+        <option value="true">Privado</option>
+      </select>
+      <span class="form-hint">Los torneos privados solo serán visibles y admiten inscripciones de socios.</span>
     </label>
     <div class="form-grid">
       <label>
@@ -18086,6 +18108,9 @@ function openTournamentModal(tournamentId = '') {
   }
   if (form.elements.status) {
     form.elements.status.value = tournament?.status || 'inscripcion';
+  }
+  if (form.elements.isPrivate) {
+    form.elements.isPrivate.value = tournament?.isPrivate ? 'true' : 'false';
   }
 
   form.addEventListener('submit', async (event) => {
@@ -20022,6 +20047,14 @@ function openLeagueModal(leagueId = '') {
       </label>
     </div>
     <label>
+      Visibilidad
+      <select name="isPrivate" required>
+        <option value="false">Pública</option>
+        <option value="true">Privada</option>
+      </select>
+      <span class="form-hint">Las ligas privadas solo están disponibles para socios y se ocultarán al resto de usuarios.</span>
+    </label>
+    <label>
       Descripción
       <textarea name="description" rows="2" maxlength="280" placeholder="Detalles opcionales"></textarea>
     </label>
@@ -20064,6 +20097,9 @@ function openLeagueModal(leagueId = '') {
   }
   if (form.elements.status) {
     form.elements.status.value = league?.status || 'activa';
+  }
+  if (form.elements.isPrivate) {
+    form.elements.isPrivate.value = league?.isPrivate ? 'true' : 'false';
   }
   form.elements.description.value = league?.description || '';
   if (form.elements.poster) {
