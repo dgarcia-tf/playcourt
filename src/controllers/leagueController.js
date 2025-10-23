@@ -1104,55 +1104,106 @@ async function deleteLeague(req, res) {
   const posterPath = league.posterFile?.filename
     ? path.join(LEAGUE_POSTER_UPLOAD_DIR, league.posterFile.filename)
     : null;
+  const performDelete = async (session = null) => {
+    const categoriesQuery = Category.find({ league: league._id }).select('_id').lean();
+    if (session) {
+      categoriesQuery.session(session);
+    }
+    const categories = await categoriesQuery;
+    const categoryIds = categories.map((category) => category._id);
+
+    const matchQuery = { $or: [{ league: league._id }] };
+    if (categoryIds.length) {
+      matchQuery.$or.push({ category: { $in: categoryIds } });
+    }
+
+    const matchesQuery = Match.find(matchQuery).select('_id').lean();
+    if (session) {
+      matchesQuery.session(session);
+    }
+    const matches = await matchesQuery;
+    const matchIds = matches.map((match) => match._id);
+
+    const tasks = [];
+
+    const deleteMatches = Match.deleteMany(matchQuery);
+    if (session) {
+      deleteMatches.session(session);
+    }
+    tasks.push(deleteMatches);
+
+    const deleteCourtBlocks = CourtBlock.deleteMany({
+      contextType: COURT_BLOCK_CONTEXTS.LEAGUE,
+      context: league._id,
+    });
+    if (session) {
+      deleteCourtBlocks.session(session);
+    }
+    tasks.push(deleteCourtBlocks);
+
+    if (categoryIds.length) {
+      const enrollmentDelete = Enrollment.deleteMany({ category: { $in: categoryIds } });
+      if (session) {
+        enrollmentDelete.session(session);
+      }
+
+      const enrollmentRequestDelete = EnrollmentRequest.deleteMany({ category: { $in: categoryIds } });
+      if (session) {
+        enrollmentRequestDelete.session(session);
+      }
+
+      const seasonUpdate = Season.updateMany(
+        { categories: { $in: categoryIds } },
+        { $pull: { categories: { $in: categoryIds } } }
+      );
+      if (session) {
+        seasonUpdate.session(session);
+      }
+
+      const categoryDelete = Category.deleteMany({ _id: { $in: categoryIds } });
+      if (session) {
+        categoryDelete.session(session);
+      }
+
+      tasks.push(enrollmentDelete, enrollmentRequestDelete, seasonUpdate, categoryDelete);
+    }
+
+    if (matchIds.length) {
+      const reservationDelete = CourtReservation.deleteMany({ match: { $in: matchIds } });
+      if (session) {
+        reservationDelete.session(session);
+      }
+
+      const notificationDelete = Notification.deleteMany({ match: { $in: matchIds } });
+      if (session) {
+        notificationDelete.session(session);
+      }
+
+      tasks.push(reservationDelete, notificationDelete);
+    }
+
+    await Promise.all(tasks);
+
+    const leagueDelete = League.deleteOne({ _id: league._id });
+    if (session) {
+      leagueDelete.session(session);
+    }
+
+    await leagueDelete;
+  };
+
   const session = await mongoose.startSession();
 
   try {
     await session.withTransaction(async () => {
-      const categories = await Category.find({ league: league._id })
-        .session(session)
-        .select('_id')
-        .lean();
-      const categoryIds = categories.map((category) => category._id);
-
-      const matchQuery = { $or: [{ league: league._id }] };
-      if (categoryIds.length) {
-        matchQuery.$or.push({ category: { $in: categoryIds } });
-      }
-
-      const matches = await Match.find(matchQuery).session(session).select('_id').lean();
-      const matchIds = matches.map((match) => match._id);
-
-      const tasks = [
-        Match.deleteMany(matchQuery).session(session),
-        CourtBlock.deleteMany({
-          contextType: COURT_BLOCK_CONTEXTS.LEAGUE,
-          context: league._id,
-        }).session(session),
-      ];
-
-      if (categoryIds.length) {
-        tasks.push(
-          Enrollment.deleteMany({ category: { $in: categoryIds } }).session(session),
-          EnrollmentRequest.deleteMany({ category: { $in: categoryIds } }).session(session),
-          Season.updateMany(
-            { categories: { $in: categoryIds } },
-            { $pull: { categories: { $in: categoryIds } } }
-          ).session(session),
-          Category.deleteMany({ _id: { $in: categoryIds } }).session(session)
-        );
-      }
-
-      if (matchIds.length) {
-        tasks.push(
-          CourtReservation.deleteMany({ match: { $in: matchIds } }).session(session),
-          Notification.deleteMany({ match: { $in: matchIds } }).session(session)
-        );
-      }
-
-      await Promise.all(tasks);
-
-      await League.deleteOne({ _id: league._id }).session(session);
+      await performDelete(session);
     });
+  } catch (error) {
+    if (error?.code === 20 || error?.codeName === 'IllegalOperation') {
+      await performDelete();
+    } else {
+      throw error;
+    }
   } finally {
     await session.endSession();
   }
