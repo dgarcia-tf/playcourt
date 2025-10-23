@@ -494,7 +494,7 @@ async function listLeagues(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { year, status } = req.query;
+  const { year, status, includeClosed } = req.query;
 
   const query = {};
   if (year) {
@@ -508,10 +508,13 @@ async function listLeagues(req, res) {
 
   await Promise.all(leagues.map((league) => refreshLeagueStatusIfExpired(league)));
 
-  const filteredLeagues =
-    status && typeof status === 'string'
-      ? leagues.filter((league) => league.status === status)
-      : leagues;
+  let filteredLeagues = leagues;
+
+  if (status && typeof status === 'string') {
+    filteredLeagues = leagues.filter((league) => league.status === status);
+  } else if (!includeClosed) {
+    filteredLeagues = leagues.filter((league) => league.status !== LEAGUE_STATUS.CLOSED);
+  }
 
   const toTimestamp = (value) => {
     if (!value) {
