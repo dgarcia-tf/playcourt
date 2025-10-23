@@ -5369,6 +5369,25 @@ function createAccountMatchItem(match, { variant = 'upcoming' } = {}) {
       meta.appendChild(document.createElement('span')).textContent = 'Resultado: pendiente';
     }
 
+    const scoreboard = createResultScoreboard(match);
+    let scoreSummary = formatMatchScore(match);
+
+    if (!scoreSummary && match.scope === 'tournament' && match.result?.score) {
+      const rawScore = match.result.score.trim();
+      if (rawScore) {
+        scoreSummary = /^marcador:/i.test(rawScore) ? rawScore : `Marcador: ${rawScore}`;
+      }
+    }
+
+    if (scoreboard) {
+      item.appendChild(scoreboard);
+    } else if (scoreSummary) {
+      const summaryRow = document.createElement('div');
+      summaryRow.className = 'meta';
+      summaryRow.textContent = scoreSummary;
+      item.appendChild(summaryRow);
+    }
+
     if (match.updatedAt) {
       meta.appendChild(document.createElement('span')).textContent = `Actualizado: ${formatShortDate(
         match.updatedAt
