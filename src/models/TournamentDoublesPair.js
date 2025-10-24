@@ -63,6 +63,36 @@ tournamentDoublesPairSchema.pre('save', function normalizePlayers(next) {
   next();
 });
 
+tournamentDoublesPairSchema.virtual('fullName').get(function fullName() {
+  if (!Array.isArray(this.players) || !this.players.length) {
+    return '';
+  }
+
+  const names = this.players
+    .map((player) => {
+      if (player && typeof player === 'object' && player.fullName) {
+        return player.fullName;
+      }
+      if (typeof player === 'string') {
+        return player;
+      }
+      if (player && typeof player.fullName === 'string') {
+        return player.fullName;
+      }
+      if (player && typeof player.email === 'string') {
+        return player.email;
+      }
+      return '';
+    })
+    .filter((name) => Boolean(name && name.trim()))
+    .map((name) => name.trim());
+
+  return names.join(' / ');
+});
+
+tournamentDoublesPairSchema.set('toJSON', { virtuals: true });
+tournamentDoublesPairSchema.set('toObject', { virtuals: true });
+
 module.exports = {
   TournamentDoublesPair: mongoose.model('TournamentDoublesPair', tournamentDoublesPairSchema),
 };
