@@ -1703,6 +1703,7 @@ const state = {
   selectedEnrollmentCategoryId: TOURNAMENT_ENROLLMENT_ALL_OPTION,
   selectedMatchTournamentId: '',
   selectedMatchCategoryId: '',
+  selectedOrderOfPlayDay: '',
   selectedDoublesTournamentId: '',
   selectedBracketTournamentId: '',
   selectedBracketCategoryId: '',
@@ -1712,6 +1713,7 @@ const state = {
     gender: '',
   },
   tournamentMatches: new Map(),
+  tournamentOrderOfPlayDays: new Map(),
   tournamentBracketMatches: new Map(),
   tournamentBracketAlignmentCallbacks: new Set(),
   tournamentBracketResizeHandler: null,
@@ -1993,6 +1995,8 @@ const tournamentMatchTournamentSelect = document.getElementById('tournament-matc
 const tournamentMatchCategorySelect = document.getElementById('tournament-match-category');
 const tournamentMatchesList = document.getElementById('tournament-matches-list');
 const tournamentMatchesEmpty = document.getElementById('tournament-matches-empty');
+const tournamentOrderDayInput = document.getElementById('tournament-order-day');
+const tournamentOrderDownloadButton = document.getElementById('tournament-order-download');
 const pushSettingsCard = document.getElementById('push-settings-card');
 const pushStatusText = document.getElementById('push-status-text');
 const pushEnableButton = document.getElementById('push-enable-button');
@@ -2655,6 +2659,115 @@ function updateTournamentActionAvailability() {
 
   if (tournamentBracketRecalculateButton) {
     tournamentBracketRecalculateButton.disabled = !isAdmin() || !hasBracketSelection;
+  }
+
+  updateTournamentOrderOfPlayControls();
+}
+
+function getMatchDayKey(match) {
+  if (!match || !match.scheduledAt) {
+    return '';
+  }
+
+  const date = new Date(match.scheduledAt);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTournamentOrderOfPlayDays(tournamentId) {
+  if (!tournamentId) {
+    return [];
+  }
+
+  if (!(state.tournamentOrderOfPlayDays instanceof Map)) {
+    state.tournamentOrderOfPlayDays = new Map();
+    return [];
+  }
+
+  const days = state.tournamentOrderOfPlayDays.get(tournamentId);
+  if (!days) {
+    return [];
+  }
+
+  return Array.from(days).sort();
+}
+
+function recomputeTournamentOrderOfPlayDays(tournamentId) {
+  if (!(state.tournamentOrderOfPlayDays instanceof Map)) {
+    state.tournamentOrderOfPlayDays = new Map();
+  }
+
+  const normalizedTournamentId = normalizeId(tournamentId);
+  if (!normalizedTournamentId) {
+    return;
+  }
+
+  const days = new Set();
+
+  if (state.tournamentMatches instanceof Map) {
+    const prefix = `${normalizedTournamentId}:`;
+    state.tournamentMatches.forEach((matches, key) => {
+      if (typeof key !== 'string' || !key.startsWith(prefix)) {
+        return;
+      }
+      if (!Array.isArray(matches)) {
+        return;
+      }
+      matches.forEach((match) => {
+        const day = getMatchDayKey(match);
+        if (day) {
+          days.add(day);
+        }
+      });
+    });
+  }
+
+  if (days.size > 0) {
+    state.tournamentOrderOfPlayDays.set(normalizedTournamentId, days);
+  } else {
+    state.tournamentOrderOfPlayDays.delete(normalizedTournamentId);
+  }
+
+  if (state.selectedMatchTournamentId === normalizedTournamentId) {
+    updateTournamentOrderOfPlayControls();
+  }
+}
+
+function updateTournamentOrderOfPlayControls() {
+  if (!tournamentOrderDayInput && !tournamentOrderDownloadButton) {
+    return;
+  }
+
+  const tournamentId = state.selectedMatchTournamentId || '';
+  const hasTournament = Boolean(tournamentId);
+  const availableDays = hasTournament ? getTournamentOrderOfPlayDays(tournamentId) : [];
+
+  if (hasTournament && availableDays.length > 0 && !state.selectedOrderOfPlayDay) {
+    state.selectedOrderOfPlayDay = availableDays[0];
+  }
+
+  if (!hasTournament) {
+    state.selectedOrderOfPlayDay = '';
+  }
+
+  if (tournamentOrderDayInput) {
+    tournamentOrderDayInput.disabled = !hasTournament;
+    if (hasTournament) {
+      tournamentOrderDayInput.value = state.selectedOrderOfPlayDay || '';
+    } else {
+      tournamentOrderDayInput.value = '';
+    }
+  }
+
+  if (tournamentOrderDownloadButton) {
+    tournamentOrderDownloadButton.disabled =
+      !hasTournament || !state.selectedOrderOfPlayDay;
   }
 }
 
@@ -6333,6 +6446,13 @@ function resetData() {
   } else {
     state.tournamentMatches = new Map();
   }
+  if (state.tournamentOrderOfPlayDays instanceof Map) {
+    state.tournamentOrderOfPlayDays.clear();
+  } else {
+    state.tournamentOrderOfPlayDays = new Map();
+  }
+  state.selectedOrderOfPlayDay = '';
+  updateTournamentOrderOfPlayControls();
   if (state.tournamentPayments instanceof Map) {
     state.tournamentPayments.clear();
   } else {
@@ -12603,6 +12723,8 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
   const tournamentId = state.selectedMatchTournamentId;
   const categoryId = state.selectedMatchCategoryId;
 
+  updateTournamentOrderOfPlayControls();
+
   if (!tournamentId || !categoryId) {
     tournamentMatchesEmpty.hidden = false;
     tournamentMatchesEmpty.textContent = 'Selecciona una categoría para revisar sus partidos.';
@@ -12774,6 +12896,7 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
       categoryId,
     });
     state.tournamentMatches.set(cacheKey, cached);
+    recomputeTournamentOrderOfPlayDays(tournamentId);
     renderTournamentMatches(cached);
     return;
   }
@@ -12786,6 +12909,7 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
     let list = Array.isArray(response) ? response : [];
     list = await hydrateTournamentMatchesWithPairs(list, { tournamentId, categoryId });
     state.tournamentMatches.set(cacheKey, list);
+    recomputeTournamentOrderOfPlayDays(tournamentId);
     if (pendingTournamentMatchesKey === cacheKey) {
       renderTournamentMatches(list);
     }
@@ -13830,6 +13954,15 @@ function clearTournamentState(tournamentId) {
     state.tournamentDoubles.delete(normalized);
   }
 
+  if (state.tournamentOrderOfPlayDays instanceof Map) {
+    state.tournamentOrderOfPlayDays.delete(normalized);
+  }
+
+  if (state.selectedMatchTournamentId === normalized) {
+    state.selectedOrderOfPlayDay = '';
+    updateTournamentOrderOfPlayControls();
+  }
+
   if (
     state.tournamentPaymentFilters &&
     typeof state.tournamentPaymentFilters === 'object' &&
@@ -14289,8 +14422,9 @@ async function applyTournamentMatchUpdate(updatedMatch) {
   }
 
   const hydrationTasks = [];
+  const tournamentsToRecompute = new Set();
 
-  const processMap = (map) => {
+  const processMap = (map, trackOrderOfPlay = false) => {
     if (!(map instanceof Map)) {
       return;
     }
@@ -14315,6 +14449,13 @@ async function applyTournamentMatchUpdate(updatedMatch) {
 
       map.set(key, nextMatches);
 
+      if (trackOrderOfPlay) {
+        const [tournamentId = ''] = (key || '').split(':');
+        if (tournamentId) {
+          tournamentsToRecompute.add(tournamentId);
+        }
+      }
+
       const [tournamentId = '', categoryId = ''] = (key || '').split(':');
       hydrationTasks.push(
         (async () => {
@@ -14332,12 +14473,16 @@ async function applyTournamentMatchUpdate(updatedMatch) {
     });
   };
 
-  processMap(state.tournamentMatches);
+  processMap(state.tournamentMatches, true);
   processMap(state.tournamentBracketMatches);
 
   if (hydrationTasks.length) {
     await Promise.all(hydrationTasks);
   }
+
+  tournamentsToRecompute.forEach((tournamentId) => {
+    recomputeTournamentOrderOfPlayDays(tournamentId);
+  });
 }
 
 function isUserMatchParticipant(match, user = state.user) {
@@ -23172,6 +23317,7 @@ async function openTournamentDrawModal() {
         body: { matches, replaceExisting },
       });
       state.tournamentMatches.delete(`${tournamentId}:${categoryId}`);
+      recomputeTournamentOrderOfPlayDays(tournamentId);
       state.tournamentDetails.delete(tournamentId);
       state.selectedMatchTournamentId = tournamentId;
       state.selectedMatchCategoryId = categoryId;
@@ -23617,6 +23763,7 @@ async function submitTournamentMatchResult({
       await refreshTournamentMatches({ forceReload: true });
     } else if (hasMatchCache) {
       state.tournamentMatches.delete(listKey);
+      recomputeTournamentOrderOfPlayDays(normalizedTournamentId);
     }
 
     const bracketActive =
@@ -27895,6 +28042,7 @@ tournamentMatchTournamentSelect?.addEventListener('change', async (event) => {
   const value = event.target.value || '';
   state.selectedMatchTournamentId = value;
   state.selectedMatchCategoryId = '';
+  state.selectedOrderOfPlayDay = '';
   updateMatchCategoryOptions();
   if (value && !state.tournamentDetails.has(value)) {
     await refreshTournamentDetail(value);
@@ -27911,6 +28059,80 @@ tournamentMatchCategorySelect?.addEventListener('change', async (event) => {
     renderTournamentMatches([], { loading: false });
   }
   updateTournamentActionAvailability();
+});
+
+tournamentOrderDayInput?.addEventListener('change', (event) => {
+  state.selectedOrderOfPlayDay = (event.target.value || '').trim();
+  updateTournamentActionAvailability();
+});
+
+tournamentOrderDownloadButton?.addEventListener('click', async () => {
+  const tournamentId = state.selectedMatchTournamentId || '';
+  const day = state.selectedOrderOfPlayDay || '';
+
+  if (!tournamentId || !day) {
+    return;
+  }
+
+  const previousLabel = tournamentOrderDownloadButton.textContent;
+  tournamentOrderDownloadButton.disabled = true;
+  tournamentOrderDownloadButton.textContent = 'Generando PDF...';
+
+  try {
+    const params = new URLSearchParams({ day });
+    const headers = new Headers({ Accept: 'application/pdf' });
+    if (state.token) {
+      headers.set('Authorization', `Bearer ${state.token}`);
+    }
+
+    let response;
+    try {
+      response = await fetch(
+        `${API_BASE}/tournaments/${tournamentId}/order-of-play?${params.toString()}`,
+        { headers }
+      );
+    } catch (error) {
+      throw new Error('No fue posible conectar con el servidor.');
+    }
+
+    if (!response.ok) {
+      let message = 'No fue posible generar el PDF del orden de juego.';
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try {
+          const data = await response.json();
+          message = data?.message || message;
+        } catch (parseError) {
+          // Ignorar errores al parsear la respuesta.
+        }
+      }
+      if (response.status === 401) {
+        clearSession();
+        state.token = null;
+        state.user = null;
+        updateAuthUI();
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    const safeDay = day.replace(/[^0-9-]/g, '');
+    anchor.download = `orden-juego-${safeDay || 'torneo'}.pdf`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(downloadUrl);
+    showGlobalMessage('Orden de juego descargado correctamente.', 'success');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    showGlobalMessage(message || 'No fue posible generar el PDF del orden de juego.', 'error');
+  } finally {
+    tournamentOrderDownloadButton.textContent = previousLabel;
+    updateTournamentActionAvailability();
+  }
 });
 
 tournamentBracketTournamentSelect?.addEventListener('change', async (event) => {
