@@ -951,6 +951,16 @@ async function updateMatchScheduleSlots({
     return renderMatchScheduleSlots({ select, dateValue, templates, selectedTime });
   }
 
+  const normalizedCourtValue = typeof courtValue === 'string' ? courtValue.trim() : '';
+  if (!normalizedCourtValue && scope === 'admin') {
+    select.innerHTML = '';
+    const option = new Option('Selecciona una pista para consultar la disponibilidad', '', true, true);
+    option.disabled = true;
+    select.appendChild(option);
+    select.disabled = true;
+    return { matched: false, hasOptions: false };
+  }
+
   setScheduleSelectLoading(select);
 
   const { availability, date, court } = await resolveScheduleAvailability({
@@ -23070,6 +23080,14 @@ async function submitMatchFormData({ form, matchId, statusElement, creating = fa
         statusElement,
         'error',
         'Selecciona un horario válido de 75 minutos entre las 08:30 y las 22:15.'
+      );
+      return false;
+    }
+    if (!payload.court) {
+      setStatusMessage(
+        statusElement,
+        'error',
+        'Selecciona una pista disponible para programar el partido.'
       );
       return false;
     }

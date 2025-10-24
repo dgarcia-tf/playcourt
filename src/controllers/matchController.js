@@ -530,6 +530,11 @@ async function createMatch(req, res) {
   }
 
   if (scheduledDate) {
+    if (!resolvedCourt && !matchPayload.court) {
+      return res.status(400).json({
+        message: 'Debes seleccionar una pista disponible para programar el partido.',
+      });
+    }
     try {
       await ensureSchedulingAvailability({
         scheduledDate,
@@ -854,6 +859,11 @@ async function updateMatch(req, res) {
   }
 
   if (match.scheduledAt instanceof Date && !Number.isNaN(match.scheduledAt.getTime())) {
+    if (!match.court) {
+      return res.status(400).json({
+        message: 'Debes seleccionar una pista disponible para programar el partido.',
+      });
+    }
     try {
       await ensureSchedulingAvailability({
         scheduledDate: match.scheduledAt,
