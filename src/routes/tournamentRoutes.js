@@ -27,6 +27,8 @@ const {
   listTournamentPlayers,
   listTournamentDoublesPlayers,
   listTournamentEnrollments,
+  createTournamentDoublesPair,
+  deleteTournamentDoublesPair,
   updateEnrollmentStatus,
   removeTournamentEnrollment,
 } = require('../controllers/tournamentEnrollmentController');
@@ -97,6 +99,25 @@ router.get(
 );
 
 router.use(authenticate);
+
+router.post(
+  '/:tournamentId/categories/:categoryId/doubles-pairs',
+  authorizeRoles('admin'),
+  [
+    param('tournamentId').isMongoId(),
+    param('categoryId').isMongoId(),
+    body('players').isArray({ min: 2, max: 2 }),
+    body('players.*').isMongoId(),
+  ],
+  createTournamentDoublesPair
+);
+
+router.delete(
+  '/:tournamentId/categories/:categoryId/doubles-pairs/:pairId',
+  authorizeRoles('admin'),
+  [param('tournamentId').isMongoId(), param('categoryId').isMongoId(), param('pairId').isMongoId()],
+  deleteTournamentDoublesPair
+);
 
 router.post(
   '/',

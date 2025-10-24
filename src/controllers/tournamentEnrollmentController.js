@@ -1,4 +1,5 @@
 const { validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 const { Tournament, TOURNAMENT_STATUS } = require('../models/Tournament');
 const {
   TournamentCategory,
@@ -8,6 +9,7 @@ const {
   TournamentEnrollment,
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
+const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { categoryAllowsGender } = require('../utils/gender');
@@ -518,7 +520,49 @@ async function listTournamentDoublesPlayers(req, res) {
     });
   });
 
-  const doublesData = Array.from(categoryGroups.values()).map((group) => {
+  const pairMap = new Map();
+
+  if (categoryIds.length) {
+    const pairs = await TournamentDoublesPair.find({
+      tournament: tournamentId,
+      category: { $in: categoryIds },
+    })
+      .populate('players', 'fullName email gender phone photo birthDate isMember preferredSchedule shirtSize')
+      .sort({ createdAt: 1 })
+      .lean();
+
+    pairs.forEach((pair) => {
+      const pairCategoryId = pair.category ? pair.category.toString() : '';
+      if (!pairCategoryId || !categoryGroups.has(pairCategoryId)) {
+        return;
+      }
+
+      const players = Array.isArray(pair.players)
+        ? pair.players.map((player) => sanitizeUser(player)).filter(Boolean)
+        : [];
+
+      if (players.length !== 2) {
+        return;
+      }
+
+      const entry = {
+        id: pair._id ? pair._id.toString() : undefined,
+        players,
+        createdAt: pair.createdAt || null,
+        createdBy: pair.createdBy ? pair.createdBy.toString() : null,
+      };
+
+      if (!pairMap.has(pairCategoryId)) {
+        pairMap.set(pairCategoryId, []);
+      }
+
+      pairMap.get(pairCategoryId).push(entry);
+    });
+  }
+
+  const doublesData = Array.from(categoryGroups.entries()).map(([categoryId, group]) => {
+    const pairs = pairMap.get(categoryId) || [];
+
     group.players.sort((a, b) => {
       const nameA = (a.user?.fullName || '').toLowerCase();
       const nameB = (b.user?.fullName || '').toLowerCase();
@@ -531,10 +575,165 @@ async function listTournamentDoublesPlayers(req, res) {
       const timeB = b.enrolledAt ? new Date(b.enrolledAt).getTime() : Infinity;
       return timeA - timeB;
     });
-    return group;
+    pairs.sort((pairA, pairB) => {
+      const labelA = pairA.players
+        .map((player) => (player.fullName || player.email || '').toLowerCase())
+        .join(' ');
+      const labelB = pairB.players
+        .map((player) => (player.fullName || player.email || '').toLowerCase())
+        .join(' ');
+      return labelA.localeCompare(labelB, 'es');
+    });
+
+    return {
+      ...group,
+      pairs,
+    };
   });
 
   return res.json(doublesData);
+}
+
+async function createTournamentDoublesPair(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId, categoryId } = req.params;
+  const { players } = req.body;
+
+  let context;
+  try {
+    context = await ensureTournamentAndCategory(tournamentId, categoryId);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
+
+  const { category } = context;
+
+  if (category.matchType !== TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES) {
+    return res
+      .status(400)
+      .json({ message: 'Solo se pueden crear parejas en categorías de dobles.' });
+  }
+
+  if (!Array.isArray(players) || players.length !== 2) {
+    return res.status(400).json({ message: 'Debes seleccionar exactamente dos jugadores.' });
+  }
+
+  const normalizedPlayers = players
+    .map((player) => {
+      if (!player) return '';
+      try {
+        return new mongoose.Types.ObjectId(player).toString();
+      } catch (error) {
+        return '';
+      }
+    })
+    .filter(Boolean);
+
+  if (normalizedPlayers.length !== 2 || normalizedPlayers[0] === normalizedPlayers[1]) {
+    return res.status(400).json({ message: 'Los jugadores deben ser distintos.' });
+  }
+
+  const sortedPlayers = [...normalizedPlayers].sort();
+
+  const enrollments = await TournamentEnrollment.find({
+    tournament: tournamentId,
+    category: categoryId,
+    user: { $in: sortedPlayers },
+    status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+  })
+    .populate('user', 'fullName email gender phone photo birthDate isMember preferredSchedule shirtSize')
+    .lean();
+
+  if (enrollments.length !== 2) {
+    return res
+      .status(400)
+      .json({ message: 'Ambos jugadores deben estar inscritos en la categoría.' });
+  }
+
+  const existingPair = await TournamentDoublesPair.findOne({
+    tournament: tournamentId,
+    category: categoryId,
+    players: sortedPlayers,
+  }).select('_id');
+
+  if (existingPair) {
+    return res.status(409).json({ message: 'La pareja ya está registrada en esta categoría.' });
+  }
+
+  const conflictingPair = await TournamentDoublesPair.findOne({
+    tournament: tournamentId,
+    category: categoryId,
+    players: {
+      $in: sortedPlayers.map((playerId) => new mongoose.Types.ObjectId(playerId)),
+    },
+  }).select('_id players');
+
+  if (conflictingPair) {
+    return res
+      .status(409)
+      .json({ message: 'Uno de los jugadores ya forma parte de otra pareja en esta categoría.' });
+  }
+
+  const pair = await TournamentDoublesPair.create({
+    tournament: tournamentId,
+    category: categoryId,
+    players: sortedPlayers,
+    createdBy: req.user.id,
+  });
+
+  const sanitizedPlayers = enrollments
+    .map((enrollment) => sanitizeUser(enrollment.user))
+    .filter(Boolean)
+    .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+
+  return res.status(201).json({
+    id: pair._id.toString(),
+    players: sanitizedPlayers,
+    createdAt: pair.createdAt,
+    createdBy: pair.createdBy ? pair.createdBy.toString() : null,
+  });
+}
+
+async function deleteTournamentDoublesPair(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId, categoryId, pairId } = req.params;
+
+  let context;
+  try {
+    context = await ensureTournamentAndCategory(tournamentId, categoryId);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
+
+  const { category } = context;
+
+  if (category.matchType !== TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES) {
+    return res
+      .status(400)
+      .json({ message: 'Solo se pueden eliminar parejas en categorías de dobles.' });
+  }
+
+  const pair = await TournamentDoublesPair.findOne({
+    _id: pairId,
+    tournament: tournamentId,
+    category: categoryId,
+  });
+
+  if (!pair) {
+    return res.status(404).json({ message: 'Pareja no encontrada.' });
+  }
+
+  await TournamentDoublesPair.deleteOne({ _id: pairId });
+
+  return res.status(204).send();
 }
 
 async function updateEnrollmentStatus(req, res) {
@@ -629,6 +828,8 @@ module.exports = {
   listTournamentEnrollments,
   listTournamentPlayers,
   listTournamentDoublesPlayers,
+  createTournamentDoublesPair,
+  deleteTournamentDoublesPair,
   updateEnrollmentStatus,
   removeTournamentEnrollment,
 };
