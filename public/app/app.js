@@ -13677,6 +13677,51 @@ function normalizeId(value) {
   return '';
 }
 
+function clearTournamentState(tournamentId) {
+  const normalized = normalizeId(tournamentId);
+  if (!normalized) {
+    return;
+  }
+
+  if (state.tournamentDetails instanceof Map) {
+    state.tournamentDetails.delete(normalized);
+  }
+
+  const deleteEntriesWithPrefix = (map) => {
+    if (!(map instanceof Map)) {
+      return;
+    }
+
+    Array.from(map.keys()).forEach((key) => {
+      if (String(key).startsWith(`${normalized}:`)) {
+        map.delete(key);
+      }
+    });
+  };
+
+  deleteEntriesWithPrefix(state.tournamentEnrollments);
+  deleteEntriesWithPrefix(state.tournamentMatches);
+  deleteEntriesWithPrefix(state.tournamentDoublesPairs);
+  deleteEntriesWithPrefix(state.tournamentBracketMatches);
+
+  if (state.tournamentPayments instanceof Map) {
+    state.tournamentPayments.delete(normalized);
+  }
+
+  if (state.tournamentDoubles instanceof Map) {
+    state.tournamentDoubles.delete(normalized);
+  }
+
+  if (
+    state.tournamentPaymentFilters &&
+    typeof state.tournamentPaymentFilters === 'object' &&
+    state.tournamentPaymentFilters.tournament === normalized
+  ) {
+    state.tournamentPaymentFilters.tournament = '';
+    state.tournamentPaymentFilters.search = '';
+  }
+}
+
 function extractScoreMap(rawScores) {
   if (!rawScores) return new Map();
   if (typeof rawScores.get === 'function') {
@@ -21097,6 +21142,11 @@ function openTournamentModal(tournamentId = '') {
     <div class="form-actions">
       <button type="submit" class="primary">${tournament ? 'Actualizar' : 'Crear'} torneo</button>
       <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+      ${
+        tournament
+          ? '<button type="button" class="danger" data-action="delete">Eliminar torneo</button>'
+          : ''
+      }
     </div>
   `;
 
@@ -21337,6 +21387,42 @@ function openTournamentModal(tournamentId = '') {
   cancelButton?.addEventListener('click', () => {
     setStatusMessage(status, '', '');
     closeModal();
+  });
+
+  const deleteButton = form.querySelector('[data-action="delete"]');
+  deleteButton?.addEventListener('click', async () => {
+    if (!normalizedId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      '¿Seguro que deseas eliminar este torneo y toda la información relacionada? Esta acción no se puede deshacer.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setStatusMessage(status, 'info', 'Eliminando torneo...');
+
+    try {
+      await request(`/tournaments/${normalizedId}`, { method: 'DELETE' });
+      clearTournamentState(normalizedId);
+    } catch (error) {
+      setStatusMessage(status, 'error', error.message || 'No fue posible eliminar el torneo.');
+      return;
+    }
+
+    setStatusMessage(status, 'success', 'Torneo eliminado correctamente.');
+
+    try {
+      await reloadTournaments();
+    } catch (error) {
+      console.warn('No se pudo actualizar la lista de torneos tras eliminar uno', error);
+    }
+
+    closeModal();
+    showGlobalMessage('Torneo eliminado correctamente.');
   });
 
   openModal({
