@@ -4,6 +4,7 @@ const { Tournament, TOURNAMENT_STATUS } = require('../models/Tournament');
 const {
   TournamentCategory,
   TOURNAMENT_CATEGORY_MATCH_TYPES,
+  TOURNAMENT_CATEGORY_STATUSES,
 } = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
@@ -201,6 +202,47 @@ async function ensureTournamentAndCategory(tournamentId, categoryId) {
   return { tournament, category };
 }
 
+async function ensureTournamentAndCategories(tournamentId, categoryIds = []) {
+  const normalizedIds = Array.from(
+    new Set(
+      categoryIds
+        .map((id) => (typeof id === 'string' ? id.trim() : ''))
+        .filter((id) => id && mongoose.Types.ObjectId.isValid(id))
+    )
+  );
+
+  const [tournament, categories] = await Promise.all([
+    Tournament.findById(tournamentId),
+    TournamentCategory.find({ _id: { $in: normalizedIds }, tournament: tournamentId }),
+  ]);
+
+  if (!tournament) {
+    const error = new Error('Torneo no encontrado');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (normalizedIds.length !== categories.length) {
+    const error = new Error('Una o más categorías no pertenecen al torneo');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const categoryMap = new Map(
+    categories.map((category) => [category._id ? category._id.toString() : category.id, category])
+  );
+
+  const orderedCategories = normalizedIds.map((id) => categoryMap.get(id));
+
+  if (orderedCategories.some((category) => !category)) {
+    const error = new Error('Una o más categorías no pertenecen al torneo');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return { tournament, categories: orderedCategories };
+}
+
 async function createTournamentEnrollment(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -304,6 +346,174 @@ async function createTournamentEnrollment(req, res) {
     }
     throw error;
   }
+}
+
+async function createTournamentAdminEnrollment(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId } = req.params;
+  const requestedCategories = Array.isArray(req.body?.categories) ? req.body.categories : [];
+  const requestedUserId = req.body?.userId;
+  const categoryCount = req.body?.categoryCount;
+  const rawShirtSize = typeof req.body?.shirtSize === 'string' ? req.body.shirtSize.trim() : '';
+  const normalizedShirtSize = rawShirtSize ? rawShirtSize.toUpperCase() : '';
+
+  const categoryIds = requestedCategories
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+
+  const distinctCategoryIds = Array.from(new Set(categoryIds));
+
+  if (!requestedUserId) {
+    return res.status(400).json({ message: 'Debe seleccionar un jugador para inscribir.' });
+  }
+
+  if (!distinctCategoryIds.length) {
+    return res.status(400).json({ message: 'Debe seleccionar al menos una categoría.' });
+  }
+
+  const normalizedCategoryCount =
+    categoryCount !== undefined && categoryCount !== null && categoryCount !== ''
+      ? Number(categoryCount)
+      : null;
+
+  if (
+    normalizedCategoryCount !== null &&
+    Number.isFinite(normalizedCategoryCount) &&
+    normalizedCategoryCount > 0 &&
+    normalizedCategoryCount !== distinctCategoryIds.length
+  ) {
+    return res
+      .status(400)
+      .json({ message: 'La cantidad de categorías seleccionadas no coincide con la selección.' });
+  }
+
+  let context;
+  try {
+    context = await ensureTournamentAndCategories(tournamentId, distinctCategoryIds);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
+
+  const { tournament, categories } = context;
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (tournament.status !== TOURNAMENT_STATUS.REGISTRATION) {
+    return res.status(400).json({ message: 'El torneo no acepta nuevas inscripciones' });
+  }
+
+  if (tournament.registrationCloseDate && new Date() > tournament.registrationCloseDate) {
+    return res.status(400).json({ message: 'El período de inscripción está cerrado' });
+  }
+
+  const user = await User.findById(requestedUserId);
+  if (!user) {
+    return res.status(404).json({ message: 'Jugador no encontrado' });
+  }
+
+  if (tournament.isPrivate && !user.isMember) {
+    return res.status(403).json({ message: 'Solo los socios pueden inscribirse en este torneo.' });
+  }
+
+  const closedCategories = categories.filter(
+    (category) => category.status !== TOURNAMENT_CATEGORY_STATUSES.REGISTRATION
+  );
+  if (closedCategories.length) {
+    return res
+      .status(400)
+      .json({ message: 'Una o más categorías seleccionadas no están abiertas a inscripciones.' });
+  }
+
+  const genderMismatch = categories.find(
+    (category) => user.gender && category.gender && !categoryAllowsGender(category.gender, user.gender)
+  );
+
+  if (genderMismatch) {
+    return res
+      .status(400)
+      .json({ message: 'El género del jugador no coincide con alguna de las categorías seleccionadas.' });
+  }
+
+  let resolvedShirtSize = normalizedShirtSize;
+
+  if (!resolvedShirtSize && tournament.hasShirt) {
+    const userShirtSize = typeof user.shirtSize === 'string' ? user.shirtSize.trim().toUpperCase() : '';
+    if (userShirtSize) {
+      resolvedShirtSize = userShirtSize;
+    }
+  }
+
+  if (tournament.hasShirt && !resolvedShirtSize) {
+    return res
+      .status(400)
+      .json({ message: 'Debe indicar la talla de camiseta para completar la inscripción.' });
+  }
+
+  if (
+    resolvedShirtSize &&
+    tournament.hasShirt &&
+    Array.isArray(tournament.shirtSizes) &&
+    tournament.shirtSizes.length
+  ) {
+    const allowedSizes = tournament.shirtSizes
+      .map((size) => (typeof size === 'string' ? size.trim().toUpperCase() : ''))
+      .filter((size, index, array) => size && array.indexOf(size) === index);
+
+    if (!allowedSizes.includes(resolvedShirtSize)) {
+      return res
+        .status(400)
+        .json({ message: 'La talla de camiseta seleccionada no es válida para este torneo.' });
+    }
+  }
+
+  const existingEnrollments = await TournamentEnrollment.find({
+    tournament: tournament.id,
+    category: { $in: distinctCategoryIds },
+    user: user.id,
+  })
+    .select('category status')
+    .lean();
+
+  if (existingEnrollments.length) {
+    return res
+      .status(409)
+      .json({ message: 'El jugador ya está inscrito en alguna de las categorías seleccionadas.' });
+  }
+
+  const enrollmentPayload = categories.map((category) => ({
+    tournament: tournament.id,
+    category: category.id,
+    user: user.id,
+    status: TOURNAMENT_ENROLLMENT_STATUS.PENDING,
+    shirtSize: resolvedShirtSize || undefined,
+  }));
+
+  const createdEnrollments = await TournamentEnrollment.insertMany(enrollmentPayload, { ordered: true });
+
+  await TournamentEnrollment.populate(createdEnrollments, [
+    { path: 'user', select: 'fullName email gender phone photo isMember' },
+    { path: 'category', select: 'name menuTitle matchType gender' },
+  ]);
+
+  const response = createdEnrollments.map((enrollment) => ({
+    id: enrollment._id ? enrollment._id.toString() : undefined,
+    _id: enrollment._id,
+    tournament: enrollment.tournament,
+    category: sanitizeCategory(enrollment.category),
+    status: enrollment.status,
+    shirtSize: enrollment.shirtSize || null,
+    createdAt: enrollment.createdAt,
+    updatedAt: enrollment.updatedAt,
+    user: sanitizeUser(enrollment.user),
+  }));
+
+  return res.status(201).json({ enrollments: response });
 }
 
 async function listTournamentEnrollments(req, res) {
@@ -841,6 +1051,7 @@ async function removeTournamentEnrollment(req, res) {
 }
 
 module.exports = {
+  createTournamentAdminEnrollment,
   createTournamentEnrollment,
   listTournamentEnrollments,
   listTournamentPlayers,

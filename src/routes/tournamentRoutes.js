@@ -23,6 +23,7 @@ const {
   assignTournamentSeeds,
 } = require('../controllers/tournamentCategoryController');
 const {
+  createTournamentAdminEnrollment,
   createTournamentEnrollment,
   listTournamentPlayers,
   listTournamentDoublesPlayers,
@@ -286,6 +287,19 @@ router.post(
 
 // Enrollments
 router.get('/:tournamentId/enrollments', [param('tournamentId').isMongoId()], listTournamentPlayers);
+router.post(
+  '/:tournamentId/enrollments',
+  authorizeRoles('admin'),
+  [
+    param('tournamentId').isMongoId(),
+    body('userId').isMongoId(),
+    body('categories').isArray({ min: 1 }),
+    body('categories.*').isMongoId(),
+    body('categoryCount').optional({ nullable: true }).isInt({ min: 1 }),
+    body('shirtSize').optional({ nullable: true }).isString(),
+  ],
+  createTournamentAdminEnrollment
+);
 router.get(
   '/:tournamentId/categories/:categoryId/enrollments',
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
