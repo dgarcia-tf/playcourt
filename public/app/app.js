@@ -2523,6 +2523,10 @@ function updateTournamentActionAvailability() {
   if (tournamentBracketRecalculateButton) {
     tournamentBracketRecalculateButton.disabled = !isAdmin() || !hasBracketSelection;
   }
+
+  if (tournamentBracketPrintButton) {
+    tournamentBracketPrintButton.disabled = !hasBracketSelection;
+  }
 }
 
 function updateMatchesMenuBadge(count = 0) {
@@ -13247,7 +13251,8 @@ async function refreshTournamentBracketMatches({ forceReload = false } = {}) {
   }
 }
 
-async function printTournamentBracketSheet(tournamentId, categoryId) {
+async function printTournamentBracketSheet(tournamentId, categoryId, options = {}) {
+  const { bracketType = 'principal', matches: preloadedMatches } = options || {};
   const normalizedTournamentId = normalizeId(tournamentId);
   const normalizedCategoryId = normalizeId(categoryId);
 
@@ -13260,10 +13265,12 @@ async function printTournamentBracketSheet(tournamentId, categoryId) {
   }
 
   const cacheKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
-  let matches = [];
+  let matches = Array.isArray(preloadedMatches) ? preloadedMatches.slice() : [];
 
   if (cacheKey && state.tournamentBracketMatches.has(cacheKey)) {
-    matches = state.tournamentBracketMatches.get(cacheKey) || [];
+    if (!matches.length) {
+      matches = state.tournamentBracketMatches.get(cacheKey) || [];
+    }
   }
 
   if (!matches.length) {
@@ -13280,12 +13287,22 @@ async function printTournamentBracketSheet(tournamentId, categoryId) {
     }
   }
 
-  const mainMatches = matches.filter((match) => match?.bracketType === 'principal');
-  const consolationMatches = matches.filter((match) => match?.bracketType === 'consolacion');
+  const normalizedBracketType = bracketType === 'consolacion' ? 'consolacion' : 'principal';
+  const filteredMatches = matches.filter((match) => {
+    const type = match?.bracketType === 'consolacion' ? 'consolacion' : 'principal';
+    return type === normalizedBracketType;
+  });
 
-  if (!mainMatches.length && !consolationMatches.length) {
-    throw new Error('Esta categoría aún no tiene un cuadro generado.');
+  if (!filteredMatches.length) {
+    throw new Error(
+      normalizedBracketType === 'consolacion'
+        ? 'Esta categoría aún no tiene un cuadro de consolación generado.'
+        : 'Esta categoría aún no tiene un cuadro principal generado.'
+    );
   }
+
+  const bracketLabel =
+    normalizedBracketType === 'consolacion' ? 'Cuadro de consolación' : 'Cuadro principal';
 
   let detail = state.tournamentDetails.get(normalizedTournamentId);
   if (!detail) {
@@ -13523,24 +13540,12 @@ async function printTournamentBracketSheet(tournamentId, categoryId) {
     return `<div class="print-bracket-grid" style="--round-count:${columnCount};">${roundMarkup}</div>`;
   };
 
-  const sections = [];
-  if (mainMatches.length) {
-    sections.push({ title: 'Cuadro principal', rounds: buildRounds(mainMatches) });
-  }
-  if (consolationMatches.length) {
-    sections.push({ title: 'Cuadro de consolación', rounds: buildRounds(consolationMatches) });
-  }
-
-  const sectionsMarkup = sections
-    .map(
-      ({ title, rounds }) => `
-        <section class="print-bracket-section">
-          <h2>${escapeHtml(title)}</h2>
-          ${buildBracketGridMarkup(rounds)}
-        </section>
-      `
-    )
-    .join('');
+  const sectionsMarkup = `
+    <section class="print-bracket-section">
+      <h2>${escapeHtml(bracketLabel)}</h2>
+      ${buildBracketGridMarkup(buildRounds(filteredMatches))}
+    </section>
+  `;
 
   const seedsMarkup = seeds.length
     ? `
@@ -13582,6 +13587,7 @@ async function printTournamentBracketSheet(tournamentId, categoryId) {
   if (clubAddress) {
     metaItems.push(['Sede', clubAddress]);
   }
+  metaItems.push(['Tipo de cuadro', bracketLabel]);
 
   const metaMarkup = metaItems
     .filter(([, value]) => Boolean(value))
@@ -13918,7 +13924,7 @@ async function printTournamentBracketSheet(tournamentId, categoryId) {
       <header class="print-header">
         ${logoMarkup}
         <div class="print-header__info">
-          <span class="print-header__badge">Cuadro oficial</span>
+          <span class="print-header__badge">${escapeHtml(bracketLabel)}</span>
           <h1 class="print-header__title">${escapeHtml(tournament.name || 'Torneo')}</h1>
           <p class="print-header__subtitle">${escapeHtml(categoryTitle)}</p>
           ${clubName ? `<p class="print-header__club">Organiza: ${escapeHtml(clubName)}</p>` : ''}
@@ -13936,193 +13942,186 @@ async function printTournamentBracketSheet(tournamentId, categoryId) {
   printWindow.document.close();
 }
 
-async function openTournamentBracketPrintModal({
-  tournamentId = state.selectedBracketTournamentId,
-  categoryId = state.selectedBracketCategoryId,
-} = {}) {
-  let tournaments = Array.isArray(state.tournaments) ? state.tournaments.slice() : [];
+async function loadTournamentBracketMatchesForPrint(tournamentId, categoryId) {
+  const normalizedTournamentId = normalizeId(tournamentId);
+  const normalizedCategoryId = normalizeId(categoryId);
 
-  if (!tournaments.length) {
+  if (!normalizedTournamentId) {
+    throw new Error('Selecciona un torneo válido para imprimir.');
+  }
+
+  if (!normalizedCategoryId) {
+    throw new Error('Selecciona una categoría válida para imprimir.');
+  }
+
+  const cacheKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
+  let matches = [];
+
+  if (cacheKey && state.tournamentBracketMatches.has(cacheKey)) {
+    matches = state.tournamentBracketMatches.get(cacheKey) || [];
+  }
+
+  if (!matches.length) {
     try {
-      tournaments = await reloadTournaments();
+      const response = await request(
+        `/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}/matches`
+      );
+      matches = Array.isArray(response) ? response : [];
+      if (cacheKey) {
+        state.tournamentBracketMatches.set(cacheKey, matches);
+      }
     } catch (error) {
-      showGlobalMessage(error.message || 'No fue posible cargar los torneos.', 'error');
-      return;
+      throw new Error(error.message || 'No fue posible cargar los partidos del cuadro.');
     }
   }
 
-  if (!tournaments.length) {
-    showGlobalMessage('No hay torneos disponibles para imprimir.', 'info');
+  return { matches, tournamentId: normalizedTournamentId, categoryId: normalizedCategoryId };
+}
+
+function selectBracketTypeForPrint({ hasMain = true, hasConsolation = false } = {}) {
+  return new Promise((resolve) => {
+    const options = [];
+    if (hasMain) {
+      options.push({ value: 'principal', label: 'Cuadro principal' });
+    }
+    if (hasConsolation) {
+      options.push({ value: 'consolacion', label: 'Cuadro de consolación' });
+    }
+
+    if (!options.length) {
+      resolve(null);
+      return;
+    }
+
+    let resolved = false;
+
+    const form = document.createElement('form');
+    form.className = 'form';
+
+    const description = document.createElement('p');
+    description.textContent = 'Selecciona el cuadro que deseas imprimir.';
+    form.appendChild(description);
+
+    const fieldset = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.textContent = 'Tipo de cuadro';
+    fieldset.appendChild(legend);
+
+    options.forEach((option, index) => {
+      const wrapper = document.createElement('label');
+
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'bracketType';
+      input.value = option.value;
+      input.required = true;
+      if (index === 0) {
+        input.checked = true;
+      }
+
+      const text = document.createElement('span');
+      text.textContent = option.label;
+
+      wrapper.appendChild(input);
+      wrapper.appendChild(text);
+      fieldset.appendChild(wrapper);
+    });
+
+    form.appendChild(fieldset);
+
+    const actions = document.createElement('div');
+    actions.className = 'form-actions';
+
+    const submitButton = document.createElement('button');
+    submitButton.type = 'submit';
+    submitButton.className = 'primary';
+    submitButton.textContent = 'Imprimir';
+    actions.appendChild(submitButton);
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'ghost';
+    cancelButton.textContent = 'Cancelar';
+    cancelButton.addEventListener('click', () => {
+      if (!resolved) {
+        resolved = true;
+        resolve(null);
+      }
+      closeModal();
+    });
+    actions.appendChild(cancelButton);
+
+    form.appendChild(actions);
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const selected = form.elements?.bracketType?.value;
+      if (!selected) {
+        return;
+      }
+      resolved = true;
+      resolve(selected);
+      closeModal();
+    });
+
+    openModal({
+      title: 'Imprimir cuadro',
+      content: form,
+      onClose: () => {
+        if (!resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      },
+    });
+  });
+}
+
+async function handleTournamentBracketPrint() {
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+
+  if (!tournamentId || !categoryId) {
+    showGlobalMessage('Selecciona un torneo y una categoría para imprimir el cuadro.', 'error');
     return;
   }
 
-  const normalizedDefaultTournamentId = tournamentId ? normalizeId(tournamentId) : '';
-  const normalizedDefaultCategoryId = categoryId ? normalizeId(categoryId) : '';
+  let matches = [];
+  try {
+    const result = await loadTournamentBracketMatchesForPrint(tournamentId, categoryId);
+    matches = result.matches;
+  } catch (error) {
+    showGlobalMessage(error.message || 'No fue posible cargar los partidos del cuadro.', 'error');
+    return;
+  }
 
-  const form = document.createElement('form');
-  form.className = 'form';
+  const hasMainMatches = matches.some((match) => match?.bracketType !== 'consolacion');
+  const hasConsolationMatches = matches.some((match) => match?.bracketType === 'consolacion');
 
-  const tournamentLabel = document.createElement('label');
-  tournamentLabel.textContent = 'Torneo';
-  const tournamentSelect = document.createElement('select');
-  tournamentSelect.name = 'tournamentId';
-  tournamentSelect.required = true;
-  tournamentLabel.appendChild(tournamentSelect);
-  form.appendChild(tournamentLabel);
+  if (!hasMainMatches && !hasConsolationMatches) {
+    showGlobalMessage('Esta categoría aún no tiene un cuadro generado.', 'error');
+    return;
+  }
 
-  const categoryLabel = document.createElement('label');
-  categoryLabel.textContent = 'Categoría';
-  const categorySelect = document.createElement('select');
-  categorySelect.name = 'categoryId';
-  categorySelect.required = true;
-  categorySelect.disabled = true;
-  categoryLabel.appendChild(categorySelect);
-  form.appendChild(categoryLabel);
-
-  const status = document.createElement('p');
-  status.className = 'status-message';
-  status.style.display = 'none';
-  form.appendChild(status);
-
-  const actions = document.createElement('div');
-  actions.className = 'form-actions';
-
-  const submitButton = document.createElement('button');
-  submitButton.type = 'submit';
-  submitButton.className = 'primary';
-  submitButton.textContent = 'Imprimir';
-  submitButton.disabled = true;
-  actions.appendChild(submitButton);
-
-  const cancelButton = document.createElement('button');
-  cancelButton.type = 'button';
-  cancelButton.className = 'ghost';
-  cancelButton.dataset.action = 'cancel';
-  cancelButton.textContent = 'Cancelar';
-  actions.appendChild(cancelButton);
-
-  form.appendChild(actions);
-
-  fillTournamentSelect(
-    tournamentSelect,
-    tournaments,
-    normalizedDefaultTournamentId,
-    'Selecciona un torneo'
-  );
-
-  const updateCategoryOptions = async (tournamentValue, { preserveSelection = false } = {}) => {
-    const previousValue = preserveSelection ? categorySelect.value : '';
-    categorySelect.innerHTML = '<option value="">Selecciona una categoría</option>';
-    categorySelect.disabled = true;
-    submitButton.disabled = true;
-
-    if (!tournamentValue) {
-      setStatusMessage(status, 'info', 'Selecciona un torneo para continuar.');
-      return { hasOptions: false, value: '' };
-    }
-
-    let categories = getTournamentCategories(tournamentValue);
-    if (!categories.length) {
-      try {
-        const detail = await loadTournamentDetail(tournamentValue, { force: false });
-        categories = Array.isArray(detail?.categories) ? detail.categories : [];
-      } catch (error) {
-        setStatusMessage(
-          status,
-          'error',
-          error.message || 'No fue posible cargar las categorías del torneo.'
-        );
-        return { hasOptions: false, value: '' };
-      }
-    }
-
-    const sorted = categories
-      .slice()
-      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }));
-
-    const availableIds = [];
-    sorted.forEach((categoryEntry) => {
-      const entryId = normalizeId(categoryEntry);
-      if (!entryId || availableIds.includes(entryId)) {
-        return;
-      }
-      availableIds.push(entryId);
-      const option = document.createElement('option');
-      option.value = entryId;
-      option.textContent = categoryEntry.name || 'Categoría';
-      categorySelect.appendChild(option);
+  let bracketType = 'principal';
+  if (hasMainMatches && hasConsolationMatches) {
+    const selection = await selectBracketTypeForPrint({
+      hasMain: hasMainMatches,
+      hasConsolation: hasConsolationMatches,
     });
-
-    let nextValue = '';
-    if (preserveSelection && previousValue && availableIds.includes(previousValue)) {
-      nextValue = previousValue;
-    } else if (normalizedDefaultCategoryId && availableIds.includes(normalizedDefaultCategoryId)) {
-      nextValue = normalizedDefaultCategoryId;
-    } else if (availableIds.length) {
-      nextValue = availableIds[0];
-    }
-
-    if (nextValue) {
-      categorySelect.value = nextValue;
-    }
-
-    const hasOptions = Boolean(availableIds.length);
-    categorySelect.disabled = !hasOptions;
-    submitButton.disabled = !hasOptions || !categorySelect.value;
-
-    if (!hasOptions) {
-      setStatusMessage(status, 'info', 'Este torneo no tiene categorías disponibles.');
-    } else {
-      setStatusMessage(status, '', '');
-    }
-
-    return { hasOptions, value: categorySelect.value };
-  };
-
-  tournamentSelect.addEventListener('change', async () => {
-    submitButton.disabled = true;
-    await updateCategoryOptions(tournamentSelect.value);
-  });
-
-  categorySelect.addEventListener('change', () => {
-    submitButton.disabled = !categorySelect.value;
-  });
-
-  cancelButton.addEventListener('click', () => {
-    closeModal();
-  });
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const selectedTournamentId = tournamentSelect.value;
-    const selectedCategoryId = categorySelect.value;
-
-    if (!selectedTournamentId || !selectedCategoryId) {
-      setStatusMessage(status, 'error', 'Selecciona un torneo y una categoría.');
+    if (!selection) {
       return;
     }
+    bracketType = selection;
+  } else if (hasConsolationMatches) {
+    bracketType = 'consolacion';
+  }
 
-    const originalText = submitButton.textContent;
-    submitButton.disabled = true;
-    submitButton.textContent = 'Generando...';
-    setStatusMessage(status, '', '');
-
-    try {
-      await printTournamentBracketSheet(selectedTournamentId, selectedCategoryId);
-      closeModal();
-    } catch (error) {
-      submitButton.disabled = false;
-      submitButton.textContent = originalText;
-      setStatusMessage(status, 'error', error.message || 'No fue posible generar el cuadro.');
-    }
-  });
-
-  openModal({
-    title: 'Imprimir cuadro',
-    content: form,
-  });
-
-  await updateCategoryOptions(tournamentSelect.value, { preserveSelection: true });
+  try {
+    await printTournamentBracketSheet(tournamentId, categoryId, { bracketType, matches });
+  } catch (error) {
+    showGlobalMessage(error.message || 'No fue posible generar el cuadro.', 'error');
+  }
 }
 
 async function loadTournamentBracketContext({
@@ -27731,7 +27730,7 @@ rankingPrintButton?.addEventListener('click', () => {
 });
 
 tournamentBracketPrintButton?.addEventListener('click', () => {
-  openTournamentBracketPrintModal();
+  handleTournamentBracketPrint();
 });
 
 rankingLeagueFilter?.addEventListener('change', () => {
