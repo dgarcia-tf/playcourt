@@ -1031,20 +1031,21 @@
                     Tamaño del cuadro
                     <select id="tournament-bracket-size"></select>
                   </label>
-                  <div
-                    class="tournament-bracket-actions"
-                    data-admin-visible="toggle"
-                    hidden
-                  >
-                    <button type="button" class="secondary" id="tournament-bracket-save-seeds" disabled>
-                      Guardar cabezas de serie
+                  <div class="tournament-bracket-actions">
+                    <button type="button" class="ghost" id="tournament-bracket-print">
+                      Imprimir cuadro
                     </button>
-                    <button type="button" class="primary" id="tournament-bracket-generate" disabled>
-                      Generar cuadro
-                    </button>
-                    <button type="button" class="ghost" id="tournament-bracket-recalculate" disabled>
-                      Recalcular cuadro
-                    </button>
+                    <div class="tournament-bracket-admin-actions" data-admin-visible="toggle" hidden>
+                      <button type="button" class="secondary" id="tournament-bracket-save-seeds" disabled>
+                        Guardar cabezas de serie
+                      </button>
+                      <button type="button" class="primary" id="tournament-bracket-generate" disabled>
+                        Generar cuadro
+                      </button>
+                      <button type="button" class="ghost" id="tournament-bracket-recalculate" disabled>
+                        Recalcular cuadro
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <p class="status-message" id="tournament-bracket-status"></p>
