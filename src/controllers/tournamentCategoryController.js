@@ -12,8 +12,18 @@ const {
   TournamentEnrollment,
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
+const { USER_ROLES, userHasRole } = require('../models/User');
 const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
 const { canAccessPrivateContent } = require('../utils/accessControl');
+const { hasCategoryMinimumAgeRequirement } = require('../utils/age');
+
+function shouldHideCategoryForUser(category, user) {
+  if (userHasRole(user, USER_ROLES.ADMIN)) {
+    return false;
+  }
+
+  return hasCategoryMinimumAgeRequirement(category);
+}
 
 function sanitizeDrawRounds(rounds = []) {
   if (!Array.isArray(rounds)) {
@@ -135,7 +145,11 @@ async function listTournamentCategories(req, res) {
     .sort({ createdAt: 1 })
     .populate('seeds.player', 'fullName gender rating photo');
 
-  return res.json(categories);
+  const visibleCategories = categories.filter(
+    (category) => !shouldHideCategoryForUser(category, req.user)
+  );
+
+  return res.json(visibleCategories);
 }
 
 async function getTournamentCategory(req, res) {
@@ -160,6 +174,10 @@ async function getTournamentCategory(req, res) {
     .lean();
 
   if (!category) {
+    return res.status(404).json({ message: 'Categoría no encontrada' });
+  }
+
+  if (shouldHideCategoryForUser(category, req.user)) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
   }
 

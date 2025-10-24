@@ -11,6 +11,7 @@ const {
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { categoryAllowsGender } = require('../utils/gender');
+const { hasCategoryMinimumAgeRequirement } = require('../utils/age');
 
 async function ensureTournament(tournamentId) {
   const tournament = await Tournament.findById(tournamentId);
@@ -234,6 +235,10 @@ async function createTournamentEnrollment(req, res) {
 
   if (tournament.registrationCloseDate && new Date() > tournament.registrationCloseDate) {
     return res.status(400).json({ message: 'El período de inscripción está cerrado' });
+  }
+
+  if (hasCategoryMinimumAgeRequirement(category) && !userHasRole(req.user, USER_ROLES.ADMIN)) {
+    return res.status(404).json({ message: 'Categoría no encontrada' });
   }
 
   const user = await User.findById(playerId);
