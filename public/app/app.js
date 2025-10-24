@@ -11990,6 +11990,7 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
 
   matches.forEach((match) => {
     const item = document.createElement('li');
+    item.classList.add('tournament-match-item');
     const title = document.createElement('strong');
     const players = Array.isArray(match?.players)
       ? match.players.map((player) => player?.fullName).filter(Boolean)
@@ -12031,6 +12032,25 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
     meta.appendChild(statusTag);
 
     item.appendChild(meta);
+
+    if (isAdmin()) {
+      const matchId = normalizeId(match);
+      if (matchId) {
+        const actions = document.createElement('div');
+        actions.className = 'tournament-match-item__actions';
+
+        const scheduleButton = document.createElement('button');
+        scheduleButton.type = 'button';
+        const hasSchedule = Boolean(match?.scheduledAt);
+        scheduleButton.className = hasSchedule ? 'secondary' : 'primary';
+        scheduleButton.dataset.action = 'schedule-tournament-match';
+        scheduleButton.dataset.matchId = matchId;
+        scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
+        actions.appendChild(scheduleButton);
+
+        item.appendChild(actions);
+      }
+    }
     tournamentMatchesList.appendChild(item);
   });
 }
@@ -27719,6 +27739,20 @@ matchGenerateButton?.addEventListener('click', () => {
 matchCreateButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
   openMatchModal();
+});
+
+tournamentMatchesList?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action="schedule-tournament-match"]');
+  if (!button || !isAdmin()) {
+    return;
+  }
+
+  const { matchId } = button.dataset;
+  if (!matchId) {
+    return;
+  }
+
+  openMatchModal(matchId);
 });
 
 modalClose?.addEventListener('click', () => {
