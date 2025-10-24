@@ -2796,36 +2796,59 @@ async function ensureHtml2PdfGenerator() {
   return null;
 }
 
-function prepareBracketExportView(view) {
-  if (!view) {
-    return null;
+function sanitizeBracketExportSection(section) {
+  if (!(section instanceof HTMLElement)) {
+    return;
   }
 
-  view.classList.add('printable-bracket-view');
-
-  view.querySelectorAll('[hidden]').forEach((element) => {
+  section.querySelectorAll('[hidden]').forEach((element) => {
     element.removeAttribute('hidden');
   });
 
-  view.querySelectorAll('.bracket-match__actions').forEach((element) => {
+  section.querySelectorAll('.bracket-match__actions').forEach((element) => {
     element.remove();
   });
 
-  view.querySelectorAll('.player-avatar img').forEach((image) => {
-    const avatar = image.parentElement;
-    if (!avatar) {
+  section.querySelectorAll('.player-avatar').forEach((avatar) => {
+    if (!(avatar instanceof HTMLElement)) {
       return;
     }
 
-    const fallbackSource = image.getAttribute('alt') || avatar.getAttribute('data-initial') || '';
+    const image = avatar.querySelector('img');
+    if (!image) {
+      return;
+    }
+
+    const fallbackSource =
+      image.getAttribute('alt') || avatar.getAttribute('data-initial') || avatar.textContent || '';
     const initial = fallbackSource.trim().charAt(0).toUpperCase() || '—';
 
     avatar.innerHTML = '';
     avatar.classList.add('player-avatar--placeholder');
     avatar.textContent = initial;
   });
+}
 
-  return view;
+function prepareBracketExportView(view) {
+  if (!(view instanceof HTMLElement)) {
+    return null;
+  }
+
+  const sections = Array.from(view.querySelectorAll('.tournament-bracket-section'));
+  if (!sections.length) {
+    return null;
+  }
+
+  const exportView = document.createElement('div');
+  exportView.className = 'tournament-bracket-view printable-bracket-view';
+
+  sections.forEach((section) => {
+    const clonedSection = section.cloneNode(true);
+    sanitizeBracketExportSection(clonedSection);
+    exportView.appendChild(clonedSection);
+  });
+
+  return exportView;
 }
 
 function buildSampleBracketExport(bracketType = 'principal') {
@@ -3079,7 +3102,7 @@ async function handleTournamentBracketExport() {
   let bracketLabel = isConsolation ? 'Cuadro de consolación' : 'Cuadro principal';
   let tournamentName = '';
   let categoryName = '';
-  let exportView;
+  let exportSourceView;
 
   if (useSampleBracket) {
     const sampleExport = buildSampleBracketExport(bracketType);
@@ -3087,7 +3110,7 @@ async function handleTournamentBracketExport() {
       showGlobalMessage('No fue posible preparar un cuadro de ejemplo para exportar.', 'error');
       return;
     }
-    exportView = sampleExport.view;
+    exportSourceView = sampleExport.view;
     bracketLabel = sampleExport.bracketLabel || bracketLabel;
     tournamentName = sampleExport.tournamentName || tournamentName;
     categoryName = sampleExport.categoryName || categoryName;
@@ -3101,11 +3124,14 @@ async function handleTournamentBracketExport() {
         : typeof category.name === 'string'
         ? category.name
         : '';
-    exportView = sourceView.cloneNode(true);
-    exportView.removeAttribute('id');
+    exportSourceView = sourceView;
   }
 
-  prepareBracketExportView(exportView);
+  const exportView = prepareBracketExportView(exportSourceView);
+  if (!exportView) {
+    showGlobalMessage('No fue posible localizar información del cuadro seleccionado.', 'error');
+    return;
+  }
 
   const pdfGenerator = await ensureHtml2PdfGenerator();
   if (typeof pdfGenerator !== 'function') {

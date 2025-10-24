@@ -1721,10 +1721,9 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 }
 
 .print-bracket--export {
-  position: fixed;
-  top: 0;
-  left: 0;
-  transform: translate(-200vw, -200vh);
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
   width: 1120px;
   padding: 2.5rem 2rem;
   background: #ffffff;
