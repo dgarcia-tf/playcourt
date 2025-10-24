@@ -14079,17 +14079,24 @@ function findTournamentMatchContext(matchId) {
   return null;
 }
 
-function applyTournamentMatchUpdate(updatedMatch) {
+async function applyTournamentMatchUpdate(updatedMatch) {
   const normalizedId = normalizeId(updatedMatch);
   if (!normalizedId) {
     return;
   }
 
-  const maps = [state.tournamentMatches, state.tournamentBracketMatches];
-  maps.forEach((map) => {
-    if (!(map instanceof Map)) return;
-    for (const [key, matches] of map.entries()) {
-      if (!Array.isArray(matches)) continue;
+  const hydrationTasks = [];
+
+  const processMap = (map) => {
+    if (!(map instanceof Map)) {
+      return;
+    }
+
+    map.forEach((matches, key) => {
+      if (!Array.isArray(matches)) {
+        return;
+      }
+
       let changed = false;
       const nextMatches = matches.map((entry) => {
         if (normalizeId(entry) === normalizedId) {
@@ -14098,11 +14105,36 @@ function applyTournamentMatchUpdate(updatedMatch) {
         }
         return entry;
       });
-      if (changed) {
-        map.set(key, nextMatches);
+
+      if (!changed) {
+        return;
       }
-    }
-  });
+
+      map.set(key, nextMatches);
+
+      const [tournamentId = '', categoryId = ''] = (key || '').split(':');
+      hydrationTasks.push(
+        (async () => {
+          try {
+            const hydrated = await hydrateTournamentMatchesWithPairs(nextMatches, {
+              tournamentId,
+              categoryId,
+            });
+            map.set(key, hydrated);
+          } catch (error) {
+            map.set(key, nextMatches);
+          }
+        })()
+      );
+    });
+  };
+
+  processMap(state.tournamentMatches);
+  processMap(state.tournamentBracketMatches);
+
+  if (hydrationTasks.length) {
+    await Promise.all(hydrationTasks);
+  }
 }
 
 function isUserMatchParticipant(match, user = state.user) {
@@ -23234,7 +23266,7 @@ async function submitTournamentMatchSchedule({
       }
     );
 
-    applyTournamentMatchUpdate(updated);
+    await applyTournamentMatchUpdate(updated);
 
     const listKey = `${normalizedTournamentId}:${normalizedCategoryId}`;
     if (state.tournamentMatches instanceof Map && state.tournamentMatches.has(listKey)) {
@@ -23315,19 +23347,42 @@ async function submitTournamentMatchResult({
       }
     );
 
-    applyTournamentMatchUpdate(updated);
+    await applyTournamentMatchUpdate(updated);
 
     const listKey = `${normalizedTournamentId}:${normalizedCategoryId}`;
-    if (state.tournamentMatches instanceof Map && state.tournamentMatches.has(listKey)) {
+    const hasMatchCache =
+      state.tournamentMatches instanceof Map && state.tournamentMatches.has(listKey);
+    if (hasMatchCache) {
       renderTournamentMatches(state.tournamentMatches.get(listKey) || []);
     }
 
     const bracketKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
-    if (bracketKey && state.tournamentBracketMatches instanceof Map) {
-      const matches = state.tournamentBracketMatches.get(bracketKey);
-      if (matches) {
-        renderTournamentBracket(matches);
-      }
+    const hasBracketCache =
+      Boolean(bracketKey) &&
+      state.tournamentBracketMatches instanceof Map &&
+      state.tournamentBracketMatches.has(bracketKey);
+    if (hasBracketCache) {
+      renderTournamentBracket(state.tournamentBracketMatches.get(bracketKey) || []);
+    }
+
+    const matchesActive =
+      hasMatchCache &&
+      state.selectedMatchTournamentId === normalizedTournamentId &&
+      state.selectedMatchCategoryId === normalizedCategoryId;
+    if (matchesActive) {
+      await refreshTournamentMatches({ forceReload: true });
+    } else if (hasMatchCache) {
+      state.tournamentMatches.delete(listKey);
+    }
+
+    const bracketActive =
+      hasBracketCache &&
+      state.selectedBracketTournamentId === normalizedTournamentId &&
+      state.selectedBracketCategoryId === normalizedCategoryId;
+    if (bracketActive) {
+      await refreshTournamentBracketMatches({ forceReload: true });
+    } else if (hasBracketCache) {
+      state.tournamentBracketMatches.delete(bracketKey);
     }
 
     setStatusMessage(statusElement, 'success', 'Resultado guardado correctamente.');
