@@ -1713,6 +1713,7 @@ const state = {
   tournamentBracketResizeHandler: null,
   tournamentPayments: new Map(),
   tournamentDoubles: new Map(),
+  tournamentDoublesPairs: new Map(),
   tournamentPaymentFilters: {
     tournament: '',
     search: '',
@@ -6202,6 +6203,11 @@ function resetData() {
     state.tournamentDoubles.clear();
   } else {
     state.tournamentDoubles = new Map();
+  }
+  if (state.tournamentDoublesPairs instanceof Map) {
+    state.tournamentDoublesPairs.clear();
+  } else {
+    state.tournamentDoublesPairs = new Map();
   }
   if (state.tournamentEnrollments instanceof Map) {
     state.tournamentEnrollments.clear();
@@ -11921,7 +11927,13 @@ function updateBracketCategoryOptions() {
       forceMatches: false,
     });
   } else {
-    renderTournamentBracketSeeds({ tournamentId, categoryId: '', enrollments: [], category: null });
+    renderTournamentBracketSeeds({
+      tournamentId,
+      categoryId: '',
+      enrollments: [],
+      category: null,
+      pairs: [],
+    });
     renderTournamentBracket([], { loading: false });
   }
 
@@ -11972,6 +11984,13 @@ function updateTournamentEnrollmentCount(total) {
 }
 
 function getTournamentEnrollmentCacheKey(tournamentId, categoryId) {
+  if (!tournamentId || !categoryId) {
+    return '';
+  }
+  return `${tournamentId}:${categoryId}`;
+}
+
+function getTournamentDoublesPairCacheKey(tournamentId, categoryId) {
   if (!tournamentId || !categoryId) {
     return '';
   }
@@ -12191,6 +12210,25 @@ async function fetchTournamentEnrollments(tournamentId, categoryId, { forceReloa
   const response = await request(endpoint);
   const list = Array.isArray(response) ? response : [];
   state.tournamentEnrollments.set(cacheKey, list);
+  return list;
+}
+
+async function fetchTournamentDoublesPairs(tournamentId, categoryId, { forceReload = false } = {}) {
+  if (!tournamentId || !categoryId) {
+    return [];
+  }
+
+  const cacheKey = getTournamentDoublesPairCacheKey(tournamentId, categoryId);
+  if (!forceReload && state.tournamentDoublesPairs.has(cacheKey)) {
+    return state.tournamentDoublesPairs.get(cacheKey) || [];
+  }
+
+  const response = await request(
+    `/tournaments/${tournamentId}/categories/${categoryId}/doubles-pairs`,
+    { requireAuth: Boolean(state.token) }
+  );
+  const list = Array.isArray(response) ? response : [];
+  state.tournamentDoublesPairs.set(cacheKey, list);
   return list;
 }
 
@@ -12998,6 +13036,7 @@ function renderTournamentBracketSeeds({
   categoryId = '',
   enrollments = [],
   category = null,
+  pairs = [],
 } = {}) {
   if (!tournamentBracketSeedsContainer) {
     return;
@@ -13018,30 +13057,58 @@ function renderTournamentBracketSeeds({
     return;
   }
 
-  const activeEnrollments = Array.isArray(enrollments)
-    ? enrollments.filter((entry) => entry && entry.status !== 'cancelada' && entry.user)
-    : [];
+  const isDoubles = category?.matchType === 'dobles';
+  const participantPluralLabel = isDoubles ? 'parejas' : 'jugadores';
 
-  const players = activeEnrollments
-    .map((entry) => entry.user)
-    .filter(Boolean)
-    .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+  let participants = [];
+
+  if (isDoubles) {
+    participants = (Array.isArray(pairs) ? pairs : [])
+      .map((pair) => {
+        if (!pair) {
+          return null;
+        }
+        const id = normalizeId(pair);
+        if (!id) {
+          return null;
+        }
+        const members = Array.isArray(pair.players)
+          ? pair.players.map((member) => (member ? member : null)).filter(Boolean)
+          : [];
+        if (members.length !== 2) {
+          return null;
+        }
+        return { ...pair, id };
+      })
+      .filter(Boolean)
+      .sort((a, b) => getPlayerDisplayName(a).localeCompare(getPlayerDisplayName(b), 'es'));
+  } else {
+    const activeEnrollments = Array.isArray(enrollments)
+      ? enrollments.filter((entry) => entry && entry.status !== 'cancelada' && entry.user)
+      : [];
+
+    participants = activeEnrollments
+      .map((entry) => entry.user)
+      .filter(Boolean)
+      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+  }
 
   const seedLookup = buildSeedLookup(category);
   const drawSizeValue = Number(tournamentBracketSizeSelect?.value);
   const baseDrawSize = Number(category?.drawSize);
-  const drawSize = drawSizeValue || baseDrawSize || players.length;
+  const participantCount = participants.length;
+  const drawSize = drawSizeValue || baseDrawSize || participantCount;
   const maxSeeds = Math.max(
     seedLookup.bySeed.size,
-    Math.min(players.length, drawSize || players.length)
+    Math.min(participantCount, drawSize || participantCount)
   );
 
   const editable = isAdmin();
 
-  if (!players.length) {
+  if (!participants.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
-    empty.textContent = 'No hay jugadores inscritos disponibles para asignar siembras.';
+    empty.textContent = `No hay ${participantPluralLabel} inscritos disponibles para asignar siembras.`;
     tournamentBracketSeedsContainer.appendChild(empty);
     state.tournamentBracketSeedsDirty = false;
     if (tournamentBracketSaveSeedsButton) {
@@ -13068,12 +13135,12 @@ function renderTournamentBracketSeeds({
       placeholder.textContent = 'Sin asignar';
       select.appendChild(placeholder);
 
-      players.forEach((player) => {
+      participants.forEach((participant) => {
         const option = document.createElement('option');
-        const playerId = normalizeId(player);
-        option.value = playerId;
-        option.textContent = player.fullName || player.email || 'Jugador';
-        if (assignedPlayerId && playerId === assignedPlayerId) {
+        const participantId = normalizeId(participant);
+        option.value = participantId;
+        option.textContent = getPlayerDisplayName(participant);
+        if (assignedPlayerId && participantId === assignedPlayerId) {
           option.selected = true;
         }
         select.appendChild(option);
@@ -13092,16 +13159,16 @@ function renderTournamentBracketSeeds({
       const info = document.createElement('div');
       info.className = 'tournament-seed-entry__player';
       if (assignedPlayerId) {
-        const player =
-          players.find((item) => normalizeId(item) === assignedPlayerId) ||
+        const participant =
+          participants.find((item) => normalizeId(item) === assignedPlayerId) ||
           (Array.isArray(category?.seeds)
             ? category.seeds.find((seed) => normalizeId(seed.player) === assignedPlayerId)?.player
             : null);
-        const playerName =
-          typeof player === 'object'
-            ? player.fullName || player.email || 'Jugador'
+        const participantName =
+          participant && typeof participant === 'object'
+            ? getPlayerDisplayName(participant)
             : '';
-        info.textContent = playerName || 'Sin asignar';
+        info.textContent = participantName || 'Sin asignar';
       } else {
         info.textContent = 'Sin asignar';
       }
@@ -13146,10 +13213,10 @@ function validateTournamentSeedAssignments(assignments = []) {
       continue;
     }
     if (seenSeeds.has(seedNumber)) {
-      return 'Cada número de siembra solo se puede asignar a un jugador.';
+      return 'Cada número de siembra solo se puede asignar a un participante.';
     }
     if (seenPlayers.has(playerId)) {
-      return 'Un jugador no puede tener más de una siembra asignada.';
+      return 'Un participante no puede tener más de una siembra asignada.';
     }
     seenSeeds.add(seedNumber);
     seenPlayers.add(playerId);
@@ -14135,11 +14202,21 @@ async function loadTournamentBracketContext({
     setStatusMessage(tournamentBracketStatus, 'error', error.message);
   }
 
+  let pairs = [];
+  if (category?.matchType === 'dobles') {
+    try {
+      pairs = await fetchTournamentDoublesPairs(tournamentId, categoryId, { forceReload: false });
+    } catch (error) {
+      setStatusMessage(tournamentBracketStatus, 'error', error.message);
+    }
+  }
+
   renderTournamentBracketSeeds({
     tournamentId,
     categoryId,
     enrollments,
     category,
+    pairs,
   });
 
   await refreshTournamentBracketMatches({ forceReload: forceMatches });
@@ -14172,6 +14249,12 @@ async function reloadTournaments({ selectTournamentId } = {}) {
   );
   state.tournamentDoubles = new Map(
     Array.from(state.tournamentDoubles.entries()).filter(([id]) => validTournamentIds.has(id))
+  );
+  state.tournamentDoublesPairs = new Map(
+    Array.from(state.tournamentDoublesPairs.entries()).filter(([key]) => {
+      const [tournamentKey] = String(key).split(':');
+      return validTournamentIds.has(tournamentKey);
+    })
   );
   state.tournamentBracketMatches = new Map(
     Array.from(state.tournamentBracketMatches.entries()).filter(([key]) => {
@@ -28042,6 +28125,9 @@ tournamentDoublesContainer?.addEventListener('submit', async (event) => {
         body: { players: [playerA, playerB] },
       }
     );
+    state.tournamentDoublesPairs.delete(
+      getTournamentDoublesPairCacheKey(tournamentId, categoryId)
+    );
     form.reset();
     showGlobalMessage('Pareja creada correctamente.', 'success');
     await refreshTournamentDoubles({ force: true });
@@ -28077,6 +28163,9 @@ tournamentDoublesContainer?.addEventListener('click', async (event) => {
     await request(
       `/tournaments/${tournamentId}/categories/${categoryId}/doubles-pairs/${pairId}`,
       { method: 'DELETE' }
+    );
+    state.tournamentDoublesPairs.delete(
+      getTournamentDoublesPairCacheKey(tournamentId, categoryId)
     );
     showGlobalMessage('Pareja eliminada correctamente.', 'success');
     await refreshTournamentDoubles({ force: true });
@@ -28229,6 +28318,7 @@ tournamentBracketSizeSelect?.addEventListener('change', async () => {
     categoryId,
     enrollments,
     category,
+    pairs,
   });
   updateTournamentActionAvailability();
 });

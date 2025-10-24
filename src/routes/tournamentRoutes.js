@@ -27,6 +27,7 @@ const {
   createTournamentEnrollment,
   listTournamentPlayers,
   listTournamentDoublesPlayers,
+  listTournamentCategoryDoublesPairs,
   listTournamentEnrollments,
   createTournamentDoublesPair,
   deleteTournamentDoublesPair,
@@ -90,6 +91,13 @@ router.get(
   authenticateOptional,
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
   listTournamentMatches
+);
+
+router.get(
+  '/:tournamentId/categories/:categoryId/doubles-pairs',
+  authenticateOptional,
+  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
+  listTournamentCategoryDoublesPairs
 );
 
 router.get(
