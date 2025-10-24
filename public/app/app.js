@@ -1868,6 +1868,9 @@ const tournamentBracketSizeWrapper = document.getElementById('tournament-bracket
 const tournamentBracketSeedsContainer = document.getElementById('tournament-bracket-seeds');
 const tournamentBracketView = document.getElementById('tournament-bracket-view');
 const tournamentBracketEmpty = document.getElementById('tournament-bracket-empty');
+const tournamentConsolationViewCard = document.getElementById('tournament-consolation-view-card');
+const tournamentConsolationView = document.getElementById('tournament-consolation-view');
+const tournamentConsolationEmpty = document.getElementById('tournament-consolation-empty');
 const tournamentBracketStatus = document.getElementById('tournament-bracket-status');
 const tournamentBracketSaveSeedsButton = document.getElementById('tournament-bracket-save-seeds');
 const tournamentBracketGenerateButton = document.getElementById('tournament-bracket-generate');
@@ -12864,10 +12867,36 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
   }
 
   tournamentBracketView.innerHTML = '';
+  if (tournamentConsolationView) {
+    tournamentConsolationView.innerHTML = '';
+  }
 
   if (state.tournamentBracketAlignmentCallbacks instanceof Set) {
     state.tournamentBracketAlignmentCallbacks.clear();
   }
+
+  const hideConsolationCard = (message) => {
+    if (tournamentConsolationEmpty) {
+      tournamentConsolationEmpty.hidden = false;
+      tournamentConsolationEmpty.textContent =
+        message || 'El cuadro de consolación se mostrará aquí cuando esté disponible.';
+    }
+    if (tournamentConsolationViewCard) {
+      tournamentConsolationViewCard.hidden = true;
+    }
+  };
+
+  const showConsolationMessage = (message) => {
+    if (tournamentConsolationEmpty) {
+      tournamentConsolationEmpty.hidden = false;
+      tournamentConsolationEmpty.textContent = message;
+    }
+    if (tournamentConsolationViewCard) {
+      tournamentConsolationViewCard.hidden = false;
+    }
+  };
+
+  hideConsolationCard();
 
   const tournamentId = state.selectedBracketTournamentId;
   const categoryId = state.selectedBracketCategoryId;
@@ -12882,12 +12911,14 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
   if (loading) {
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = 'Cargando cuadro de juego...';
+    showConsolationMessage('Cargando cuadro de consolación...');
     return;
   }
 
   if (error) {
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = error;
+    showConsolationMessage('No fue posible cargar el cuadro de consolación.');
     return;
   }
 
@@ -12898,6 +12929,7 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
   if (!mainMatches.length && !consolationMatches.length) {
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = 'Aún no se ha generado el cuadro para esta categoría.';
+    showConsolationMessage('Aún no se ha generado el cuadro de consolación para esta categoría.');
     return;
   }
 
@@ -12914,19 +12946,29 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     });
     tournamentBracketView.appendChild(mainSection);
     scheduleTournamentBracketAlignment(mainSection);
+    tournamentBracketEmpty.hidden = true;
+  } else {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent = 'Esta categoría no tiene partidos en el cuadro principal.';
   }
 
-  if (consolationMatches.length) {
+  if (consolationMatches.length && tournamentConsolationView) {
     const consolationSection = createTournamentBracketSection({
       title: 'Cuadro de consolación',
       matches: consolationMatches,
       seedByPlayer,
     });
-    tournamentBracketView.appendChild(consolationSection);
+    tournamentConsolationView.appendChild(consolationSection);
     scheduleTournamentBracketAlignment(consolationSection);
+    if (tournamentConsolationEmpty) {
+      tournamentConsolationEmpty.hidden = true;
+    }
+    if (tournamentConsolationViewCard) {
+      tournamentConsolationViewCard.hidden = false;
+    }
+  } else {
+    showConsolationMessage('Esta categoría no tiene partidos en el cuadro de consolación.');
   }
-
-  tournamentBracketEmpty.hidden = true;
 }
 
 function renderTournamentBracketSeeds({
