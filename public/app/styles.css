@@ -1682,6 +1682,22 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   padding-bottom: 0.5rem;
 }
 
+.tournament-bracket-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.tournament-bracket-section + .tournament-bracket-section {
+  margin-top: 2.5rem;
+}
+
+.tournament-bracket-section__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 .tournament-bracket-grid {
   --bracket-match-gap: 2.25rem;
   --bracket-connector-gap: 3.5rem;
