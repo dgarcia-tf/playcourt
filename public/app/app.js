@@ -2790,7 +2790,10 @@ function handleTournamentBracketExport() {
 
   const printFrame = document.createElement('iframe');
   printFrame.id = 'tournament-bracket-print-frame';
-  printFrame.setAttribute('title', `${safeBracketLabel} · ${safeCategory || safeTournament || 'Cuadro'}`);
+  printFrame.setAttribute(
+    'title',
+    `${safeBracketLabel} · ${safeCategory || safeTournament || 'Cuadro'}`
+  );
   printFrame.setAttribute('aria-hidden', 'true');
   const frameStyle = printFrame.style;
   frameStyle.position = 'fixed';
@@ -2803,23 +2806,44 @@ function handleTournamentBracketExport() {
   frameStyle.pointerEvents = 'none';
 
   let printTriggered = false;
+  let frameReadyTimerId = null;
+  let frameFailureTimerId = null;
+  let hasWrittenContent = false;
+
   const cleanupPrintFrame = () => {
+    if (frameReadyTimerId) {
+      clearTimeout(frameReadyTimerId);
+      frameReadyTimerId = null;
+    }
+    if (frameFailureTimerId) {
+      clearTimeout(frameFailureTimerId);
+      frameFailureTimerId = null;
+    }
     if (printFrame.parentNode) {
       printFrame.parentNode.removeChild(printFrame);
     }
+  };
+
+  const failToPreparePrint = () => {
+    cleanupPrintFrame();
+    showGlobalMessage('No fue posible preparar la vista de impresión.', 'error');
   };
 
   const triggerPrint = () => {
     if (printTriggered) {
       return;
     }
-    printTriggered = true;
-
     const frameWindow = printFrame.contentWindow;
     if (!frameWindow) {
-      cleanupPrintFrame();
-      showGlobalMessage('No fue posible preparar la vista de impresión.', 'error');
+      failToPreparePrint();
       return;
+    }
+
+    printTriggered = true;
+    printFrame.removeEventListener('load', handleFrameLoad);
+    if (frameFailureTimerId) {
+      clearTimeout(frameFailureTimerId);
+      frameFailureTimerId = null;
     }
 
     frameWindow.focus();
@@ -2830,13 +2854,10 @@ function handleTournamentBracketExport() {
     };
     frameWindow.addEventListener('afterprint', handleAfterPrint);
 
-    setTimeout(() => {
+    frameReadyTimerId = setTimeout(() => {
       cleanupPrintFrame();
     }, 750);
   };
-
-  printFrame.addEventListener('load', triggerPrint, { once: true });
-  document.body.appendChild(printFrame);
 
   const customStyles = `
     <style>
@@ -2881,15 +2902,7 @@ function handleTournamentBracketExport() {
     </style>
   `;
 
-  const printDocument = printFrame.contentDocument || printFrame.contentWindow?.document;
-  if (!printDocument) {
-    cleanupPrintFrame();
-    showGlobalMessage('No fue posible preparar la vista de impresión.', 'error');
-    return;
-  }
-
-  printDocument.open();
-  printDocument.write(`<!DOCTYPE html>
+  const printableHtml = `<!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
@@ -2908,10 +2921,49 @@ function handleTournamentBracketExport() {
           ${bracketMarkup}
         </main>
       </body>
-    </html>`);
-  printDocument.close();
+    </html>`;
 
-  setTimeout(triggerPrint, 750);
+  const supportsSrcdoc = 'srcdoc' in printFrame;
+
+  const handleFrameLoad = () => {
+    const frameWindow = printFrame.contentWindow;
+    if (!frameWindow) {
+      failToPreparePrint();
+      return;
+    }
+
+    if (!supportsSrcdoc && !hasWrittenContent) {
+      const printDocument = frameWindow.document;
+      if (!printDocument) {
+        failToPreparePrint();
+        return;
+      }
+
+      hasWrittenContent = true;
+      printDocument.open();
+      printDocument.write(printableHtml);
+      printDocument.close();
+      return;
+    }
+
+    triggerPrint();
+  };
+
+  printFrame.addEventListener('load', handleFrameLoad);
+  document.body.appendChild(printFrame);
+
+  if (supportsSrcdoc) {
+    printFrame.srcdoc = printableHtml;
+  } else {
+    hasWrittenContent = false;
+    printFrame.src = 'about:blank';
+  }
+
+  frameFailureTimerId = setTimeout(() => {
+    if (!printTriggered) {
+      failToPreparePrint();
+    }
+  }, 8000);
 }
 
 function updateMatchesMenuBadge(count = 0) {
