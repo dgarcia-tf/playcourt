@@ -13844,18 +13844,6 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
           list-style: none;
           padding: 0;
           margin: 0;
-          display: grid;
-          gap: 10px;
-        }
-        .print-seeds li {
-          display: flex;
-          gap: 16px;
-          align-items: center;
-          background: #ffffff;
-          border: 1px solid rgba(148, 163, 184, 0.25);
-          border-radius: 12px;
-          padding: 12px 16px;
-          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
         }
         .print-seed__number {
           font-weight: 700;
