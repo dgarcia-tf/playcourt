@@ -9,6 +9,7 @@ const {
   normalizeShirtSize,
 } = require('../models/User');
 const { hashPassword } = require('../utils/password');
+const { notifyAdminsOfNewUser } = require('../services/userNotificationService');
 
 function sanitizeUser(user) {
   const payload = user.toObject({ virtuals: false });
@@ -25,6 +26,7 @@ function sanitizeUser(user) {
   payload.birthDate = user.birthDate;
   payload.isMember = Boolean(user.isMember);
   payload.membershipNumber = user.membershipNumber || null;
+  payload.membershipNumberVerified = Boolean(user.membershipNumberVerified);
   payload.shirtSize = user.shirtSize || null;
   return payload;
 }
@@ -83,6 +85,7 @@ async function createPlayer(req, res) {
   const normalizedMembershipNumber =
     typeof membershipNumber === 'string' ? membershipNumber.trim() : '';
   const normalizedShirtSize = normalizeShirtSize(shirtSize);
+  const membershipNumberVerified = Boolean(req.body.membershipNumberVerified);
 
   if (!normalizedShirtSize) {
     return res
@@ -94,6 +97,12 @@ async function createPlayer(req, res) {
     return res
       .status(400)
       .json({ message: 'El número de socio es obligatorio para los socios' });
+  }
+
+  if (!memberFlag && membershipNumberVerified) {
+    return res
+      .status(400)
+      .json({ message: 'Solo puedes validar el número de socio para usuarios marcados como socios.' });
   }
 
   const existingUser = await User.findOne({ email });
@@ -128,8 +137,12 @@ async function createPlayer(req, res) {
     membershipNumber: memberFlag && normalizedMembershipNumber ? normalizedMembershipNumber : undefined,
     notifyMatchRequests: typeof notifyMatchRequests === 'boolean' ? notifyMatchRequests : true,
     notifyMatchResults: typeof notifyMatchResults === 'boolean' ? notifyMatchResults : true,
+    membershipNumberVerified:
+      memberFlag && normalizedMembershipNumber ? membershipNumberVerified : false,
     shirtSize: normalizedShirtSize,
   });
+
+  await notifyAdminsOfNewUser(user, { actorId: req.user?.id });
 
   return res.status(201).json(sanitizeUser(user));
 }
@@ -164,6 +177,13 @@ async function updatePlayer(req, res) {
   if (!player) {
     return res.status(404).json({ message: 'Jugador no encontrado' });
   }
+
+  const previousMembershipNumber = player.membershipNumber || '';
+  const previousIsMember = Boolean(player.isMember);
+  const requestedMembershipNumberVerified =
+    typeof req.body.membershipNumberVerified === 'boolean'
+      ? req.body.membershipNumberVerified
+      : undefined;
 
   if (email && email !== player.email) {
     const duplicate = await User.findOne({ email });
@@ -246,7 +266,7 @@ async function updatePlayer(req, res) {
     if (
       nextMemberFlag &&
       normalizedMembershipNumber &&
-      normalizedMembershipNumber !== player.membershipNumber
+      normalizedMembershipNumber !== previousMembershipNumber
     ) {
       const duplicateMembership = await User.exists({
         membershipNumber: normalizedMembershipNumber,
@@ -267,6 +287,29 @@ async function updatePlayer(req, res) {
   }
 
   player.isMember = Boolean(nextMemberFlag);
+
+  const currentMembershipNumber = player.membershipNumber || '';
+  const membershipStatusChanged =
+    currentMembershipNumber !== previousMembershipNumber ||
+    player.isMember !== previousIsMember;
+
+  if (!player.isMember) {
+    player.membershipNumberVerified = false;
+  } else if (requestedMembershipNumberVerified !== undefined) {
+    if (requestedMembershipNumberVerified && !player.membershipNumber) {
+      return res
+        .status(400)
+        .json({ message: 'No puedes validar un número de socio sin especificarlo.' });
+    }
+
+    if (!requestedMembershipNumberVerified) {
+      player.membershipNumberVerified = false;
+    } else {
+      player.membershipNumberVerified = true;
+    }
+  } else if (membershipStatusChanged) {
+    player.membershipNumberVerified = false;
+  }
 
   await player.save();
 

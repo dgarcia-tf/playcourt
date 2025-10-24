@@ -81,6 +81,11 @@ router.post(
         }
         return true;
       }),
+    body('membershipNumberVerified')
+      .optional()
+      .customSanitizer(sanitizeBoolean)
+      .custom((value) => typeof value === 'boolean')
+      .withMessage('El estado de validación del número de socio es inválido'),
     body('notifyMatchRequests')
       .optional()
       .customSanitizer(sanitizeBoolean)
@@ -151,6 +156,11 @@ router.patch(
         }
         return true;
       }),
+    body('membershipNumberVerified')
+      .optional()
+      .customSanitizer(sanitizeBoolean)
+      .custom((value) => typeof value === 'boolean')
+      .withMessage('El estado de validación del número de socio es inválido'),
     body('notifyMatchRequests')
       .optional()
       .customSanitizer(sanitizeBoolean)

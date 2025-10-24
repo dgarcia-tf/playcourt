@@ -370,6 +370,7 @@ async function getAccountSummary(req, res) {
       phone: req.user.phone,
       isMember: Boolean(req.user.isMember),
       membershipNumber: req.user.membershipNumber || null,
+      membershipNumberVerified: Boolean(req.user.membershipNumberVerified),
     },
     enrollments,
     matches: {

@@ -8,6 +8,7 @@ const {
   normalizeShirtSize,
 } = require('../models/User');
 const { hashPassword, verifyPassword } = require('../utils/password');
+const { notifyAdminsOfNewUser } = require('../services/userNotificationService');
 
 function generateToken(user) {
   const payload = {
@@ -38,6 +39,7 @@ function serializeUser(user) {
     phone: user.phone,
     isMember: Boolean(user.isMember),
     membershipNumber: user.membershipNumber || null,
+    membershipNumberVerified: Boolean(user.membershipNumberVerified),
     photo: user.photo || legacyPhoto,
     preferredSchedule: user.preferredSchedule,
     notes: user.notes,
@@ -137,8 +139,12 @@ async function register(req, res) {
     membershipNumber: memberFlag && normalizedMembershipNumber ? normalizedMembershipNumber : undefined,
     notifyMatchRequests: typeof notifyMatchRequests === 'boolean' ? notifyMatchRequests : true,
     notifyMatchResults: typeof notifyMatchResults === 'boolean' ? notifyMatchResults : true,
+    membershipNumberVerified:
+      Boolean(memberFlag && normalizedMembershipNumber && roles.includes(USER_ROLES.ADMIN)),
     shirtSize: normalizedShirtSize,
   });
+
+  await notifyAdminsOfNewUser(user);
 
   const token = generateToken(user);
 
@@ -210,6 +216,9 @@ async function updateProfile(req, res) {
   if (!user) {
     return res.status(404).json({ message: 'Usuario no encontrado' });
   }
+
+  const previousMembershipNumber = user.membershipNumber || '';
+  const previousIsMember = Boolean(user.isMember);
 
   if (email && email !== user.email) {
     const exists = await User.exists({ email });
@@ -303,6 +312,17 @@ async function updateProfile(req, res) {
   }
 
   user.isMember = Boolean(nextMemberFlag);
+
+  const currentMembershipNumber = user.membershipNumber || '';
+  const membershipStatusChanged =
+    currentMembershipNumber !== previousMembershipNumber ||
+    user.isMember !== previousIsMember;
+
+  if (!user.isMember) {
+    user.membershipNumberVerified = false;
+  } else if (membershipStatusChanged) {
+    user.membershipNumberVerified = false;
+  }
 
   await user.save();
 

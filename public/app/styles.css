@@ -2584,6 +2584,11 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: #166534;
 }
 
+.tag--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .calendar-event--actionable {
   cursor: pointer;
 }
