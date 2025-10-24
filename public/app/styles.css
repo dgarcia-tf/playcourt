@@ -925,6 +925,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: visible;
   overscroll-behavior-x: contain;
 }
 .main-menu::-webkit-scrollbar {
