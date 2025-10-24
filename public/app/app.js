@@ -6328,45 +6328,24 @@ if (appMenu) {
     const menuGroup = menuGroupElement ? collapsibleMenuGroupsByElement.get(menuGroupElement) : null;
     const hasSubmenu = Boolean(menuGroup?.submenu);
     const submenuExpanded = hasSubmenu ? !menuGroup.submenu.hidden : false;
-    const hoverNavigation = shouldUseHoverNavigation();
+    const focusFirstItem = shouldUseHoverNavigation();
     const isParentButton = menuGroup?.parentButton === button;
 
-    if (hasSubmenu && isParentButton) {
+    if (hasSubmenu && !submenuExpanded) {
       event.preventDefault();
+      expandMenuGroup(menuGroup, { focusFirstItem });
+      return;
+    }
 
-      if (!hoverNavigation && !submenuExpanded) {
-        expandMenuGroup(menuGroup, { focusFirstItem: false });
-        return;
-      }
-
-      if (!hoverNavigation && submenuExpanded) {
-        setMenuGroupExpanded(menuGroup, false);
-        if (targetId) {
-          showSection(targetId);
-        }
-        return;
-      }
-
-      if (hoverNavigation && !submenuExpanded) {
-        expandMenuGroup(menuGroup, { focusFirstItem: true });
-      }
-
-      if (targetId) {
-        showSection(targetId);
-      }
-
-      if (menuGroup && hoverNavigation) {
-        requestAnimationFrame(() => {
-          button.blur();
-          setMenuGroupExpanded(menuGroup, false);
-        });
-      }
+    if (hasSubmenu && !focusFirstItem && isParentButton) {
+      event.preventDefault();
+      setMenuGroupExpanded(menuGroup, false);
       return;
     }
 
     showSection(targetId);
 
-    if (menuGroup && hoverNavigation) {
+    if (menuGroup && shouldUseHoverNavigation()) {
       requestAnimationFrame(() => {
         button.blur();
         setMenuGroupExpanded(menuGroup, false);
