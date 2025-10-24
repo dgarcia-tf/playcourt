@@ -1638,6 +1638,10 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-top: 1.5rem;
 }
 
+.tournament-consolation-card {
+  grid-column: 1 / -1;
+}
+
 @media (min-width: 1024px) {
   .tournament-bracket-layout {
     grid-template-columns: minmax(260px, 320px) 1fr;
