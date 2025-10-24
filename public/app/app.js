@@ -11734,60 +11734,20 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
   return card;
 }
 
-function renderTournamentBracket(matches = [], { loading = false, error = '' } = {}) {
-  if (!tournamentBracketView || !tournamentBracketEmpty) {
-    return;
-  }
-
-  tournamentBracketView.innerHTML = '';
-
-  const tournamentId = state.selectedBracketTournamentId;
-  const categoryId = state.selectedBracketCategoryId;
-
-  if (!tournamentId || !categoryId) {
-    tournamentBracketEmpty.hidden = false;
-    tournamentBracketEmpty.textContent =
-      'Selecciona una categoría para visualizar su cuadro de juego.';
-    return;
-  }
-
-  if (loading) {
-    tournamentBracketEmpty.hidden = false;
-    tournamentBracketEmpty.textContent = 'Cargando cuadro de juego...';
-    return;
-  }
-
-  if (error) {
-    tournamentBracketEmpty.hidden = false;
-    tournamentBracketEmpty.textContent = error;
-    return;
-  }
-
-  const mainMatches = Array.isArray(matches)
-    ? matches.filter((match) => match?.bracketType === 'principal')
-    : [];
-
-  if (!mainMatches.length) {
-    tournamentBracketEmpty.hidden = false;
-    tournamentBracketEmpty.textContent = 'Aún no se ha generado el cuadro para esta categoría.';
-    return;
-  }
-
-  const category = getTournamentCategoryById(tournamentId, categoryId);
-  const seedLookup = buildSeedLookup(category);
-  const seedByPlayer = seedLookup.byPlayer;
+function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map(), drawSize = null } = {}) {
+  const sanitizedMatches = Array.isArray(matches) ? matches.filter(Boolean) : [];
 
   const matchesByRound = new Map();
   const matchNumberStarts = new Map();
 
-  mainMatches.forEach((match) => {
-    const order = Math.max(Number(match.roundOrder) || 1, 1);
+  sanitizedMatches.forEach((match) => {
+    const order = Math.max(Number(match?.roundOrder) || 1, 1);
     if (!matchesByRound.has(order)) {
       matchesByRound.set(order, []);
     }
     matchesByRound.get(order).push(match);
 
-    const numericMatchNumber = Number(match.matchNumber);
+    const numericMatchNumber = Number(match?.matchNumber);
     if (Number.isFinite(numericMatchNumber)) {
       const current = matchNumberStarts.get(order);
       if (typeof current !== 'number' || numericMatchNumber < current) {
@@ -11797,15 +11757,14 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
   });
 
   matchesByRound.forEach((list) => {
-    list.sort((a, b) => (Number(a.matchNumber) || 0) - (Number(b.matchNumber) || 0));
+    list.sort((a, b) => (Number(a?.matchNumber) || 0) - (Number(b?.matchNumber) || 0));
   });
 
-  const maxRoundOrder = matchesByRound.size
-    ? Math.max(...matchesByRound.keys())
-    : 1;
+  const maxRoundOrder = matchesByRound.size ? Math.max(...matchesByRound.keys()) : 1;
 
-  const drawSize = Number(category?.drawSize);
-  const inferredRoundsFromDraw = Number.isFinite(drawSize) && drawSize > 1 ? Math.ceil(Math.log2(drawSize)) : 0;
+  const numericDrawSize = Number(drawSize);
+  const inferredRoundsFromDraw =
+    Number.isFinite(numericDrawSize) && numericDrawSize > 1 ? Math.ceil(Math.log2(numericDrawSize)) : 0;
   const firstRoundMatches = matchesByRound.get(1) || [];
   const inferredRoundsFromMatches = firstRoundMatches.length
     ? Math.ceil(Math.log2(Math.max(firstRoundMatches.length * 2, 2)))
@@ -11900,7 +11859,91 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     grid.appendChild(roundSection);
   }
 
-  tournamentBracketView.appendChild(grid);
+  return grid;
+}
+
+function createTournamentBracketSection({
+  title = '',
+  matches = [],
+  seedByPlayer = new Map(),
+  drawSize = null,
+} = {}) {
+  const section = document.createElement('section');
+  section.className = 'tournament-bracket-section';
+
+  const heading = document.createElement('h4');
+  heading.className = 'tournament-bracket-section__title';
+  heading.textContent = title || '';
+  section.appendChild(heading);
+
+  const grid = buildTournamentBracketGrid(matches, { seedByPlayer, drawSize });
+  section.appendChild(grid);
+
+  return section;
+}
+
+function renderTournamentBracket(matches = [], { loading = false, error = '' } = {}) {
+  if (!tournamentBracketView || !tournamentBracketEmpty) {
+    return;
+  }
+
+  tournamentBracketView.innerHTML = '';
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+
+  if (!tournamentId || !categoryId) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent =
+      'Selecciona una categoría para visualizar su cuadro de juego.';
+    return;
+  }
+
+  if (loading) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent = 'Cargando cuadro de juego...';
+    return;
+  }
+
+  if (error) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent = error;
+    return;
+  }
+
+  const normalizedMatches = Array.isArray(matches) ? matches : [];
+  const mainMatches = normalizedMatches.filter((match) => match?.bracketType === 'principal');
+  const consolationMatches = normalizedMatches.filter((match) => match?.bracketType === 'consolacion');
+
+  if (!mainMatches.length && !consolationMatches.length) {
+    tournamentBracketEmpty.hidden = false;
+    tournamentBracketEmpty.textContent = 'Aún no se ha generado el cuadro para esta categoría.';
+    return;
+  }
+
+  const category = getTournamentCategoryById(tournamentId, categoryId);
+  const seedLookup = buildSeedLookup(category);
+  const seedByPlayer = seedLookup.byPlayer;
+
+  if (mainMatches.length) {
+    const mainSection = createTournamentBracketSection({
+      title: 'Cuadro principal',
+      matches: mainMatches,
+      seedByPlayer,
+      drawSize: category?.drawSize,
+    });
+    tournamentBracketView.appendChild(mainSection);
+  }
+
+  if (consolationMatches.length) {
+    const consolationSection = createTournamentBracketSection({
+      title: 'Cuadro de consolación',
+      matches: consolationMatches,
+      seedByPlayer,
+    });
+    tournamentBracketView.appendChild(consolationSection);
+  }
+
   tournamentBracketEmpty.hidden = true;
 }
 
