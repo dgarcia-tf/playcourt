@@ -2783,14 +2783,60 @@ function handleTournamentBracketExport() {
   const safeCategory = escapeHtml(categoryName);
   const safeTournament = escapeHtml(tournamentName);
 
-  const printWindow = window.open('', '_blank', 'noopener=yes,width=1080,height=720');
-  if (!printWindow) {
-    showGlobalMessage(
-      'No fue posible abrir la vista de impresión. Permite las ventanas emergentes para continuar.',
-      'error'
-    );
-    return;
+  const existingPrintFrame = document.getElementById('tournament-bracket-print-frame');
+  if (existingPrintFrame) {
+    existingPrintFrame.remove();
   }
+
+  const printFrame = document.createElement('iframe');
+  printFrame.id = 'tournament-bracket-print-frame';
+  printFrame.setAttribute('title', `${safeBracketLabel} · ${safeCategory || safeTournament || 'Cuadro'}`);
+  printFrame.setAttribute('aria-hidden', 'true');
+  const frameStyle = printFrame.style;
+  frameStyle.position = 'fixed';
+  frameStyle.right = '0';
+  frameStyle.bottom = '0';
+  frameStyle.width = '0';
+  frameStyle.height = '0';
+  frameStyle.border = '0';
+  frameStyle.opacity = '0';
+  frameStyle.pointerEvents = 'none';
+
+  let printTriggered = false;
+  const cleanupPrintFrame = () => {
+    if (printFrame.parentNode) {
+      printFrame.parentNode.removeChild(printFrame);
+    }
+  };
+
+  const triggerPrint = () => {
+    if (printTriggered) {
+      return;
+    }
+    printTriggered = true;
+
+    const frameWindow = printFrame.contentWindow;
+    if (!frameWindow) {
+      cleanupPrintFrame();
+      showGlobalMessage('No fue posible preparar la vista de impresión.', 'error');
+      return;
+    }
+
+    frameWindow.focus();
+    frameWindow.print();
+    const handleAfterPrint = () => {
+      frameWindow.removeEventListener('afterprint', handleAfterPrint);
+      cleanupPrintFrame();
+    };
+    frameWindow.addEventListener('afterprint', handleAfterPrint);
+
+    setTimeout(() => {
+      cleanupPrintFrame();
+    }, 750);
+  };
+
+  printFrame.addEventListener('load', triggerPrint, { once: true });
+  document.body.appendChild(printFrame);
 
   const customStyles = `
     <style>
@@ -2835,8 +2881,15 @@ function handleTournamentBracketExport() {
     </style>
   `;
 
-  printWindow.document.open();
-  printWindow.document.write(`<!DOCTYPE html>
+  const printDocument = printFrame.contentDocument || printFrame.contentWindow?.document;
+  if (!printDocument) {
+    cleanupPrintFrame();
+    showGlobalMessage('No fue posible preparar la vista de impresión.', 'error');
+    return;
+  }
+
+  printDocument.open();
+  printDocument.write(`<!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
@@ -2854,18 +2907,11 @@ function handleTournamentBracketExport() {
           </header>
           ${bracketMarkup}
         </main>
-        <script>
-          window.addEventListener('load', () => {
-            window.focus();
-            window.print();
-            setTimeout(() => {
-              window.close();
-            }, 500);
-          });
-        </script>
       </body>
     </html>`);
-  printWindow.document.close();
+  printDocument.close();
+
+  setTimeout(triggerPrint, 750);
 }
 
 function updateMatchesMenuBadge(count = 0) {
