@@ -9811,17 +9811,7 @@ function renderTournamentDetail() {
           hasActions = true;
         }
 
-        if (category.canRequestEnrollment && categoryId) {
-          const requestButton = document.createElement('button');
-          requestButton.type = 'button';
-          requestButton.className = 'primary';
-          requestButton.dataset.tournamentAction = 'request-enrollment';
-          requestButton.dataset.tournamentId = detailId;
-          requestButton.dataset.categoryId = categoryId;
-          requestButton.textContent = 'Solicitar inscripción';
-          actions.appendChild(requestButton);
-          hasActions = true;
-        } else if (!userEnrollment && !isAdmin()) {
+        if (!category.canRequestEnrollment && !userEnrollment && !isAdmin()) {
           const note = document.createElement('span');
           note.className = 'note';
           note.textContent = 'Inscripciones cerradas';
