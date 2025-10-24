@@ -293,7 +293,12 @@ async function getAccountSummary(req, res) {
       .populate({
         path: 'players',
         select: 'fullName photo email players',
-        populate: { path: 'players', select: 'fullName photo email' },
+        options: { strictPopulate: false },
+        populate: {
+          path: 'players',
+          select: 'fullName photo email',
+          options: { strictPopulate: false },
+        },
       })
       .populate('category', 'name color tournament')
       .populate('tournament', 'name status')
@@ -307,7 +312,12 @@ async function getAccountSummary(req, res) {
       .populate({
         path: 'players',
         select: 'fullName photo email players',
-        populate: { path: 'players', select: 'fullName photo email' },
+        options: { strictPopulate: false },
+        populate: {
+          path: 'players',
+          select: 'fullName photo email',
+          options: { strictPopulate: false },
+        },
       })
       .populate('category', 'name color tournament')
       .populate('tournament', 'name status')

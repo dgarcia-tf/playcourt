@@ -163,7 +163,12 @@ async function getGlobalOverview(req, res) {
       .populate({
         path: 'players',
         select: 'fullName photo email players',
-        populate: { path: 'players', select: 'fullName photo email' },
+        options: { strictPopulate: false },
+        populate: {
+          path: 'players',
+          select: 'fullName photo email',
+          options: { strictPopulate: false },
+        },
       })
       .populate('category', 'name color matchFormat')
       .populate('tournament', 'name status isPrivate')
@@ -478,7 +483,12 @@ async function getTournamentDashboard(req, res) {
       .populate({
         path: 'players',
         select: 'fullName photo email players',
-        populate: { path: 'players', select: 'fullName photo email' },
+        options: { strictPopulate: false },
+        populate: {
+          path: 'players',
+          select: 'fullName photo email',
+          options: { strictPopulate: false },
+        },
       })
       .populate('category', 'name color matchFormat')
       .populate('tournament', 'name status isPrivate')
