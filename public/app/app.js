@@ -1898,6 +1898,8 @@ const tournamentBracketStatus = document.getElementById('tournament-bracket-stat
 const tournamentBracketSaveSeedsButton = document.getElementById('tournament-bracket-save-seeds');
 const tournamentBracketGenerateButton = document.getElementById('tournament-bracket-generate');
 const tournamentBracketRecalculateButton = document.getElementById('tournament-bracket-recalculate');
+const tournamentBracketPdfTypeSelect = document.getElementById('tournament-bracket-pdf-type');
+const tournamentBracketExportButton = document.getElementById('tournament-bracket-export');
 const topbarLogo = document.getElementById('topbar-logo');
 const clubNameHeading = document.getElementById('club-name-heading');
 const clubSloganHeading = document.getElementById('club-slogan');
@@ -2656,6 +2658,214 @@ function updateTournamentActionAvailability() {
   if (tournamentBracketRecalculateButton) {
     tournamentBracketRecalculateButton.disabled = !isAdmin() || !hasBracketSelection;
   }
+
+  let hasMainMatches = false;
+  let hasConsolationMatches = false;
+  if (hasBracketSelection) {
+    const matches = getCachedTournamentBracketMatches(
+      state.selectedBracketTournamentId,
+      state.selectedBracketCategoryId
+    );
+    hasMainMatches = matches.some((match) => match?.bracketType === 'principal');
+    hasConsolationMatches = matches.some((match) => match?.bracketType === 'consolacion');
+  }
+
+  updateTournamentBracketExportControls({
+    hasSelection: hasBracketSelection,
+    hasMain: hasMainMatches,
+    hasConsolation: hasConsolationMatches,
+  });
+}
+
+function updateTournamentBracketExportControls({
+  hasSelection = Boolean(state.selectedBracketTournamentId && state.selectedBracketCategoryId),
+  hasMain = false,
+  hasConsolation = false,
+  loading = false,
+  hasError = false,
+} = {}) {
+  if (!tournamentBracketPdfTypeSelect || !tournamentBracketExportButton) {
+    return;
+  }
+
+  const mainOption = tournamentBracketPdfTypeSelect.querySelector('option[value="principal"]');
+  const consolationOption = tournamentBracketPdfTypeSelect.querySelector('option[value="consolacion"]');
+
+  if (mainOption) {
+    mainOption.disabled = !hasMain;
+  }
+  if (consolationOption) {
+    consolationOption.disabled = !hasConsolation;
+  }
+
+  let disableControls =
+    !hasSelection || loading || hasError || (!hasMain && !hasConsolation);
+
+  if (!disableControls) {
+    const currentValue = tournamentBracketPdfTypeSelect.value;
+    if (currentValue === 'principal' && !hasMain) {
+      tournamentBracketPdfTypeSelect.value = hasConsolation ? 'consolacion' : '';
+    } else if (currentValue === 'consolacion' && !hasConsolation) {
+      tournamentBracketPdfTypeSelect.value = hasMain ? 'principal' : '';
+    }
+
+    if (!tournamentBracketPdfTypeSelect.value) {
+      tournamentBracketPdfTypeSelect.value = hasMain
+        ? 'principal'
+        : hasConsolation
+        ? 'consolacion'
+        : '';
+    }
+
+    disableControls = !tournamentBracketPdfTypeSelect.value;
+  } else {
+    tournamentBracketPdfTypeSelect.value = '';
+  }
+
+  tournamentBracketPdfTypeSelect.disabled = disableControls;
+  tournamentBracketExportButton.disabled = disableControls;
+}
+
+function handleTournamentBracketExport() {
+  if (!tournamentBracketPdfTypeSelect || !tournamentBracketExportButton) {
+    return;
+  }
+
+  const bracketType = tournamentBracketPdfTypeSelect.value;
+  if (!bracketType) {
+    showGlobalMessage('Selecciona un cuadro válido para generar el PDF.', 'error');
+    return;
+  }
+
+  const isConsolation = bracketType === 'consolacion';
+  const sourceView = isConsolation ? tournamentConsolationView : tournamentBracketView;
+
+  if (!sourceView) {
+    showGlobalMessage('No fue posible encontrar el cuadro seleccionado.', 'error');
+    return;
+  }
+
+  const hasBracketContent = sourceView.querySelector('.tournament-bracket-section');
+  if (!hasBracketContent) {
+    showGlobalMessage('El cuadro seleccionado no tiene información para exportar.', 'error');
+    return;
+  }
+
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+  if (!tournamentId || !categoryId) {
+    showGlobalMessage('Selecciona un torneo y una categoría válidos.', 'error');
+    return;
+  }
+
+  const tournament = getTournamentById(tournamentId) || {};
+  const category = getTournamentCategoryById(tournamentId, categoryId) || {};
+  const bracketLabel = isConsolation ? 'Cuadro de consolación' : 'Cuadro principal';
+  const tournamentName = typeof tournament.name === 'string' ? tournament.name : '';
+  const categoryName =
+    typeof category.menuTitle === 'string' && category.menuTitle
+      ? category.menuTitle
+      : typeof category.name === 'string'
+      ? category.name
+      : '';
+
+  const clonedView = sourceView.cloneNode(true);
+  clonedView.removeAttribute('id');
+  clonedView.classList.add('printable-bracket-view');
+  clonedView.querySelectorAll('[hidden]').forEach((element) => {
+    element.removeAttribute('hidden');
+  });
+
+  const bracketMarkup = clonedView.outerHTML;
+  const titleParts = [bracketLabel, categoryName, tournamentName].filter(Boolean);
+  const safeTitle = escapeHtml(titleParts.join(' · ') || 'Cuadro de torneo');
+  const safeBracketLabel = escapeHtml(bracketLabel);
+  const safeCategory = escapeHtml(categoryName);
+  const safeTournament = escapeHtml(tournamentName);
+
+  const printWindow = window.open('', '_blank', 'noopener=yes,width=1080,height=720');
+  if (!printWindow) {
+    showGlobalMessage(
+      'No fue posible abrir la vista de impresión. Permite las ventanas emergentes para continuar.',
+      'error'
+    );
+    return;
+  }
+
+  const customStyles = `
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        margin: 0;
+        padding: 2.5rem 2rem;
+        background: #ffffff;
+        color: #1f2933;
+      }
+      .print-bracket__header {
+        margin-bottom: 1.5rem;
+      }
+      .print-bracket__title {
+        margin: 0;
+        font-size: 1.75rem;
+        font-weight: 600;
+      }
+      .print-bracket__subtitle {
+        margin: 0.35rem 0 0;
+        font-size: 1rem;
+        color: #52606d;
+      }
+      .printable-bracket-view {
+        width: 100%;
+        overflow: visible;
+      }
+      .printable-bracket-view .tournament-bracket-section {
+        margin-bottom: 1.5rem;
+      }
+      .printable-bracket-view .bracket-round__matches {
+        overflow: visible;
+      }
+      @media print {
+        body {
+          padding: 2rem;
+        }
+      }
+    </style>
+  `;
+
+  printWindow.document.open();
+  printWindow.document.write(`<!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${safeTitle}</title>
+        <link rel="stylesheet" href="/app/styles.css" />
+        ${customStyles}
+      </head>
+      <body>
+        <main class="print-bracket">
+          <header class="print-bracket__header">
+            <h1 class="print-bracket__title">${safeBracketLabel}</h1>
+            <p class="print-bracket__subtitle">
+              ${safeCategory}${safeCategory && safeTournament ? ' · ' : ''}${safeTournament}
+            </p>
+          </header>
+          ${bracketMarkup}
+        </main>
+        <script>
+          window.addEventListener('load', () => {
+            window.focus();
+            window.print();
+            setTimeout(() => {
+              window.close();
+            }, 500);
+          });
+        </script>
+      </body>
+    </html>`);
+  printWindow.document.close();
 }
 
 function updateMatchesMenuBadge(count = 0) {
@@ -13297,11 +13507,13 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
 
   const tournamentId = state.selectedBracketTournamentId;
   const categoryId = state.selectedBracketCategoryId;
+  const hasSelection = Boolean(tournamentId && categoryId);
 
-  if (!tournamentId || !categoryId) {
+  if (!hasSelection) {
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent =
       'Selecciona una categoría para visualizar su cuadro de juego.';
+    updateTournamentBracketExportControls({ hasSelection: false });
     return;
   }
 
@@ -13309,6 +13521,7 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = 'Cargando cuadro de juego...';
     showConsolationMessage('Cargando cuadro de consolación...');
+    updateTournamentBracketExportControls({ hasSelection: true, loading: true });
     return;
   }
 
@@ -13316,6 +13529,7 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = error;
     showConsolationMessage('No fue posible cargar el cuadro de consolación.');
+    updateTournamentBracketExportControls({ hasSelection: true, hasError: true });
     return;
   }
 
@@ -13327,6 +13541,11 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = 'Aún no se ha generado el cuadro para esta categoría.';
     showConsolationMessage('Aún no se ha generado el cuadro de consolación para esta categoría.');
+    updateTournamentBracketExportControls({
+      hasSelection: true,
+      hasMain: false,
+      hasConsolation: false,
+    });
     return;
   }
 
@@ -13366,6 +13585,12 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
   } else {
     showConsolationMessage('Esta categoría no tiene partidos en el cuadro de consolación.');
   }
+
+  updateTournamentBracketExportControls({
+    hasSelection: true,
+    hasMain: mainMatches.length > 0,
+    hasConsolation: consolationMatches.length > 0,
+  });
 }
 
 function renderTournamentBracketSeeds({
@@ -27946,6 +28171,10 @@ tournamentBracketCategorySelect?.addEventListener('change', async (event) => {
     renderTournamentBracket([], { loading: false });
   }
   updateTournamentActionAvailability();
+});
+
+tournamentBracketExportButton?.addEventListener('click', () => {
+  handleTournamentBracketExport();
 });
 
 tournamentBracketSizeSelect?.addEventListener('change', async () => {

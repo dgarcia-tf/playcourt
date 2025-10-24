@@ -1644,6 +1644,17 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-left: auto;
 }
 
+.tournament-bracket-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.tournament-bracket-export .inline-field {
+  min-width: 180px;
+}
+
 .tournament-bracket-admin-actions {
   display: flex;
   flex-wrap: wrap;

@@ -1042,6 +1042,18 @@
                     <select id="tournament-bracket-size"></select>
                   </label>
                   <div class="tournament-bracket-actions">
+                    <div class="tournament-bracket-export">
+                      <label class="inline-field">
+                        Cuadro a exportar
+                        <select id="tournament-bracket-pdf-type" disabled>
+                          <option value="principal">Cuadro principal</option>
+                          <option value="consolacion">Cuadro de consolación</option>
+                        </select>
+                      </label>
+                      <button type="button" class="ghost" id="tournament-bracket-export" disabled>
+                        Generar PDF
+                      </button>
+                    </div>
                     <div class="tournament-bracket-admin-actions" data-admin-visible="toggle" hidden>
                       <button type="button" class="secondary" id="tournament-bracket-save-seeds" disabled>
                         Guardar cabezas de serie
