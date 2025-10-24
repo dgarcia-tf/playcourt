@@ -552,11 +552,11 @@ button:disabled {
 }
 
 .mobile-topbar__logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   background: rgba(37, 99, 235, 0.08);
-  padding: 0.2rem;
+  padding: 0.3rem;
 }
 
 .mobile-topbar__title {
@@ -737,15 +737,15 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   background: rgba(59, 130, 246, 0.12);
-  padding: 0.2rem;
+  padding: 0.35rem;
 }
 
 .app-header__logo-image {
-  width: 24px;
+  width: 32px;
   height: auto;
 }
 
@@ -965,12 +965,6 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .sidebar-user__info {
   display: grid;
   gap: 0.2rem;
-}
-
-.sidebar-account .profile-meta {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
 }
 
 .profile-avatar {
@@ -4614,11 +4608,6 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   .sidebar-user__info {
     align-items: center;
     text-align: center;
-  }
-
-  .sidebar-account .profile-meta {
-    justify-content: center;
-    gap: 0.35rem;
   }
 
   .app-main {

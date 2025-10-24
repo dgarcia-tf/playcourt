@@ -1823,7 +1823,6 @@ const registerIsMemberCheckbox = document.getElementById('register-is-member');
 const registerMembershipWrapper = document.getElementById('register-membership-wrapper');
 const registerMembershipNumberInput = document.getElementById('register-membership-number');
 const profileName = document.getElementById('profile-name');
-const profileRole = document.getElementById('profile-role');
 const profileAvatar = document.getElementById('profile-avatar');
 const profileEditButton = document.getElementById('profile-edit');
 const profileForm = document.getElementById('profile-form');
@@ -6359,9 +6358,6 @@ function updateProfileCard() {
   if (!state.user) return;
 
   profileName.textContent = state.user.fullName || '';
-  profileRole.textContent = formatRoles(state.user.roles || state.user.role);
-  profileRole.classList.toggle('admin', entityHasRole(state.user, 'admin'));
-
   const photo = state.user.photo;
   profileAvatar.style.backgroundImage = photo ? `url('${photo}')` : '';
   if (accountPhoto) {
