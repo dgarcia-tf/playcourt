@@ -2701,6 +2701,41 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   gap: 0.5rem;
 }
 
+.tournament-match-result {
+  display: grid;
+  gap: 0.35rem;
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+}
+
+.tournament-match-result__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tournament-match-result__score {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tournament-match-result__meta,
+.tournament-match-result__notes {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.tournament-match-result__notes {
+  white-space: pre-line;
+}
+
+.tournament-match-result__status {
+  font-size: 0.75rem;
+}
+
 .tournament-detail__categories,
 .league-detail__categories {
   display: grid;

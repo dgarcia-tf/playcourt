@@ -181,6 +181,13 @@ const TOURNAMENT_MATCH_STATUS_LABELS = {
   completado: 'Completado',
 };
 
+const TOURNAMENT_RESULT_STATUS_LABELS = {
+  sin_resultado: 'Sin resultado',
+  pendiente_admin: 'Pendiente de validación',
+  revision_requerida: 'Revisión requerida',
+  confirmado: 'Confirmado',
+};
+
 const DEFAULT_RULE_SECTIONS = [
   {
     title: 'Filosofía del club',
@@ -7234,6 +7241,10 @@ function formatTournamentMatchStatusLabel(status) {
   return TOURNAMENT_MATCH_STATUS_LABELS[status] || 'Sin estado';
 }
 
+function formatTournamentResultStatusLabel(status) {
+  return TOURNAMENT_RESULT_STATUS_LABELS[status] || 'Sin estado';
+}
+
 function formatTournamentDateRange(tournament) {
   if (!tournament) {
     return 'Fechas por confirmar';
@@ -12147,6 +12158,56 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
 
     item.appendChild(meta);
 
+    const result = match?.result || null;
+    const rawScore = typeof result?.score === 'string' ? result.score.trim() : '';
+    const rawNotes = typeof result?.notes === 'string' ? result.notes.trim() : '';
+    const winnerId = normalizeId(result?.winner);
+    const hasResultInfo = Boolean(rawScore || rawNotes || winnerId);
+
+    if (hasResultInfo) {
+      const resultContainer = document.createElement('div');
+      resultContainer.className = 'tournament-match-result';
+
+      const header = document.createElement('div');
+      header.className = 'tournament-match-result__header';
+
+      const statusValue = match.resultStatus || 'sin_resultado';
+      const statusTag = document.createElement('span');
+      statusTag.className = `tag tournament-match-result__status tournament-match-result__status--${statusValue}`;
+      statusTag.textContent = formatTournamentResultStatusLabel(statusValue);
+      header.appendChild(statusTag);
+
+      if (rawScore) {
+        const scoreSpan = document.createElement('span');
+        scoreSpan.className = 'tournament-match-result__score';
+        scoreSpan.textContent = `Marcador: ${rawScore}`;
+        header.appendChild(scoreSpan);
+      }
+
+      resultContainer.appendChild(header);
+
+      if (winnerId) {
+        let winnerName = '';
+        if (Array.isArray(match?.players)) {
+          const winnerPlayer = match.players.find((player) => normalizeId(player) === winnerId);
+          winnerName = winnerPlayer ? getPlayerDisplayName(winnerPlayer) : '';
+        }
+        const winnerParagraph = document.createElement('p');
+        winnerParagraph.className = 'tournament-match-result__meta';
+        winnerParagraph.textContent = winnerName ? `Ganador: ${winnerName}` : 'Ganador asignado en el cuadro';
+        resultContainer.appendChild(winnerParagraph);
+      }
+
+      if (rawNotes) {
+        const notesParagraph = document.createElement('p');
+        notesParagraph.className = 'tournament-match-result__notes';
+        notesParagraph.textContent = rawNotes;
+        resultContainer.appendChild(notesParagraph);
+      }
+
+      item.appendChild(resultContainer);
+    }
+
     if (isAdmin()) {
       const matchId = normalizeId(match);
       if (matchId) {
@@ -12167,6 +12228,17 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
         scheduleButton.dataset.categoryId = categoryIdAttr;
         scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
         actions.appendChild(scheduleButton);
+
+        const hasResult = hasResultInfo;
+        const resultButton = document.createElement('button');
+        resultButton.type = 'button';
+        resultButton.className = hasResult ? 'ghost' : 'secondary';
+        resultButton.dataset.action = 'record-tournament-result';
+        resultButton.dataset.matchId = matchId;
+        resultButton.dataset.tournamentId = tournamentIdAttr;
+        resultButton.dataset.categoryId = categoryIdAttr;
+        resultButton.textContent = hasResult ? 'Editar resultado' : 'Registrar resultado';
+        actions.appendChild(resultButton);
 
         item.appendChild(actions);
       }
@@ -12396,6 +12468,20 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
     scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
 
     actions.appendChild(scheduleButton);
+
+    const resultWinnerId = normalizeId(match?.result?.winner);
+    const resultScore = typeof match?.result?.score === 'string' ? match.result.score.trim() : '';
+    const hasResult = Boolean(resultWinnerId || resultScore);
+    const resultButton = document.createElement('button');
+    resultButton.type = 'button';
+    resultButton.className = hasResult ? 'ghost bracket-match__action' : 'secondary bracket-match__action';
+    resultButton.dataset.action = 'record-tournament-result';
+    resultButton.dataset.matchId = matchId;
+    resultButton.dataset.tournamentId = bracketTournamentId;
+    resultButton.dataset.categoryId = bracketCategoryId;
+    resultButton.textContent = hasResult ? 'Editar resultado' : 'Registrar resultado';
+
+    actions.appendChild(resultButton);
     card.appendChild(actions);
   }
 
@@ -23463,6 +23549,87 @@ async function submitTournamentMatchSchedule({
   }
 }
 
+async function submitTournamentMatchResult({
+  form,
+  tournamentId,
+  categoryId,
+  matchId,
+  statusElement,
+  submitButton,
+} = {}) {
+  if (!form || !tournamentId || !categoryId || !matchId) {
+    return false;
+  }
+
+  const normalizedTournamentId = normalizeId(tournamentId);
+  const normalizedCategoryId = normalizeId(categoryId);
+  const normalizedMatchId = normalizeId(matchId);
+
+  if (!normalizedTournamentId || !normalizedCategoryId || !normalizedMatchId) {
+    setStatusMessage(statusElement, 'error', 'Selecciona un torneo y partido válidos.');
+    return false;
+  }
+
+  const formData = new FormData(form);
+  const winnerId = (formData.get('winner') || '').toString().trim();
+  const scoreValue = (formData.get('score') || '').toString().trim();
+  const notesValue = (formData.get('notes') || '').toString().trim();
+
+  if (!winnerId) {
+    setStatusMessage(statusElement, 'error', 'Selecciona el ganador del partido.');
+    return false;
+  }
+
+  const payload = { winner: winnerId };
+  if (scoreValue) {
+    payload.score = scoreValue;
+  }
+  if (notesValue) {
+    payload.notes = notesValue;
+  }
+
+  setStatusMessage(statusElement, 'info', 'Guardando resultado del partido...');
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    const updated = await request(
+      `/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}/matches/${normalizedMatchId}/result/approve`,
+      {
+        method: 'POST',
+        body: payload,
+      }
+    );
+
+    applyTournamentMatchUpdate(updated);
+
+    const listKey = `${normalizedTournamentId}:${normalizedCategoryId}`;
+    if (state.tournamentMatches instanceof Map && state.tournamentMatches.has(listKey)) {
+      renderTournamentMatches(state.tournamentMatches.get(listKey) || []);
+    }
+
+    const bracketKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
+    if (bracketKey && state.tournamentBracketMatches instanceof Map) {
+      const matches = state.tournamentBracketMatches.get(bracketKey);
+      if (matches) {
+        renderTournamentBracket(matches);
+      }
+    }
+
+    setStatusMessage(statusElement, 'success', 'Resultado guardado correctamente.');
+    showGlobalMessage('Resultado del partido actualizado.', 'success');
+    return true;
+  } catch (error) {
+    setStatusMessage(statusElement, 'error', error.message);
+    return false;
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
+  }
+}
+
 async function deleteMatchById(matchId, { statusElement, button } = {}) {
   if (!matchId || !isAdmin()) {
     return false;
@@ -25159,6 +25326,232 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
 
   openModal({
     title: match?.scheduledAt ? 'Editar horario del partido' : 'Programar partido',
+    content: (body) => {
+      body.appendChild(form);
+      body.appendChild(statusMessage);
+    },
+    onClose: () => setStatusMessage(statusMessage, '', ''),
+  });
+}
+
+function openTournamentMatchResultModal(matchId, context = {}) {
+  if (!isAdmin()) return;
+
+  const normalizedMatchId = normalizeId(matchId);
+  if (!normalizedMatchId) {
+    showGlobalMessage('Selecciona un partido válido.', 'error');
+    return;
+  }
+
+  let resolvedTournamentId = normalizeId(context.tournamentId) || '';
+  let resolvedCategoryId = normalizeId(context.categoryId) || '';
+  let match = context.match || null;
+
+  if (!match) {
+    const located = findTournamentMatchContext(normalizedMatchId);
+    if (located) {
+      match = located.match;
+      resolvedTournamentId = resolvedTournamentId || normalizeId(located.tournamentId) || '';
+      resolvedCategoryId = resolvedCategoryId || normalizeId(located.categoryId) || '';
+    }
+  }
+
+  if (!resolvedTournamentId) {
+    resolvedTournamentId =
+      normalizeId(state.selectedMatchTournamentId) ||
+      normalizeId(state.selectedBracketTournamentId) ||
+      '';
+  }
+
+  if (!resolvedCategoryId) {
+    resolvedCategoryId =
+      normalizeId(state.selectedMatchCategoryId) ||
+      normalizeId(state.selectedBracketCategoryId) ||
+      '';
+  }
+
+  if (!match && resolvedTournamentId && resolvedCategoryId) {
+    const cacheKey = `${resolvedTournamentId}:${resolvedCategoryId}`;
+    if (state.tournamentMatches instanceof Map && state.tournamentMatches.has(cacheKey)) {
+      const list = state.tournamentMatches.get(cacheKey) || [];
+      match = list.find((entry) => normalizeId(entry) === normalizedMatchId) || match;
+    }
+    if (!match && state.tournamentBracketMatches instanceof Map) {
+      const bracketMatches = state.tournamentBracketMatches.get(cacheKey);
+      if (Array.isArray(bracketMatches)) {
+        match = bracketMatches.find((entry) => normalizeId(entry) === normalizedMatchId) || match;
+      }
+    }
+  }
+
+  if (!match) {
+    showGlobalMessage('No se encontró el partido del torneo.', 'error');
+    return;
+  }
+
+  const tournament = getTournamentById(resolvedTournamentId) || {};
+  let category = getTournamentCategoryById(resolvedTournamentId, resolvedCategoryId);
+
+  if (!category && resolvedTournamentId) {
+    const detail = state.tournamentDetails.get(resolvedTournamentId);
+    if (detail && Array.isArray(detail.categories)) {
+      category = detail.categories.find((entry) => normalizeId(entry) === resolvedCategoryId) || null;
+    }
+  }
+
+  const players = Array.isArray(match?.players) ? match.players.filter(Boolean) : [];
+  const winnerOptions = players
+    .map((player, index) => {
+      const playerId = normalizeId(player);
+      if (!playerId) {
+        return '';
+      }
+      const label = getPlayerDisplayName(player) || `Jugador ${index + 1}`;
+      return `<option value="${playerId}">${escapeHtml(label)}</option>`;
+    })
+    .filter(Boolean)
+    .join('');
+
+  const form = document.createElement('form');
+  form.className = 'form';
+  form.innerHTML = `
+    <p class="form-hint">
+      Registra el resultado definitivo del partido. El cuadro se actualizará automáticamente tras guardarlo.
+    </p>
+    <label>
+      Torneo
+      <input type="text" name="tournamentLabel" readonly />
+    </label>
+    <label>
+      Categoría
+      <input type="text" name="categoryLabel" readonly />
+    </label>
+    <div class="form-grid">
+      <label>
+        Jugador 1
+        <input type="text" name="playerLabel1" readonly />
+      </label>
+      <label>
+        Jugador 2
+        <input type="text" name="playerLabel2" readonly />
+      </label>
+    </div>
+    <label>
+      Ganador
+      <select name="winner" required>
+        <option value="">Selecciona al ganador</option>
+        ${winnerOptions}
+      </select>
+      <span class="form-hint">Solo puedes escoger entre los jugadores asignados.</span>
+    </label>
+    <label>
+      Marcador
+      <input type="text" name="score" placeholder="Ej: 6-4 3-6 10-8" maxlength="60" />
+      <span class="form-hint">Introduce el marcador final o utiliza "WO" si corresponde.</span>
+    </label>
+    <label>
+      Notas
+      <textarea name="notes" rows="3" maxlength="300" placeholder="Información adicional del partido"></textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary">Guardar resultado</button>
+      <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+    </div>
+  `;
+
+  const statusMessage = document.createElement('p');
+  statusMessage.className = 'status-message';
+  statusMessage.style.display = 'none';
+
+  const tournamentField = form.elements.tournamentLabel;
+  const categoryField = form.elements.categoryLabel;
+  const playerOneField = form.elements.playerLabel1;
+  const playerTwoField = form.elements.playerLabel2;
+  const winnerField = form.elements.winner;
+  const scoreField = form.elements.score;
+  const notesField = form.elements.notes;
+  const cancelButton = form.querySelector('button[data-action="cancel"]');
+  const submitButton = form.querySelector('button[type="submit"]');
+
+  const playerNames = players.map((player, index) => {
+    if (typeof player === 'object' && player) {
+      return getPlayerDisplayName(player) || `Jugador ${index + 1}`;
+    }
+    const playerId = normalizeId(player);
+    if (!playerId) {
+      return `Jugador ${index + 1}`;
+    }
+    const statePlayer = Array.isArray(state.players)
+      ? state.players.find((item) => normalizeId(item) === playerId)
+      : null;
+    return getPlayerDisplayName(statePlayer) || `Jugador ${index + 1}`;
+  });
+
+  if (tournamentField) {
+    tournamentField.value = tournament?.name || 'Torneo';
+  }
+  if (categoryField) {
+    categoryField.value = category?.name || 'Categoría';
+  }
+  if (playerOneField) {
+    playerOneField.value = playerNames[0] || 'Jugador por definir';
+  }
+  if (playerTwoField) {
+    playerTwoField.value = playerNames[1] || 'Jugador por definir';
+  }
+
+  if (winnerField && players.length === 0) {
+    winnerField.disabled = true;
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
+    setStatusMessage(
+      statusMessage,
+      'warning',
+      'Asigna jugadores al partido antes de registrar el resultado.'
+    );
+  } else {
+    setStatusMessage(statusMessage, '', '');
+  }
+
+  const existingWinnerId = normalizeId(match?.result?.winner);
+  if (winnerField && existingWinnerId) {
+    winnerField.value = existingWinnerId;
+  }
+
+  if (scoreField && typeof match?.result?.score === 'string') {
+    scoreField.value = match.result.score;
+  }
+  if (notesField && typeof match?.result?.notes === 'string') {
+    notesField.value = match.result.notes;
+  }
+
+  cancelButton?.addEventListener('click', (event) => {
+    event.preventDefault();
+    setStatusMessage(statusMessage, '', '');
+    closeModal();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!isAdmin()) return;
+
+    const succeeded = await submitTournamentMatchResult({
+      form,
+      tournamentId: resolvedTournamentId,
+      categoryId: resolvedCategoryId,
+      matchId: normalizedMatchId,
+      statusElement: statusMessage,
+      submitButton,
+    });
+
+    if (succeeded) {
+      closeModal();
+    }
+  });
+
+  openModal({
+    title: match?.result?.winner ? 'Editar resultado del partido' : 'Registrar resultado del partido',
     content: (body) => {
       body.appendChild(form);
       body.appendChild(statusMessage);
@@ -28298,33 +28691,39 @@ matchCreateButton?.addEventListener('click', () => {
 });
 
 tournamentMatchesList?.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-action="schedule-tournament-match"]');
+  const button = event.target.closest('button[data-action]');
   if (!button || !isAdmin()) {
     return;
   }
 
-  const { matchId } = button.dataset;
+  const { matchId, tournamentId = '', categoryId = '', action } = button.dataset;
   if (!matchId) {
     return;
   }
 
-  const { tournamentId = '', categoryId = '' } = button.dataset;
-  openTournamentMatchScheduleModal(matchId, { tournamentId, categoryId });
+  if (action === 'schedule-tournament-match') {
+    openTournamentMatchScheduleModal(matchId, { tournamentId, categoryId });
+  } else if (action === 'record-tournament-result') {
+    openTournamentMatchResultModal(matchId, { tournamentId, categoryId });
+  }
 });
 
 tournamentBracketView?.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-action="schedule-tournament-match"]');
+  const button = event.target.closest('button[data-action]');
   if (!button || !isAdmin()) {
     return;
   }
 
-  const { matchId } = button.dataset;
+  const { matchId, tournamentId = '', categoryId = '', action } = button.dataset;
   if (!matchId) {
     return;
   }
 
-  const { tournamentId = '', categoryId = '' } = button.dataset;
-  openTournamentMatchScheduleModal(matchId, { tournamentId, categoryId });
+  if (action === 'schedule-tournament-match') {
+    openTournamentMatchScheduleModal(matchId, { tournamentId, categoryId });
+  } else if (action === 'record-tournament-result') {
+    openTournamentMatchResultModal(matchId, { tournamentId, categoryId });
+  }
 });
 
 modalClose?.addEventListener('click', () => {
