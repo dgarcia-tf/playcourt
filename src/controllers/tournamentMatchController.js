@@ -22,11 +22,35 @@ const ROUND_NAME_LABELS = {
   5: 'Dieciseisavos de final',
 };
 
+const BYE_PLACEHOLDER = 'BYE';
+
 function nextPowerOfTwo(value) {
   if (value <= 1) {
     return 1;
   }
   return 2 ** Math.ceil(Math.log2(value));
+}
+
+function resolveMaxSeeds(drawSize) {
+  if (drawSize >= 64) {
+    return 16;
+  }
+  if (drawSize >= 32) {
+    return 8;
+  }
+  if (drawSize >= 16) {
+    return 4;
+  }
+  if (drawSize >= 8) {
+    return 2;
+  }
+  if (drawSize >= 4) {
+    return 2;
+  }
+  if (drawSize >= 2) {
+    return 1;
+  }
+  return 0;
 }
 
 function generateSeedingPositions(size) {
@@ -77,6 +101,27 @@ function createConfirmationEntries(playerIds = []) {
     acc[playerId] = { status: 'pendiente' };
     return acc;
   }, {});
+}
+
+function applyByePlaceholders(entry, hasPlayerA, hasPlayerB) {
+  if (!entry) {
+    return;
+  }
+
+  if (hasPlayerA && !hasPlayerB) {
+    entry.placeholderB = BYE_PLACEHOLDER;
+    delete entry.placeholderA;
+    return;
+  }
+
+  if (hasPlayerB && !hasPlayerA) {
+    entry.placeholderA = BYE_PLACEHOLDER;
+    delete entry.placeholderB;
+    return;
+  }
+
+  delete entry.placeholderA;
+  delete entry.placeholderB;
 }
 
 async function ensureTournamentContext(tournamentId, categoryId) {
@@ -516,6 +561,7 @@ async function autoGenerateTournamentBracket(req, res) {
     ? nextPowerOfTwo(category.drawSize)
     : nextPowerOfTwo(uniquePlayers.length);
 
+  const maxSeeds = resolveMaxSeeds(drawSize);
   const seedPositions = generateSeedingPositions(drawSize);
   const slotAssignments = new Array(drawSize).fill(null);
   const slotSeedNumbers = new Array(drawSize).fill(undefined);
@@ -523,7 +569,9 @@ async function autoGenerateTournamentBracket(req, res) {
   const seeds = Array.isArray(category.seeds)
     ? category.seeds
         .filter((seed) => seed && uniquePlayers.includes(seed.player.toString()))
+        .filter((seed) => seed.seedNumber <= maxSeeds)
         .sort((a, b) => a.seedNumber - b.seedNumber)
+        .slice(0, maxSeeds)
     : [];
 
   seeds.forEach((seed, index) => {
@@ -570,17 +618,32 @@ async function autoGenerateTournamentBracket(req, res) {
         const slotBIndex = slotAIndex + 1;
         const playerA = slotAssignments[slotAIndex];
         const playerB = slotAssignments[slotBIndex];
-        if (playerA) players.push(playerA);
-        if (playerB) players.push(playerB);
+        const hasPlayerA = Boolean(playerA);
+        const hasPlayerB = Boolean(playerB);
+        if (hasPlayerA) players.push(playerA);
+        if (hasPlayerB) players.push(playerB);
         seedsForMatch.seedA = slotSeedNumbers[slotAIndex];
         seedsForMatch.seedB = slotSeedNumbers[slotBIndex];
-        roundDrawMatches.push({
+
+        const drawMatch = {
           matchNumber: matchIndex + 1,
-          playerA: playerA ? new mongoose.Types.ObjectId(playerA) : undefined,
-          playerB: playerB ? new mongoose.Types.ObjectId(playerB) : undefined,
-          seedA: seedsForMatch.seedA,
-          seedB: seedsForMatch.seedB,
-        });
+        };
+
+        if (hasPlayerA) {
+          drawMatch.playerA = new mongoose.Types.ObjectId(playerA);
+        }
+        if (hasPlayerB) {
+          drawMatch.playerB = new mongoose.Types.ObjectId(playerB);
+        }
+        if (seedsForMatch.seedA) {
+          drawMatch.seedA = seedsForMatch.seedA;
+        }
+        if (seedsForMatch.seedB) {
+          drawMatch.seedB = seedsForMatch.seedB;
+        }
+
+        applyByePlaceholders(drawMatch, hasPlayerA, hasPlayerB);
+        roundDrawMatches.push(drawMatch);
       } else {
         roundDrawMatches.push({ matchNumber: matchIndex + 1 });
       }
@@ -873,6 +936,8 @@ async function recalculateTournamentBracket(req, res) {
     } else {
       delete entry.playerB;
     }
+
+    applyByePlaceholders(entry, Boolean(playerA), Boolean(playerB));
 
     const winnerId = match.result?.winner ? match.result.winner.toString() : '';
     if (winnerId) {
