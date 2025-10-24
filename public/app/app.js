@@ -12213,6 +12213,182 @@ async function fetchTournamentEnrollments(tournamentId, categoryId, { forceReloa
   return list;
 }
 
+function normalizeDoublesPair(pair) {
+  if (!pair || typeof pair !== 'object') {
+    return null;
+  }
+
+  const normalized = { ...pair };
+  const id = normalizeId(pair);
+  if (id) {
+    normalized.id = id;
+    if (!normalized._id) {
+      normalized._id = id;
+    }
+  }
+
+  const members = Array.isArray(pair.players)
+    ? pair.players
+        .map((member) => {
+          if (!member) {
+            return null;
+          }
+          if (typeof member === 'object') {
+            const memberId = normalizeId(member);
+            return {
+              ...member,
+              id: memberId || member.id || member._id || '',
+              _id: memberId || member._id || member.id || '',
+            };
+          }
+          if (typeof member === 'string') {
+            const trimmed = member.trim();
+            if (!trimmed) {
+              return null;
+            }
+            return { id: trimmed, _id: trimmed, fullName: trimmed };
+          }
+          return null;
+        })
+        .filter(Boolean)
+    : [];
+
+  normalized.players = members;
+
+  if (!normalized.fullName || !normalized.fullName.trim()) {
+    const names = members
+      .map((member) => {
+        if (!member || typeof member !== 'object') {
+          return '';
+        }
+        if (typeof member.fullName === 'string' && member.fullName.trim()) {
+          return member.fullName.trim();
+        }
+        if (typeof member.email === 'string' && member.email.trim()) {
+          return member.email.trim();
+        }
+        return '';
+      })
+      .filter((name) => Boolean(name && name.trim()));
+
+    if (names.length) {
+      normalized.fullName = names.join(' / ');
+    }
+  }
+
+  return normalized;
+}
+
+function cloneNormalizedDoublesPair(pair) {
+  if (!pair || typeof pair !== 'object') {
+    return null;
+  }
+
+  const players = Array.isArray(pair.players)
+    ? pair.players.map((member) => (member && typeof member === 'object' ? { ...member } : member))
+    : [];
+
+  return { ...pair, players };
+}
+
+function buildDoublesPairMap(pairs = []) {
+  const map = new Map();
+  (Array.isArray(pairs) ? pairs : []).forEach((pair) => {
+    const normalized = normalizeDoublesPair(pair);
+    if (normalized && normalized.id) {
+      map.set(normalized.id, normalized);
+    }
+  });
+  return map;
+}
+
+function matchesRequireDoublesPairs(matches = []) {
+  return matches.some((match) => {
+    if (!match || match.playerType !== 'TournamentDoublesPair') {
+      return false;
+    }
+
+    const players = Array.isArray(match.players) ? match.players : [];
+    if (!players.length) {
+      return false;
+    }
+
+    return players.some((player) => {
+      if (!player) {
+        return false;
+      }
+      if (typeof player === 'object') {
+        return !Array.isArray(player.players) || !player.players.length;
+      }
+      return true;
+    });
+  });
+}
+
+async function hydrateTournamentMatchesWithPairs(matches, options = {}) {
+  const list = Array.isArray(matches) ? matches : [];
+  if (!list.length) {
+    return list;
+  }
+
+  const includesDoubles = list.some((match) => match && match.playerType === 'TournamentDoublesPair');
+  if (!includesDoubles) {
+    return list;
+  }
+
+  const needsExternalPairs = matchesRequireDoublesPairs(list);
+
+  let pairMap = new Map();
+  const tournamentId = normalizeId(options.tournamentId);
+  const categoryId = normalizeId(options.categoryId);
+
+  if (needsExternalPairs && tournamentId && categoryId) {
+    try {
+      const pairs = await fetchTournamentDoublesPairs(tournamentId, categoryId, { forceReload: false });
+      pairMap = buildDoublesPairMap(pairs);
+    } catch (error) {
+      pairMap = new Map();
+    }
+  }
+
+  return list.map((match) => {
+    if (!match || match.playerType !== 'TournamentDoublesPair') {
+      return match;
+    }
+
+    const players = Array.isArray(match.players) ? match.players : [];
+    const resolvedPlayers = players.map((player) => {
+      if (player && typeof player === 'object') {
+        if (Array.isArray(player.players) && player.players.length) {
+          return cloneNormalizedDoublesPair(normalizeDoublesPair(player)) || player;
+        }
+        const playerId = normalizeId(player);
+        if (playerId && pairMap.has(playerId)) {
+          return cloneNormalizedDoublesPair(pairMap.get(playerId)) || player;
+        }
+        return normalizeDoublesPair(player) || player;
+      }
+
+      const playerId = normalizeId(player);
+      if (playerId && pairMap.has(playerId)) {
+        return cloneNormalizedDoublesPair(pairMap.get(playerId)) || player;
+      }
+      if (playerId) {
+        return { id: playerId, _id: playerId, players: [] };
+      }
+      return player;
+    });
+
+    const normalizedPlayers = resolvedPlayers.map((entry) => normalizeDoublesPair(entry) || entry);
+
+    return {
+      ...match,
+      playerType: 'TournamentDoublesPair',
+      players: normalizedPlayers,
+    };
+  });
+}
+
 async function fetchTournamentDoublesPairs(tournamentId, categoryId, { forceReload = false } = {}) {
   if (!tournamentId || !categoryId) {
     return [];
@@ -12220,7 +12396,8 @@ async function fetchTournamentDoublesPairs(tournamentId, categoryId, { forceRelo
 
   const cacheKey = getTournamentDoublesPairCacheKey(tournamentId, categoryId);
   if (!forceReload && state.tournamentDoublesPairs.has(cacheKey)) {
-    return state.tournamentDoublesPairs.get(cacheKey) || [];
+    const cached = state.tournamentDoublesPairs.get(cacheKey) || [];
+    return cached.map((pair) => cloneNormalizedDoublesPair(pair) || pair).filter(Boolean);
   }
 
   const response = await request(
@@ -12228,8 +12405,11 @@ async function fetchTournamentDoublesPairs(tournamentId, categoryId, { forceRelo
     { requireAuth: Boolean(state.token) }
   );
   const list = Array.isArray(response) ? response : [];
-  state.tournamentDoublesPairs.set(cacheKey, list);
-  return list;
+  const normalizedList = list
+    .map((pair) => normalizeDoublesPair(pair))
+    .filter((pair) => Boolean(pair && pair.id));
+  state.tournamentDoublesPairs.set(cacheKey, normalizedList);
+  return normalizedList.map((pair) => cloneNormalizedDoublesPair(pair) || pair).filter(Boolean);
 }
 
 async function ensurePlayersLoaded() {
@@ -12457,7 +12637,13 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
 
   const cacheKey = `${tournamentId}:${categoryId}`;
   if (!forceReload && state.tournamentMatches.has(cacheKey)) {
-    renderTournamentMatches(state.tournamentMatches.get(cacheKey) || []);
+    let cached = state.tournamentMatches.get(cacheKey) || [];
+    cached = await hydrateTournamentMatchesWithPairs(cached, {
+      tournamentId,
+      categoryId,
+    });
+    state.tournamentMatches.set(cacheKey, cached);
+    renderTournamentMatches(cached);
     return;
   }
 
@@ -12466,7 +12652,8 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
 
   try {
     const response = await request(`/tournaments/${tournamentId}/categories/${categoryId}/matches`);
-    const list = Array.isArray(response) ? response : [];
+    let list = Array.isArray(response) ? response : [];
+    list = await hydrateTournamentMatchesWithPairs(list, { tournamentId, categoryId });
     state.tournamentMatches.set(cacheKey, list);
     if (pendingTournamentMatchesKey === cacheKey) {
       renderTournamentMatches(list);
@@ -13309,7 +13496,13 @@ async function refreshTournamentBracketMatches({ forceReload = false } = {}) {
 
   const cacheKey = getTournamentBracketCacheKey(tournamentId, categoryId);
   if (!forceReload && state.tournamentBracketMatches.has(cacheKey)) {
-    renderTournamentBracket(state.tournamentBracketMatches.get(cacheKey) || []);
+    let cached = state.tournamentBracketMatches.get(cacheKey) || [];
+    cached = await hydrateTournamentMatchesWithPairs(cached, {
+      tournamentId,
+      categoryId,
+    });
+    state.tournamentBracketMatches.set(cacheKey, cached);
+    renderTournamentBracket(cached);
     return;
   }
 
@@ -13318,7 +13511,8 @@ async function refreshTournamentBracketMatches({ forceReload = false } = {}) {
 
   try {
     const response = await request(`/tournaments/${tournamentId}/categories/${categoryId}/matches`);
-    const list = Array.isArray(response) ? response : [];
+    let list = Array.isArray(response) ? response : [];
+    list = await hydrateTournamentMatchesWithPairs(list, { tournamentId, categoryId });
     state.tournamentBracketMatches.set(cacheKey, list);
     if (pendingTournamentBracketKey === cacheKey) {
       renderTournamentBracket(list);
@@ -13358,6 +13552,11 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
       matches = state.tournamentBracketMatches.get(cacheKey) || [];
     }
   }
+
+  matches = await hydrateTournamentMatchesWithPairs(matches, {
+    tournamentId: normalizedTournamentId,
+    categoryId: normalizedCategoryId,
+  });
 
   if (!mainBracketSection && !consolationBracketSection) {
     showGlobalMessage('Esta categoría aún no tiene un cuadro generado para imprimir.', 'error');
