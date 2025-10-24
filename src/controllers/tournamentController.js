@@ -13,6 +13,9 @@ const {
 } = require('../models/TournamentEnrollment');
 const { USER_ROLES, userHasRole } = require('../models/User');
 const { TournamentMatch } = require('../models/TournamentMatch');
+const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
+const { Notification } = require('../models/Notification');
+const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { hasCategoryMinimumAgeRequirement } = require('../utils/age');
 
@@ -596,12 +599,77 @@ async function deleteTournament(req, res) {
     return res.status(404).json({ message: 'Torneo no encontrado' });
   }
 
-  await Promise.all([
+  const posterFilePath = tournament.posterFile?.filename
+    ? path.join(POSTER_UPLOAD_DIR, tournament.posterFile.filename)
+    : null;
+
+  const matches = await TournamentMatch.find({ tournament: tournament.id })
+    .select('_id notifications')
+    .lean();
+
+  const matchIdStrings = matches
+    .map((match) => {
+      const identifier = match?._id;
+      if (!identifier) {
+        return null;
+      }
+      try {
+        return identifier.toString();
+      } catch (error) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  const notificationIds = Array.from(
+    new Set(
+      matches.flatMap((match) =>
+        Array.isArray(match.notifications)
+          ? match.notifications
+              .map((notificationId) => {
+                if (!notificationId) {
+                  return null;
+                }
+                try {
+                  return notificationId.toString();
+                } catch (error) {
+                  return null;
+                }
+              })
+              .filter(Boolean)
+          : []
+      )
+    )
+  );
+
+  const deletions = [
     TournamentCategory.deleteMany({ tournament: tournament.id }),
     TournamentEnrollment.deleteMany({ tournament: tournament.id }),
     TournamentMatch.deleteMany({ tournament: tournament.id }),
-  ]);
+    TournamentDoublesPair.deleteMany({ tournament: tournament.id }),
+    CourtBlock.deleteMany({
+      contextType: COURT_BLOCK_CONTEXTS.TOURNAMENT,
+      context: tournament.id,
+    }),
+  ];
+
+  if (notificationIds.length) {
+    deletions.push(
+      Notification.deleteMany({ _id: { $in: notificationIds } })
+    );
+  }
+
+  if (matchIdStrings.length) {
+    deletions.push(
+      Notification.deleteMany({ 'metadata.matchId': { $in: matchIdStrings } })
+    );
+  }
+
+  await Promise.all(deletions);
   await tournament.deleteOne();
+
+  if (posterFilePath) {
+    await removeFileIfExists(posterFilePath);
+  }
 
   return res.status(204).send();
 }
