@@ -60,6 +60,9 @@ const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const TOURNAMENT_BRACKET_SIZES = [8, 16, 24, 32, 64];
+const TOURNAMENT_BRACKET_BASE_MATCH_GAP_REM = 2.5;
+const TOURNAMENT_BRACKET_MATCH_GAP_GROWTH_RATE = 1.65;
+const TOURNAMENT_BRACKET_MATCH_HEIGHT_REM = 9.75;
 
 const PUSH_SUPPORTED =
   typeof window !== 'undefined' &&
@@ -12302,6 +12305,24 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map(), dr
   const grid = document.createElement('div');
   grid.className = 'tournament-bracket-grid';
 
+  const matchGapByRound = [];
+  const roundOffsetByRound = [];
+  let accumulatedOffsetRem = 0;
+
+  for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
+    const growthFactor = Math.pow(TOURNAMENT_BRACKET_MATCH_GAP_GROWTH_RATE, roundIndex);
+    const gapRem = TOURNAMENT_BRACKET_BASE_MATCH_GAP_REM * (Number.isFinite(growthFactor) ? growthFactor : 1);
+    matchGapByRound[roundIndex] = gapRem;
+
+    if (roundIndex === 0) {
+      roundOffsetByRound[roundIndex] = 0;
+    } else {
+      const previousGapRem = matchGapByRound[roundIndex - 1] || TOURNAMENT_BRACKET_BASE_MATCH_GAP_REM;
+      accumulatedOffsetRem += (TOURNAMENT_BRACKET_MATCH_HEIGHT_REM + previousGapRem) / 2;
+      roundOffsetByRound[roundIndex] = accumulatedOffsetRem;
+    }
+  }
+
   for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
     const roundOrder = roundIndex + 1;
     const expectedMatches = Math.max(1, expectedMatchesPerRound[roundIndex] || 1);
@@ -12330,6 +12351,16 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map(), dr
 
     const matchList = document.createElement('div');
     matchList.className = 'bracket-round__matches';
+
+    const gapRem = matchGapByRound[roundIndex];
+    if (Number.isFinite(gapRem)) {
+      matchList.style.setProperty('--bracket-match-gap', `${gapRem}rem`);
+    }
+
+    const offsetRem = roundOffsetByRound[roundIndex];
+    if (offsetRem) {
+      matchList.style.setProperty('--bracket-round-offset', `${offsetRem}rem`);
+    }
 
     for (let slotIndex = 0; slotIndex < expectedMatches; slotIndex += 1) {
       const match = roundMatches[slotIndex] || null;
