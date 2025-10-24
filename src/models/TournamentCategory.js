@@ -36,6 +36,14 @@ const bracketMatchSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    placeholderA: {
+      type: String,
+      trim: true,
+    },
+    placeholderB: {
+      type: String,
+      trim: true,
+    },
     seedA: {
       type: Number,
       min: 1,
