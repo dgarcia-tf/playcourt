@@ -13260,8 +13260,9 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
     throw new Error('Selecciona un torneo válido para imprimir.');
   }
 
-  if (!normalizedCategoryId) {
-    throw new Error('Selecciona una categoría válida para imprimir.');
+  if (!tournamentId || !categoryId) {
+    showGlobalMessage('Selecciona un torneo y una categoría para imprimir el cuadro.', 'error');
+    return;
   }
 
   const cacheKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
@@ -13273,18 +13274,9 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
     }
   }
 
-  if (!matches.length) {
-    try {
-      const response = await request(
-        `/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}/matches`
-      );
-      matches = Array.isArray(response) ? response : [];
-      if (cacheKey) {
-        state.tournamentBracketMatches.set(cacheKey, matches);
-      }
-    } catch (error) {
-      throw new Error(error.message || 'No fue posible cargar los partidos del cuadro.');
-    }
+  if (!mainBracketSection && !consolationBracketSection) {
+    showGlobalMessage('Esta categoría aún no tiene un cuadro generado para imprimir.', 'error');
+    return;
   }
 
   const normalizedBracketType = bracketType === 'consolacion' ? 'consolacion' : 'principal';
@@ -13313,30 +13305,20 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
     }
   }
 
-  const tournament = detail || getTournamentById(normalizedTournamentId) || {};
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
 
-  let category = getTournamentCategoryById(normalizedTournamentId, normalizedCategoryId);
-  if (!category && detail && Array.isArray(detail.categories)) {
-    category = detail.categories.find((entry) => normalizeId(entry) === normalizedCategoryId) || null;
+  if (!printWindow) {
+    showGlobalMessage('No fue posible iniciar la ventana de impresión.', 'error');
+    return;
   }
 
-  if (!category) {
-    throw new Error('No se encontró la categoría seleccionada.');
-  }
-
-  const seedLookup = buildSeedLookup(category);
-  const seedByPlayer = seedLookup.byPlayer;
-
-  const playerIds = new Set();
-  matches.forEach((match) => {
-    const participants = Array.isArray(match?.players) ? match.players : [];
-    participants.forEach((player) => {
-      const id = normalizeId(player);
-      if (id) {
-        playerIds.add(id);
-      }
-    });
-  });
+  const { document: printDocument } = printWindow;
+  const baseHref = document.baseURI || window.location.href;
+  const styleSheets = Array.from(
+    document.querySelectorAll('link[rel="stylesheet"], style')
+  )
+    .map((element) => element.outerHTML)
+    .join('\n');
 
   const club = state.club || {};
   const clubName = typeof club.name === 'string' ? club.name : '';
@@ -13619,12 +13601,6 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
           color-scheme: light;
         }
         body {
-          font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-          margin: 32px;
-          background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
-          color: #0f172a;
-        }
-        h1, h2, h3, h4 {
           margin: 0;
         }
         .print-header {
