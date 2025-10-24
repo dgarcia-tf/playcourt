@@ -14058,7 +14058,11 @@ function extractResultSets(match) {
   const playerIds = players.map((player) => normalizeId(player));
   const rawSets = Array.isArray(match?.result?.sets) ? match.result.sets : [];
 
-  return rawSets
+  if (!playerIds.length) {
+    return [];
+  }
+
+  const normalizedSets = rawSets
     .map((set, index) => {
       const number = Number.isFinite(Number(set?.number)) ? Number(set.number) : index + 1;
       const tieBreak = Boolean(set?.tieBreak);
@@ -14075,6 +14079,57 @@ function extractResultSets(match) {
       return { number, tieBreak, scores };
     })
     .filter(Boolean);
+
+  if (normalizedSets.length) {
+    return normalizedSets;
+  }
+
+  return parseScoreStringSets(match?.result?.score, playerIds);
+}
+
+function parseScoreStringSets(rawScore, playerIds = []) {
+  if (typeof rawScore !== 'string' || playerIds.length < 2) {
+    return [];
+  }
+
+  const cleaned = rawScore.trim();
+  if (!cleaned) {
+    return [];
+  }
+
+  const sets = [];
+  const regex = /([\d]{1,2})\s*[-–—xX/]\s*([\d]{1,2})/g;
+  let matchResult;
+
+  while ((matchResult = regex.exec(cleaned)) !== null) {
+    const firstScore = Number(matchResult[1]);
+    const secondScore = Number(matchResult[2]);
+
+    if (!Number.isFinite(firstScore) || !Number.isFinite(secondScore)) {
+      continue;
+    }
+
+    const segment = matchResult[0];
+    const scores = {};
+    scores[playerIds[0]] = Math.max(0, Math.floor(firstScore));
+    scores[playerIds[1]] = Math.max(0, Math.floor(secondScore));
+
+    const maximumScore = Math.max(scores[playerIds[0]], scores[playerIds[1]]);
+    const minimumScore = Math.min(scores[playerIds[0]], scores[playerIds[1]]);
+    const tieBreak =
+      /tb|tie|super/i.test(segment) ||
+      /[\[\]()]/.test(segment) ||
+      maximumScore >= 8 ||
+      (maximumScore === 7 && minimumScore === 6);
+
+    sets.push({
+      number: sets.length + 1,
+      tieBreak,
+      scores,
+    });
+  }
+
+  return sets;
 }
 
 function aggregateSetsForPlayers(sets, playerIds = []) {
