@@ -12841,116 +12841,170 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map(), dr
   return grid;
 }
 
-function buildPrintableBracketSvg({
-  rounds = [4, 2, 1],
-  matchWidth = 180,
-  matchHeight = 50,
-  horizontalSpacing = 140,
-  verticalSpacing = 50,
-  margin = 32,
-  championTailLength = 100,
-} = {}) {
-  if (!Array.isArray(rounds) || rounds.length === 0) {
-    return '';
+function buildTournamentBracketPrintMarkup({ tournamentId = '', categoryId = '' } = {}) {
+  const cacheKey = getTournamentBracketCacheKey(tournamentId, categoryId);
+  if (!cacheKey) {
+    return null;
   }
 
-  const normalizedRounds = rounds.map((count) => Math.max(1, Number(count) || 1));
-  const totalHeight =
-    normalizedRounds[0] * matchHeight + Math.max(0, normalizedRounds[0] - 1) * verticalSpacing;
-  const svgHeight = totalHeight + margin * 2;
+  const matches =
+    state.tournamentBracketMatches instanceof Map
+      ? state.tournamentBracketMatches.get(cacheKey)
+      : null;
 
-  const roundPositions = normalizedRounds.map((_, index) => {
-    return margin + index * (matchWidth + horizontalSpacing);
+  const normalizedMatches = Array.isArray(matches) ? matches.filter(Boolean) : [];
+  const mainMatches = normalizedMatches.filter((match) => match?.bracketType === 'principal');
+  const consolationMatches = normalizedMatches.filter((match) => match?.bracketType === 'consolacion');
+
+  if (!mainMatches.length && !consolationMatches.length) {
+    return null;
+  }
+
+  const tournament = getTournamentById(tournamentId);
+  const category = getTournamentCategoryById(tournamentId, categoryId);
+  const seedLookup = buildSeedLookup(category);
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'print-bracket';
+
+  const header = document.createElement('header');
+  header.className = 'print-bracket__header';
+
+  const title = document.createElement('h1');
+  title.className = 'print-bracket__title';
+  title.textContent = 'Cuadro de torneo';
+  header.appendChild(title);
+
+  const subtitleParts = [];
+  if (tournament?.name) {
+    subtitleParts.push(tournament.name);
+  }
+  if (category?.name) {
+    subtitleParts.push(category.name);
+  }
+
+  if (subtitleParts.length) {
+    const subtitle = document.createElement('p');
+    subtitle.className = 'print-bracket__subtitle';
+    subtitle.textContent = subtitleParts.join(' · ');
+    header.appendChild(subtitle);
+  }
+
+  const metaList = document.createElement('dl');
+  metaList.className = 'print-bracket__meta';
+
+  const appendMeta = (label, value) => {
+    const text = typeof value === 'number' ? String(value) : value;
+    const trimmed = typeof text === 'string' ? text.trim() : '';
+    if (!trimmed) {
+      return;
+    }
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = trimmed;
+    metaList.appendChild(dt);
+    metaList.appendChild(dd);
+  };
+
+  appendMeta('Torneo', tournament?.name || '');
+  appendMeta('Categoría', category?.name || '');
+
+  const drawSizeValue = Number(category?.drawSize);
+  if (Number.isFinite(drawSizeValue) && drawSizeValue > 0) {
+    appendMeta('Tamaño del cuadro', `${drawSizeValue} jugadores`);
+  }
+
+  const matchTypeLabel = category?.matchType
+    ? TOURNAMENT_MATCH_TYPE_LABELS[category.matchType]
+    : '';
+  appendMeta('Modalidad', matchTypeLabel || '');
+
+  const matchFormatLabel = category?.matchFormat
+    ? MATCH_FORMAT_LABELS[category.matchFormat]
+    : '';
+  appendMeta('Formato de partido', matchFormatLabel || '');
+
+  const statusLabel = category?.status
+    ? TOURNAMENT_CATEGORY_STATUS_LABELS[category.status] || category.status
+    : '';
+  appendMeta('Estado de la categoría', statusLabel || '');
+
+  appendMeta('Impreso', formatDate(new Date().toISOString()));
+
+  if (metaList.childElementCount) {
+    header.appendChild(metaList);
+  }
+
+  wrapper.appendChild(header);
+
+  const sectionsContainer = document.createElement('div');
+  sectionsContainer.className = 'print-bracket__sections';
+
+  if (mainMatches.length) {
+    const mainSection = createTournamentBracketSection({
+      title: 'Cuadro principal',
+      matches: mainMatches,
+      seedByPlayer: seedLookup.byPlayer,
+      drawSize: category?.drawSize,
+    });
+    sectionsContainer.appendChild(mainSection);
+  }
+
+  if (consolationMatches.length) {
+    const consolationSection = createTournamentBracketSection({
+      title: 'Cuadro de consolación',
+      matches: consolationMatches,
+      seedByPlayer: seedLookup.byPlayer,
+    });
+    sectionsContainer.appendChild(consolationSection);
+  }
+
+  sectionsContainer.querySelectorAll('.bracket-match__actions').forEach((actions) => {
+    actions.remove();
   });
 
-  const centersByRound = [];
-  const firstRoundCenters = [];
-  for (let index = 0; index < normalizedRounds[0]; index += 1) {
-    const top = margin + index * (matchHeight + verticalSpacing);
-    firstRoundCenters.push(top + matchHeight / 2);
-  }
-  centersByRound.push(firstRoundCenters);
+  wrapper.appendChild(sectionsContainer);
 
-  for (let roundIndex = 1; roundIndex < normalizedRounds.length; roundIndex += 1) {
-    const previousCenters = centersByRound[roundIndex - 1];
-    const roundMatchCount = normalizedRounds[roundIndex];
-    const currentCenters = [];
-    for (let matchIndex = 0; matchIndex < roundMatchCount; matchIndex += 1) {
-      const firstChildIndex = matchIndex * 2;
-      const secondChildIndex = Math.min(firstChildIndex + 1, previousCenters.length - 1);
-      const center = (previousCenters[firstChildIndex] + previousCenters[secondChildIndex]) / 2;
-      currentCenters.push(center);
-    }
-    centersByRound.push(currentCenters);
+  const titleParts = ['Cuadro de torneo'];
+  if (tournament?.name) {
+    titleParts.push(tournament.name);
+  }
+  if (category?.name) {
+    titleParts.push(category.name);
   }
 
-  const shapes = [];
-
-  for (let roundIndex = 0; roundIndex < normalizedRounds.length; roundIndex += 1) {
-    const centers = centersByRound[roundIndex];
-    const x = roundPositions[roundIndex];
-    centers.forEach((centerY) => {
-      const top = centerY - matchHeight / 2;
-      shapes.push(
-        `<rect x="${x.toFixed(2)}" y="${top.toFixed(2)}" width="${matchWidth}" height="${matchHeight}" rx="8" ry="8" fill="#ffffff" stroke="#d4d4d8" stroke-width="2" />`
-      );
-    });
-
-    if (roundIndex < normalizedRounds.length - 1) {
-      const connectorMidX = x + matchWidth + horizontalSpacing / 2;
-      const nextRoundX = roundPositions[roundIndex + 1];
-      centers.forEach((centerY) => {
-        shapes.push(
-          `<line x1="${(x + matchWidth).toFixed(2)}" y1="${centerY.toFixed(2)}" x2="${connectorMidX.toFixed(2)}" y2="${centerY.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
-        );
-      });
-
-      for (let matchIndex = 0; matchIndex < centers.length; matchIndex += 2) {
-        const firstCenter = centers[matchIndex];
-        const secondCenter = centers[Math.min(matchIndex + 1, centers.length - 1)];
-        const midY = (firstCenter + secondCenter) / 2;
-        shapes.push(
-          `<line x1="${connectorMidX.toFixed(2)}" y1="${firstCenter.toFixed(2)}" x2="${connectorMidX.toFixed(2)}" y2="${secondCenter.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
-        );
-        shapes.push(
-          `<line x1="${connectorMidX.toFixed(2)}" y1="${midY.toFixed(2)}" x2="${nextRoundX.toFixed(2)}" y2="${midY.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
-        );
-      }
-    }
-  }
-
-  const finalRoundIndex = normalizedRounds.length - 1;
-  const finalRoundCenters = centersByRound[finalRoundIndex];
-  const finalRoundX = roundPositions[finalRoundIndex];
-  const championLineStartX = finalRoundX + matchWidth;
-  const championLineEndX = championLineStartX + championTailLength;
-  const championCenterY = finalRoundCenters[0] || svgHeight / 2;
-
-  shapes.push(
-    `<line x1="${championLineStartX.toFixed(2)}" y1="${championCenterY.toFixed(2)}" x2="${championLineEndX.toFixed(2)}" y2="${championCenterY.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
-  );
-
-  shapes.push(
-    `<text x="${(championLineEndX + 16).toFixed(2)}" y="${(championCenterY + 6).toFixed(2)}" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="18" fill="#52525b">Campeón</text>`
-  );
-
-  const svgWidth = championLineEndX + margin + 120;
-
-  return `
-    <svg width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cuadro de torneo">
-      <rect x="0" y="0" width="${svgWidth}" height="${svgHeight}" fill="#f8fafc" />
-      ${shapes.join('\n      ')}
-    </svg>
-  `;
+  return {
+    markup: wrapper.outerHTML,
+    documentTitle: titleParts.join(' · '),
+  };
 }
 
 function openTournamentBracketPrintPreview() {
-  const svgMarkup = buildPrintableBracketSvg();
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+
+  if (!tournamentId || !categoryId) {
+    alert('Selecciona un torneo y una categoría para imprimir el cuadro.');
+    return;
+  }
+
+  const printContent = buildTournamentBracketPrintMarkup({
+    tournamentId,
+    categoryId,
+  });
+
+  if (!printContent) {
+    alert('Aún no hay un cuadro disponible para imprimir en esta categoría.');
+    return;
+  }
+
   const html = `<!DOCTYPE html>
     <html lang="es">
       <head>
         <meta charset="utf-8" />
-        <title>Cuadro de torneo</title>
+        <title>${escapeHtml(printContent.documentTitle)}</title>
+        <link rel="stylesheet" href="/app/styles.css" />
         <style>
           :root {
             color-scheme: light;
@@ -12959,61 +13013,166 @@ function openTournamentBracketPrintPreview() {
             margin: 0;
             font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
             background: #f4f4f5;
-            color: #18181b;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            color: #111827;
           }
-          .print-container {
-            background: #ffffff;
+          .print-layout {
+            max-width: 1180px;
+            margin: 32px auto;
             padding: 32px 40px;
-            border-radius: 16px;
-            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
-            max-width: 900px;
-            width: 100%;
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
           }
-          h1 {
-            margin: 0 0 32px;
+          .print-bracket__header {
             text-align: center;
-            font-weight: 600;
-            font-size: 28px;
+            margin-bottom: 32px;
           }
-          svg {
-            width: 100%;
-            height: auto;
-            display: block;
+          .print-bracket__title {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 700;
+            color: #0f172a;
+          }
+          .print-bracket__subtitle {
+            margin: 8px 0 0;
+            font-size: 18px;
+            color: #475569;
+          }
+          .print-bracket__meta {
+            margin: 28px auto 0;
+            display: grid;
+            gap: 12px 24px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            text-align: left;
+            max-width: 900px;
+          }
+          .print-bracket__meta dt {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #9ca3af;
+          }
+          .print-bracket__meta dd {
+            margin: 0;
+            font-size: 15px;
+            color: #1e293b;
+          }
+          .print-bracket__sections {
+            display: grid;
+            gap: 32px;
+          }
+          .print-bracket .tournament-bracket-section {
+            background: linear-gradient(135deg, rgba(226, 232, 240, 0.3), rgba(248, 250, 252, 0.85));
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25);
+          }
+          .print-bracket .tournament-bracket-section__title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #0f172a;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .print-bracket .tournament-bracket-grid {
+            overflow: visible;
+          }
+          .print-bracket .bracket-match {
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+            border-radius: 12px;
+          }
+          .print-bracket .bracket-match__header {
+            background: linear-gradient(90deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.04));
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+          }
+          .print-bracket .bracket-match__players {
+            gap: 8px;
+          }
+          .print-bracket .bracket-player__scores {
+            background: rgba(15, 23, 42, 0.04);
+            padding: 4px 8px;
+            border-radius: 6px;
+          }
+          .print-bracket .bracket-match__meta {
+            color: #475569;
+          }
+          .print-bracket .bracket-player--winner .bracket-player__name {
+            color: #0f766e;
+          }
+          .print-bracket .bracket-player--eliminated .bracket-player__name {
+            color: #ef4444;
           }
           @media print {
             body {
               background: #ffffff;
             }
-            .print-container {
+            .print-layout {
               box-shadow: none;
               border-radius: 0;
-              padding: 24px;
+              margin: 0;
+              padding: 16px 24px;
+            }
+            .print-bracket .bracket-match {
+              box-shadow: none;
+              background: #ffffff;
             }
           }
         </style>
       </head>
       <body>
-        <div class="print-container">
-          <h1>Cuadro de torneo</h1>
-          ${svgMarkup}
+        <div class="print-layout">
+          ${printContent.markup}
         </div>
         <script>
-          window.addEventListener('load', () => {
-            window.focus();
-            window.print();
-          });
-          window.addEventListener('afterprint', () => {
-            window.close();
-          });
+          (function () {
+            function applyPrintBracketOffsets(root) {
+              const grids = Array.from(root.querySelectorAll('.tournament-bracket-grid'));
+              grids.forEach((grid) => {
+                const roundLists = Array.from(grid.querySelectorAll('.bracket-round__matches'));
+                if (!roundLists.length) {
+                  return;
+                }
+                roundLists.forEach((roundList) => {
+                  roundList.style.removeProperty('--bracket-round-offset');
+                });
+                let accumulatedOffsetPx = 0;
+                for (let index = 1; index < roundLists.length; index += 1) {
+                  const previousRound = roundLists[index - 1];
+                  const currentRound = roundLists[index];
+                  const previousMatches = Array.from(previousRound.querySelectorAll('.bracket-match'));
+                  if (!previousMatches.length) {
+                    continue;
+                  }
+                  const firstRect = previousMatches[0].getBoundingClientRect();
+                  let previousGap = firstRect.height;
+                  const secondMatch = previousMatches[1];
+                  if (secondMatch) {
+                    const secondRect = secondMatch.getBoundingClientRect();
+                    previousGap = Math.max(0, secondRect.top - firstRect.bottom);
+                  }
+                  accumulatedOffsetPx += (firstRect.height + previousGap) / 2;
+                  currentRound.style.setProperty('--bracket-round-offset', accumulatedOffsetPx + 'px');
+                }
+              });
+            }
+
+            window.addEventListener('load', () => {
+              applyPrintBracketOffsets(document);
+              window.focus();
+              setTimeout(() => window.print(), 100);
+            });
+
+            window.addEventListener('afterprint', () => {
+              window.close();
+            });
+          })();
         </script>
       </body>
     </html>`;
 
-  const printWindow = window.open('', '_blank', 'width=900,height=700');
+  const printWindow = window.open('', '_blank', 'width=1024,height=768');
   if (!printWindow) {
     alert('No fue posible abrir la vista de impresión. Verifica que el bloqueo de ventanas emergentes esté desactivado.');
     return;
