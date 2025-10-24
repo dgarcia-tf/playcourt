@@ -2523,6 +2523,10 @@ function updateTournamentActionAvailability() {
   if (tournamentBracketRecalculateButton) {
     tournamentBracketRecalculateButton.disabled = !isAdmin() || !hasBracketSelection;
   }
+
+  if (tournamentBracketPrintButton) {
+    tournamentBracketPrintButton.disabled = !hasBracketSelection;
+  }
 }
 
 function updateMatchesMenuBadge(count = 0) {
@@ -13247,882 +13251,117 @@ async function refreshTournamentBracketMatches({ forceReload = false } = {}) {
   }
 }
 
-async function printTournamentBracketSheet(tournamentId, categoryId) {
-  const normalizedTournamentId = normalizeId(tournamentId);
-  const normalizedCategoryId = normalizeId(categoryId);
+function handleTournamentBracketPrint() {
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
 
-  if (!normalizedTournamentId) {
-    throw new Error('Selecciona un torneo válido para imprimir.');
-  }
-
-  if (!normalizedCategoryId) {
-    throw new Error('Selecciona una categoría válida para imprimir.');
-  }
-
-  const cacheKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
-  let matches = [];
-
-  if (cacheKey && state.tournamentBracketMatches.has(cacheKey)) {
-    matches = state.tournamentBracketMatches.get(cacheKey) || [];
-  }
-
-  if (!matches.length) {
-    try {
-      const response = await request(
-        `/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}/matches`
-      );
-      matches = Array.isArray(response) ? response : [];
-      if (cacheKey) {
-        state.tournamentBracketMatches.set(cacheKey, matches);
-      }
-    } catch (error) {
-      throw new Error(error.message || 'No fue posible cargar los partidos del cuadro.');
-    }
-  }
-
-  const mainMatches = matches.filter((match) => match?.bracketType === 'principal');
-  const consolationMatches = matches.filter((match) => match?.bracketType === 'consolacion');
-
-  if (!mainMatches.length && !consolationMatches.length) {
-    throw new Error('Esta categoría aún no tiene un cuadro generado.');
-  }
-
-  let detail = state.tournamentDetails.get(normalizedTournamentId);
-  if (!detail) {
-    try {
-      detail = await loadTournamentDetail(normalizedTournamentId, { force: false });
-    } catch (error) {
-      detail = getTournamentById(normalizedTournamentId) || null;
-    }
-  }
-
-  const tournament = detail || getTournamentById(normalizedTournamentId) || {};
-
-  let category = getTournamentCategoryById(normalizedTournamentId, normalizedCategoryId);
-  if (!category && detail && Array.isArray(detail.categories)) {
-    category = detail.categories.find((entry) => normalizeId(entry) === normalizedCategoryId) || null;
-  }
-
-  if (!category) {
-    throw new Error('No se encontró la categoría seleccionada.');
-  }
-
-  const seedLookup = buildSeedLookup(category);
-  const seedByPlayer = seedLookup.byPlayer;
-
-  const playerIds = new Set();
-  matches.forEach((match) => {
-    const participants = Array.isArray(match?.players) ? match.players : [];
-    participants.forEach((player) => {
-      const id = normalizeId(player);
-      if (id) {
-        playerIds.add(id);
-      }
-    });
-  });
-
-  const club = state.club || {};
-  const clubName = typeof club.name === 'string' ? club.name : '';
-  const clubLogo = typeof club.logo === 'string' ? club.logo : '';
-  const clubAddress = typeof club.address === 'string' ? club.address : '';
-
-  const categoryTitleBits = [category.name || 'Categoría'];
-  const genderLabel = translateGender(category.gender);
-  if (genderLabel) {
-    categoryTitleBits.push(genderLabel);
-  }
-  const matchTypeLabel = formatTournamentMatchType(category.matchType);
-  if (matchTypeLabel) {
-    categoryTitleBits.push(matchTypeLabel);
-  }
-  const categoryTitle = categoryTitleBits.filter(Boolean).join(' · ');
-
-  const drawSize = Number(category.drawSize);
-  const bracketSizeLabel = Number.isFinite(drawSize) && drawSize > 0 ? `${drawSize} jugadores` : '';
-  const formatLabel = formatTournamentMatchFormat(category.matchFormat);
-  const dateRange = formatTournamentDateRange(tournament);
-  const printedAt = new Intl.DateTimeFormat('es-ES', {
-    dateStyle: 'full',
-    timeStyle: 'short',
-  }).format(new Date());
-
-  const seeds = Array.isArray(category.seeds)
-    ? category.seeds
-        .slice()
-        .sort((a, b) => (Number(a?.seedNumber) || 0) - (Number(b?.seedNumber) || 0))
-    : [];
-
-  const buildRounds = (list) => {
-    const grouped = new Map();
-    list.forEach((match) => {
-      const order = Number(match?.roundOrder) || 0;
-      if (!grouped.has(order)) {
-        grouped.set(order, []);
-      }
-      grouped.get(order).push(match);
-    });
-
-    return Array.from(grouped.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([order, roundMatches]) => ({
-        title: roundMatches[0]?.round || `Ronda ${order || 1}`,
-        matches: roundMatches
-          .slice()
-          .sort((a, b) => (Number(a?.matchNumber) || 0) - (Number(b?.matchNumber) || 0)),
-      }));
-  };
-
-  const buildMatchCardMarkup = (match) => {
-    const statusValue = match?.status || 'pendiente';
-    const statusLabel = formatTournamentMatchStatusLabel(statusValue);
-    const matchLabel = match?.matchNumber ? `Partido ${match.matchNumber}` : 'Partido';
-    const winnerId = resolveWinnerId(match);
-    const participants = Array.isArray(match?.players) ? match.players : [];
-
-    const playersMarkup = [0, 1]
-      .map((index) => {
-        const player = participants[index];
-        const playerId = normalizeId(player);
-        const seedNumber = playerId ? seedByPlayer.get(playerId) : null;
-        const placeholderLabel = index === 0 ? match?.placeholderA : match?.placeholderB;
-        let displayName = '';
-        let isPlaceholder = false;
-
-        if (player) {
-          displayName = getPlayerDisplayName(player);
-        } else if (typeof placeholderLabel === 'string' && placeholderLabel.trim()) {
-          displayName = placeholderLabel;
-          isPlaceholder = true;
-        } else {
-          displayName = 'Pendiente';
-          isPlaceholder = true;
-        }
-
-        const statusText = winnerId && playerId ? (playerId === winnerId ? 'Ganador' : 'Eliminado') : '';
-
-        const classes = ['print-player'];
-        if (winnerId && playerId === winnerId) {
-          classes.push('print-player--winner');
-        }
-        if (isPlaceholder) {
-          classes.push('print-player--pending');
-        }
-
-        return `
-          <div class="${classes.join(' ')}">
-            <span class="print-player__seed">${seedNumber ? `#${escapeHtml(String(seedNumber))}` : ''}</span>
-            <span class="print-player__name">${escapeHtml(displayName)}</span>
-            ${statusText ? `<span class="print-player__status">${escapeHtml(statusText)}</span>` : ''}
-          </div>
-        `;
-      })
-      .join('');
-
-    const sets = getMatchSets(match);
-    const scoreParticipants = getMatchScores(match);
-    let scoreboardMarkup = '';
-
-    if (sets.length && scoreParticipants.length >= 2) {
-      const headerCells = sets
-        .map((set, index) => {
-          const label = `Set ${index + 1}`;
-          const tieBreak = set.tieBreak
-            ? '<span class="print-scoreboard__tiebreak">TB</span>'
-            : '';
-          return `<th scope="col">${label}${tieBreak}</th>`;
-        })
-        .join('');
-      const headerRow = `<tr><th scope="col">Jugador</th>${headerCells}</tr>`;
-
-      const rows = scoreParticipants
-        .map((participant) => {
-          const participantName = getPlayerDisplayName(participant.player);
-          const isWinner = winnerId && participant.id === winnerId;
-          const scoreCells = sets
-            .map((set) => {
-              const scoreValue = Number(set.scores?.[participant.id]);
-              const hasScore = Number.isFinite(scoreValue) && scoreValue >= 0;
-              const displayValue = hasScore ? Math.floor(scoreValue) : '';
-              const classes = ['print-scoreboard__cell'];
-              if (set.tieBreak) {
-                classes.push('print-scoreboard__cell--tiebreak');
-              }
-              return `<td class="${classes.join(' ')}">${displayValue === '' ? '' : escapeHtml(String(displayValue))}</td>`;
-            })
-            .join('');
-
-          return `
-            <tr class="${isWinner ? 'print-scoreboard__row--winner' : ''}">
-              <th scope="row">${escapeHtml(participantName)}</th>
-              ${scoreCells}
-            </tr>
-          `;
-        })
-        .join('');
-
-      scoreboardMarkup = `
-        <table class="print-scoreboard">
-          <thead>${headerRow}</thead>
-          <tbody>${rows}</tbody>
-        </table>
-      `;
-    } else if (match?.result?.score) {
-      scoreboardMarkup = `<div class="print-match__score">${escapeHtml(match.result.score)}</div>`;
-    }
-
-    const metaBits = [];
-    if (match?.court) {
-      metaBits.push(`Pista: ${match.court}`);
-    }
-    if (match?.scheduledAt) {
-      metaBits.push(`Programado: ${formatDate(match.scheduledAt)}`);
-    }
-    const metaMarkup = metaBits.length
-      ? `<div class="print-match__meta">${metaBits.map((bit) => `<span>${escapeHtml(bit)}</span>`).join(' · ')}</div>`
-      : '';
-
-    return `
-      <article class="print-match-card">
-        <header class="print-match-card__header">
-          <span>${escapeHtml(matchLabel)}</span>
-          <span class="print-match-card__status">${escapeHtml(statusLabel)}</span>
-        </header>
-        <div class="print-match-card__players">
-          ${playersMarkup}
-        </div>
-        ${scoreboardMarkup}
-        ${metaMarkup}
-      </article>
-    `;
-  };
-
-  const buildBracketGridMarkup = (rounds) => {
-    if (!Array.isArray(rounds) || !rounds.length) {
-      return '<p class="print-empty">Sin partidos para mostrar.</p>';
-    }
-
-    const columnCount = rounds.length;
-
-    const roundMarkup = rounds
-      .map((round) => {
-        const matchesMarkup = round.matches.length
-          ? round.matches.map((match) => buildMatchCardMarkup(match)).join('')
-          : '<p class="print-empty">Sin partidos asignados.</p>';
-
-        return `
-          <article class="print-round">
-            <header class="print-round__header">${escapeHtml(round.title)}</header>
-            <div class="print-round__matches">
-              ${matchesMarkup}
-            </div>
-          </article>
-        `;
-      })
-      .join('');
-
-    return `<div class="print-bracket-grid" style="--round-count:${columnCount};">${roundMarkup}</div>`;
-  };
-
-  const sections = [];
-  if (mainMatches.length) {
-    sections.push({ title: 'Cuadro principal', rounds: buildRounds(mainMatches) });
-  }
-  if (consolationMatches.length) {
-    sections.push({ title: 'Cuadro de consolación', rounds: buildRounds(consolationMatches) });
-  }
-
-  const sectionsMarkup = sections
-    .map(
-      ({ title, rounds }) => `
-        <section class="print-bracket-section">
-          <h2>${escapeHtml(title)}</h2>
-          ${buildBracketGridMarkup(rounds)}
-        </section>
-      `
-    )
-    .join('');
-
-  const seedsMarkup = seeds.length
-    ? `
-      <section class="print-seeds">
-        <h2>Cabezas de serie</h2>
-        <ol>
-          ${seeds
-            .map((seed) => {
-              const playerName = getPlayerDisplayName(seed.player);
-              return `
-                <li>
-                  <span class="print-seed__number">#${escapeHtml(String(seed.seedNumber))}</span>
-                  <span class="print-seed__name">${escapeHtml(playerName)}</span>
-                </li>
-              `;
-            })
-            .join('')}
-        </ol>
-      </section>
-    `
-    : '';
-
-  const metaItems = [
-    ['Fechas', dateRange],
-    ['Categoría', categoryTitle],
-    [
-      'Participantes',
-      playerIds.size ? `${playerIds.size} jugador${playerIds.size === 1 ? '' : 'es'}` : 'Pendiente',
-    ],
-    ['Cuadro', bracketSizeLabel],
-  ];
-
-  if (formatLabel) {
-    metaItems.push(['Formato', formatLabel]);
-  }
-  if (clubName) {
-    metaItems.push(['Club', clubName]);
-  }
-  if (clubAddress) {
-    metaItems.push(['Sede', clubAddress]);
-  }
-
-  const metaMarkup = metaItems
-    .filter(([, value]) => Boolean(value))
-    .map(
-      ([label, value]) => `
-        <div class="print-meta__item">
-          <span class="print-meta__label">${escapeHtml(label)}</span>
-          <span class="print-meta__value">${escapeHtml(value)}</span>
-        </div>
-      `
-    )
-    .join('');
-
-  const logoMarkup = clubLogo
-    ? `<div class="print-header__logo-wrapper"><img src="${clubLogo}" alt="${escapeHtml(
-        clubName || 'Logo del club'
-      )}" class="print-header__logo" /></div>`
-    : '';
-
-  const printWindow = window.open('', '_blank', 'width=1200,height=800');
-  if (!printWindow) {
-    throw new Error('No fue posible abrir la vista de impresión. Permite las ventanas emergentes.');
-  }
-
-  const documentHtml = `<!DOCTYPE html>
-  <html lang="es">
-    <head>
-      <meta charset="utf-8" />
-      <title>${escapeHtml(tournament.name || 'Cuadro del torneo')}</title>
-      <style>
-        :root {
-          color-scheme: light;
-        }
-        body {
-          font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-          margin: 32px;
-          background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
-          color: #0f172a;
-        }
-        h1, h2, h3, h4 {
-          margin: 0;
-        }
-        .print-header {
-          display: flex;
-          gap: 24px;
-          align-items: center;
-          margin-bottom: 28px;
-        }
-        .print-header__logo-wrapper {
-          width: 120px;
-          height: 120px;
-          border-radius: 24px;
-          background: #ffffff;
-          border: 1px solid rgba(148, 163, 184, 0.25);
-          box-shadow: 0 18px 40px rgba(30, 64, 175, 0.18);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px;
-        }
-        .print-header__logo {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-        }
-        .print-header__info {
-          flex: 1;
-        }
-        .print-header__badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 6px 12px;
-          border-radius: 999px;
-          background: rgba(37, 99, 235, 0.12);
-          color: #1d4ed8;
-          font-weight: 600;
-          font-size: 12px;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          margin-bottom: 16px;
-        }
-        .print-header__title {
-          font-size: 32px;
-          font-weight: 700;
-          margin-bottom: 6px;
-          color: #0f172a;
-        }
-        .print-header__subtitle {
-          font-size: 18px;
-          color: #334155;
-          margin-bottom: 10px;
-        }
-        .print-header__club {
-          font-size: 13px;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          color: #1d4ed8;
-          margin-bottom: 18px;
-          font-weight: 600;
-        }
-        .print-meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-        }
-        .print-meta__item {
-          min-width: 160px;
-          background: #ffffff;
-          border-radius: 14px;
-          border: 1px solid rgba(148, 163, 184, 0.24);
-          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
-          padding: 14px 18px;
-        }
-        .print-meta__label {
-          font-size: 12px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          color: #64748b;
-          margin-bottom: 6px;
-        }
-        .print-meta__value {
-          font-size: 16px;
-          font-weight: 600;
-          color: #0f172a;
-        }
-        .print-bracket-section {
-          margin-top: 36px;
-        }
-        .print-bracket-section h2 {
-          font-size: 24px;
-          font-weight: 700;
-          color: #0f172a;
-          margin-bottom: 18px;
-        }
-        .print-bracket-grid {
-          display: grid;
-          gap: 18px;
-          grid-template-columns: repeat(var(--round-count, 1), minmax(220px, 1fr));
-        }
-        .print-round {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-        .print-round__header {
-          font-size: 14px;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          color: #475569;
-          font-weight: 600;
-        }
-        .print-round__matches {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-        .print-match-card {
-          background: #ffffff;
-          border-radius: 14px;
-          border: 1px solid rgba(148, 163, 184, 0.25);
-          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.14);
-          padding: 16px 18px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .print-match-card__header {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          font-size: 12px;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          color: #475569;
-          font-weight: 600;
-        }
-        .print-match-card__status {
-          color: #1d4ed8;
-        }
-        .print-match-card__players {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-        .print-player {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          font-size: 15px;
-        }
-        .print-player__seed {
-          width: 44px;
-          font-weight: 700;
-          color: #2563eb;
-        }
-        .print-player__name {
-          flex: 1;
-          font-weight: 600;
-          color: #0f172a;
-        }
-        .print-player__status {
-          font-size: 11px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          color: #475569;
-        }
-        .print-player--winner .print-player__name {
-          color: #16a34a;
-        }
-        .print-player--pending .print-player__name {
-          color: #94a3b8;
-          font-style: italic;
-        }
-        .print-scoreboard {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-          border: 1px solid rgba(148, 163, 184, 0.35);
-        }
-        .print-scoreboard thead th {
-          background: rgba(226, 232, 240, 0.7);
-          color: #0f172a;
-          padding: 8px;
-          text-align: center;
-          font-weight: 600;
-        }
-        .print-scoreboard tbody th {
-          text-align: left;
-          padding: 8px 10px;
-          font-weight: 600;
-          color: #0f172a;
-          border-top: 1px solid rgba(148, 163, 184, 0.25);
-          border-right: 1px solid rgba(148, 163, 184, 0.25);
-        }
-        .print-scoreboard__cell {
-          padding: 8px 10px;
-          text-align: center;
-          border-top: 1px solid rgba(148, 163, 184, 0.25);
-          border-right: 1px solid rgba(148, 163, 184, 0.25);
-        }
-        .print-scoreboard__cell:last-child,
-        .print-scoreboard tbody th:last-child {
-          border-right: none;
-        }
-        .print-scoreboard__cell--tiebreak {
-          background: rgba(253, 224, 71, 0.35);
-        }
-        .print-scoreboard__tiebreak {
-          display: block;
-          font-size: 10px;
-          font-weight: 600;
-          color: #b45309;
-        }
-        .print-scoreboard__row--winner th,
-        .print-scoreboard__row--winner td {
-          color: #16a34a;
-          font-weight: 700;
-        }
-        .print-match__score {
-          font-size: 14px;
-          color: #0f172a;
-          font-weight: 600;
-        }
-        .print-match__meta {
-          font-size: 12px;
-          color: #64748b;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-        }
-        .print-seeds {
-          margin-top: 40px;
-        }
-        .print-seeds h2 {
-          font-size: 22px;
-          margin-bottom: 16px;
-          color: #0f172a;
-        }
-        .print-seeds ol {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: grid;
-          gap: 10px;
-        }
-        .print-seeds li {
-          display: flex;
-          gap: 16px;
-          align-items: center;
-          background: #ffffff;
-          border: 1px solid rgba(148, 163, 184, 0.25);
-          border-radius: 12px;
-          padding: 12px 16px;
-          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
-        }
-        .print-seed__number {
-          font-weight: 700;
-          color: #2563eb;
-          min-width: 48px;
-        }
-        .print-seed__name {
-          font-size: 15px;
-          font-weight: 600;
-          color: #0f172a;
-        }
-        .print-empty {
-          font-size: 13px;
-          color: #94a3b8;
-          font-style: italic;
-        }
-        .print-footer {
-          margin-top: 48px;
-          text-align: right;
-          font-size: 12px;
-          color: #64748b;
-        }
-        @media print {
-          body {
-            margin: 14mm;
-            background: #ffffff;
-          }
-          .print-header__logo-wrapper,
-          .print-match-card,
-          .print-meta__item,
-          .print-seeds li {
-            box-shadow: none;
-            border: 1px solid rgba(148, 163, 184, 0.35);
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <header class="print-header">
-        ${logoMarkup}
-        <div class="print-header__info">
-          <span class="print-header__badge">Cuadro oficial</span>
-          <h1 class="print-header__title">${escapeHtml(tournament.name || 'Torneo')}</h1>
-          <p class="print-header__subtitle">${escapeHtml(categoryTitle)}</p>
-          ${clubName ? `<p class="print-header__club">Organiza: ${escapeHtml(clubName)}</p>` : ''}
-          <div class="print-meta">${metaMarkup}</div>
-        </div>
-      </header>
-      ${sectionsMarkup}
-      ${seedsMarkup}
-      <footer class="print-footer">Generado el ${escapeHtml(printedAt)}</footer>
-      <script>window.addEventListener('load', () => { window.print(); });</script>
-    </body>
-  </html>`;
-
-  printWindow.document.write(documentHtml);
-  printWindow.document.close();
-}
-
-async function openTournamentBracketPrintModal({
-  tournamentId = state.selectedBracketTournamentId,
-  categoryId = state.selectedBracketCategoryId,
-} = {}) {
-  let tournaments = Array.isArray(state.tournaments) ? state.tournaments.slice() : [];
-
-  if (!tournaments.length) {
-    try {
-      tournaments = await reloadTournaments();
-    } catch (error) {
-      showGlobalMessage(error.message || 'No fue posible cargar los torneos.', 'error');
-      return;
-    }
-  }
-
-  if (!tournaments.length) {
-    showGlobalMessage('No hay torneos disponibles para imprimir.', 'info');
+  if (!tournamentId || !categoryId) {
+    showGlobalMessage('Selecciona un torneo y una categoría para imprimir el cuadro.', 'error');
     return;
   }
 
-  const normalizedDefaultTournamentId = tournamentId ? normalizeId(tournamentId) : '';
-  const normalizedDefaultCategoryId = categoryId ? normalizeId(categoryId) : '';
-
-  const form = document.createElement('form');
-  form.className = 'form';
-
-  const tournamentLabel = document.createElement('label');
-  tournamentLabel.textContent = 'Torneo';
-  const tournamentSelect = document.createElement('select');
-  tournamentSelect.name = 'tournamentId';
-  tournamentSelect.required = true;
-  tournamentLabel.appendChild(tournamentSelect);
-  form.appendChild(tournamentLabel);
-
-  const categoryLabel = document.createElement('label');
-  categoryLabel.textContent = 'Categoría';
-  const categorySelect = document.createElement('select');
-  categorySelect.name = 'categoryId';
-  categorySelect.required = true;
-  categorySelect.disabled = true;
-  categoryLabel.appendChild(categorySelect);
-  form.appendChild(categoryLabel);
-
-  const status = document.createElement('p');
-  status.className = 'status-message';
-  status.style.display = 'none';
-  form.appendChild(status);
-
-  const actions = document.createElement('div');
-  actions.className = 'form-actions';
-
-  const submitButton = document.createElement('button');
-  submitButton.type = 'submit';
-  submitButton.className = 'primary';
-  submitButton.textContent = 'Imprimir';
-  submitButton.disabled = true;
-  actions.appendChild(submitButton);
-
-  const cancelButton = document.createElement('button');
-  cancelButton.type = 'button';
-  cancelButton.className = 'ghost';
-  cancelButton.dataset.action = 'cancel';
-  cancelButton.textContent = 'Cancelar';
-  actions.appendChild(cancelButton);
-
-  form.appendChild(actions);
-
-  fillTournamentSelect(
-    tournamentSelect,
-    tournaments,
-    normalizedDefaultTournamentId,
-    'Selecciona un torneo'
+  const hasMainBracket = Boolean(
+    tournamentBracketView?.querySelector('.tournament-bracket-section')
+  );
+  const hasConsolationBracket = Boolean(
+    tournamentConsolationView?.querySelector('.tournament-bracket-section')
   );
 
-  const updateCategoryOptions = async (tournamentValue, { preserveSelection = false } = {}) => {
-    const previousValue = preserveSelection ? categorySelect.value : '';
-    categorySelect.innerHTML = '<option value="">Selecciona una categoría</option>';
-    categorySelect.disabled = true;
-    submitButton.disabled = true;
+  if (!hasMainBracket && !hasConsolationBracket) {
+    showGlobalMessage('Esta categoría aún no tiene un cuadro generado para imprimir.', 'error');
+    return;
+  }
 
-    if (!tournamentValue) {
-      setStatusMessage(status, 'info', 'Selecciona un torneo para continuar.');
-      return { hasOptions: false, value: '' };
-    }
+  const bracketCard = document.getElementById('tournament-bracket-view-card');
 
-    let categories = getTournamentCategories(tournamentValue);
-    if (!categories.length) {
-      try {
-        const detail = await loadTournamentDetail(tournamentValue, { force: false });
-        categories = Array.isArray(detail?.categories) ? detail.categories : [];
-      } catch (error) {
-        setStatusMessage(
-          status,
-          'error',
-          error.message || 'No fue posible cargar las categorías del torneo.'
-        );
-        return { hasOptions: false, value: '' };
+  if (!bracketCard) {
+    showGlobalMessage('No se encontró el cuadro para imprimir.', 'error');
+    return;
+  }
+
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+
+  if (!printWindow) {
+    showGlobalMessage('No fue posible iniciar la ventana de impresión.', 'error');
+    return;
+  }
+
+  const { document: printDocument } = printWindow;
+  const baseHref = document.baseURI || window.location.href;
+  const styleSheets = Array.from(
+    document.querySelectorAll('link[rel="stylesheet"], style')
+  )
+    .map((element) => element.outerHTML)
+    .join('\n');
+
+  const club = state.club || {};
+  const clubName = typeof club.name === 'string' ? club.name : '';
+  const clubLogo = typeof club.logo === 'string' ? club.logo.trim() : '';
+  const fallbackLogo = (topbarLogo?.getAttribute('src') || '').trim();
+  const resolvedLogo = clubLogo || fallbackLogo;
+  const logoMarkup = resolvedLogo
+    ? `<div class="print-bracket__logo"><img src="${escapeHtml(
+        resolvedLogo
+      )}" alt="${escapeHtml(clubName || 'Logo del club')}" /></div>`
+    : '';
+
+  const bracketMarkup = bracketCard.outerHTML;
+
+  printDocument.open();
+  printDocument.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <base href="${escapeHtml(baseHref)}" />
+    ${styleSheets}
+    <style>
+      @media print {
+        body {
+          margin: 0;
+        }
       }
-    }
-
-    const sorted = categories
-      .slice()
-      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }));
-
-    const availableIds = [];
-    sorted.forEach((categoryEntry) => {
-      const entryId = normalizeId(categoryEntry);
-      if (!entryId || availableIds.includes(entryId)) {
-        return;
+      body {
+        margin: 0;
+        background: #fff;
       }
-      availableIds.push(entryId);
-      const option = document.createElement('option');
-      option.value = entryId;
-      option.textContent = categoryEntry.name || 'Categoría';
-      categorySelect.appendChild(option);
-    });
+      .print-bracket__wrapper {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .print-bracket__logo {
+        display: flex;
+        justify-content: center;
+      }
+      .print-bracket__logo img {
+        max-height: 64px;
+        width: auto;
+        object-fit: contain;
+      }
+    </style>
+    <title>Imprimir cuadro</title>
+  </head>
+  <body>
+    <div class="print-bracket__wrapper">
+      ${logoMarkup}
+      ${bracketMarkup}
+    </div>
+  </body>
+</html>`);
+  printDocument.close();
 
-    let nextValue = '';
-    if (preserveSelection && previousValue && availableIds.includes(previousValue)) {
-      nextValue = previousValue;
-    } else if (normalizedDefaultCategoryId && availableIds.includes(normalizedDefaultCategoryId)) {
-      nextValue = normalizedDefaultCategoryId;
-    } else if (availableIds.length) {
-      nextValue = availableIds[0];
-    }
-
-    if (nextValue) {
-      categorySelect.value = nextValue;
-    }
-
-    const hasOptions = Boolean(availableIds.length);
-    categorySelect.disabled = !hasOptions;
-    submitButton.disabled = !hasOptions || !categorySelect.value;
-
-    if (!hasOptions) {
-      setStatusMessage(status, 'info', 'Este torneo no tiene categorías disponibles.');
-    } else {
-      setStatusMessage(status, '', '');
-    }
-
-    return { hasOptions, value: categorySelect.value };
+  const handlePrint = () => {
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
   };
 
-  tournamentSelect.addEventListener('change', async () => {
-    submitButton.disabled = true;
-    await updateCategoryOptions(tournamentSelect.value);
-  });
-
-  categorySelect.addEventListener('change', () => {
-    submitButton.disabled = !categorySelect.value;
-  });
-
-  cancelButton.addEventListener('click', () => {
-    closeModal();
-  });
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const selectedTournamentId = tournamentSelect.value;
-    const selectedCategoryId = categorySelect.value;
-
-    if (!selectedTournamentId || !selectedCategoryId) {
-      setStatusMessage(status, 'error', 'Selecciona un torneo y una categoría.');
-      return;
-    }
-
-    const originalText = submitButton.textContent;
-    submitButton.disabled = true;
-    submitButton.textContent = 'Generando...';
-    setStatusMessage(status, '', '');
-
-    try {
-      await printTournamentBracketSheet(selectedTournamentId, selectedCategoryId);
-      closeModal();
-    } catch (error) {
-      submitButton.disabled = false;
-      submitButton.textContent = originalText;
-      setStatusMessage(status, 'error', error.message || 'No fue posible generar el cuadro.');
-    }
-  });
-
-  openModal({
-    title: 'Imprimir cuadro',
-    content: form,
-  });
-
-  await updateCategoryOptions(tournamentSelect.value, { preserveSelection: true });
+  if (printWindow.document.readyState === 'complete') {
+    handlePrint();
+  } else {
+    printWindow.addEventListener('load', handlePrint, { once: true });
+  }
 }
 
 async function loadTournamentBracketContext({
@@ -27731,7 +26970,7 @@ rankingPrintButton?.addEventListener('click', () => {
 });
 
 tournamentBracketPrintButton?.addEventListener('click', () => {
-  openTournamentBracketPrintModal();
+  handleTournamentBracketPrint();
 });
 
 rankingLeagueFilter?.addEventListener('change', () => {
