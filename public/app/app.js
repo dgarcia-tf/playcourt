@@ -12362,6 +12362,26 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
   const players = Array.isArray(match?.players) ? match.players : [];
   const winnerId = resolveWinnerId(match);
 
+  const sets = getMatchSets(match);
+  const scoreParticipants = getMatchScores(match);
+  const participantById = new Map();
+  scoreParticipants.forEach((participant) => {
+    if (participant?.id) {
+      participantById.set(participant.id, participant);
+    }
+  });
+
+  const canRenderInlineScores =
+    !isPlaceholder &&
+    sets.length > 0 &&
+    players.every((player) => {
+      if (!player) {
+        return false;
+      }
+      const playerId = normalizeId(player);
+      return Boolean(playerId && participantById.has(playerId));
+    });
+
   for (let index = 0; index < 2; index += 1) {
     const player = players[index];
     const wrapper = document.createElement('div');
@@ -12398,8 +12418,10 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
 
     const statusSpan = document.createElement('span');
     statusSpan.className = 'bracket-player__status';
+
+    let playerId = '';
     if (player) {
-      const playerId = normalizeId(player);
+      playerId = normalizeId(player);
       if (winnerId && playerId === winnerId) {
         wrapper.classList.add('bracket-player--winner');
         statusSpan.textContent = 'Ganador';
@@ -12408,14 +12430,50 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
         statusSpan.textContent = 'Eliminado';
       }
     }
+
     wrapper.appendChild(statusSpan);
+
+    if (player && playerId && canRenderInlineScores) {
+      const participant = participantById.get(playerId) || null;
+      if (participant) {
+        wrapper.classList.add('bracket-player--with-score');
+        wrapper.style.setProperty('--player-sets-count', Math.max(sets.length, 1));
+
+        const scoresContainer = document.createElement('div');
+        scoresContainer.className = 'bracket-player__scores';
+
+        sets.forEach((set, setIndex) => {
+          const scoreSpan = document.createElement('span');
+          scoreSpan.className = 'bracket-player__score';
+
+          const scoreValue = Number(set.scores?.[participant.id]);
+          const displayValue = Number.isFinite(scoreValue) && scoreValue >= 0 ? Math.floor(scoreValue) : '';
+          scoreSpan.textContent = displayValue;
+
+          if (set.tieBreak) {
+            scoreSpan.classList.add('bracket-player__score--tiebreak');
+            scoreSpan.setAttribute('aria-label', `Super tie-break set ${setIndex + 1}: ${displayValue}`);
+          } else if (displayValue !== '') {
+            scoreSpan.setAttribute('aria-label', `Set ${setIndex + 1}: ${displayValue}`);
+          }
+
+          if (winnerId && participant.id === winnerId) {
+            scoreSpan.classList.add('bracket-player__score--winner');
+          }
+
+          scoresContainer.appendChild(scoreSpan);
+        });
+
+        wrapper.appendChild(scoresContainer);
+      }
+    }
 
     playersContainer.appendChild(wrapper);
   }
 
   card.appendChild(playersContainer);
 
-  const scoreboard = !isPlaceholder ? createResultScoreboard(match) : null;
+  const scoreboard = !isPlaceholder && !canRenderInlineScores ? createResultScoreboard(match) : null;
   if (scoreboard) {
     card.appendChild(scoreboard);
   } else if (match?.result?.score) {
@@ -14000,7 +14058,11 @@ function extractResultSets(match) {
   const playerIds = players.map((player) => normalizeId(player));
   const rawSets = Array.isArray(match?.result?.sets) ? match.result.sets : [];
 
-  return rawSets
+  if (!playerIds.length) {
+    return [];
+  }
+
+  const normalizedSets = rawSets
     .map((set, index) => {
       const number = Number.isFinite(Number(set?.number)) ? Number(set.number) : index + 1;
       const tieBreak = Boolean(set?.tieBreak);
@@ -14017,6 +14079,57 @@ function extractResultSets(match) {
       return { number, tieBreak, scores };
     })
     .filter(Boolean);
+
+  if (normalizedSets.length) {
+    return normalizedSets;
+  }
+
+  return parseScoreStringSets(match?.result?.score, playerIds);
+}
+
+function parseScoreStringSets(rawScore, playerIds = []) {
+  if (typeof rawScore !== 'string' || playerIds.length < 2) {
+    return [];
+  }
+
+  const cleaned = rawScore.trim();
+  if (!cleaned) {
+    return [];
+  }
+
+  const sets = [];
+  const regex = /([\d]{1,2})\s*[-–—xX/]\s*([\d]{1,2})/g;
+  let matchResult;
+
+  while ((matchResult = regex.exec(cleaned)) !== null) {
+    const firstScore = Number(matchResult[1]);
+    const secondScore = Number(matchResult[2]);
+
+    if (!Number.isFinite(firstScore) || !Number.isFinite(secondScore)) {
+      continue;
+    }
+
+    const segment = matchResult[0];
+    const scores = {};
+    scores[playerIds[0]] = Math.max(0, Math.floor(firstScore));
+    scores[playerIds[1]] = Math.max(0, Math.floor(secondScore));
+
+    const maximumScore = Math.max(scores[playerIds[0]], scores[playerIds[1]]);
+    const minimumScore = Math.min(scores[playerIds[0]], scores[playerIds[1]]);
+    const tieBreak =
+      /tb|tie|super/i.test(segment) ||
+      /[\[\]()]/.test(segment) ||
+      maximumScore >= 8 ||
+      (maximumScore === 7 && minimumScore === 6);
+
+    sets.push({
+      number: sets.length + 1,
+      tieBreak,
+      scores,
+    });
+  }
+
+  return sets;
 }
 
 function aggregateSetsForPlayers(sets, playerIds = []) {
