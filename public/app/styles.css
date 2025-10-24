@@ -1724,11 +1724,11 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   position: fixed;
   top: 0;
   left: 0;
+  transform: translate(-200vw, -200vh);
   width: 1120px;
   padding: 2.5rem 2rem;
   background: #ffffff;
   pointer-events: none;
-  opacity: 0;
   z-index: -1;
 }
 

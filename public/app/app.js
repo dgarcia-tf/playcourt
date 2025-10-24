@@ -2779,6 +2779,9 @@ async function handleTournamentBracketExport() {
   clonedView.querySelectorAll('[hidden]').forEach((element) => {
     element.removeAttribute('hidden');
   });
+  clonedView.querySelectorAll('.bracket-match__actions').forEach((element) => {
+    element.remove();
+  });
 
   const titleParts = [bracketLabel, categoryName, tournamentName].filter(Boolean);
   const safeBracketLabel = escapeHtml(bracketLabel);
@@ -2827,6 +2830,20 @@ async function handleTournamentBracketExport() {
   tournamentBracketExportButton.textContent = 'Generando…';
 
   document.body.appendChild(exportContainer);
+
+  if (document.fonts && typeof document.fonts.ready?.then === 'function') {
+    try {
+      await document.fonts.ready;
+    } catch (error) {
+      console.warn('No fue posible confirmar la carga de las fuentes antes de exportar el cuadro.', error);
+    }
+  }
+
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
 
   const pdfOptions = {
     margin: [0.5, 0.75, 0.75, 0.75],
