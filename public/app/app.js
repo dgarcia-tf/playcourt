@@ -2124,10 +2124,16 @@ const collapsibleMenuGroups = appMenu
       .filter(Boolean)
   : [];
 
+const collapsibleMenuGroupsByElement = new Map();
+
 const collapsibleMenuGroupsByTarget = new Map();
 collapsibleMenuGroups.forEach((menuGroup) => {
   if (menuGroup.target) {
     collapsibleMenuGroupsByTarget.set(menuGroup.target, menuGroup);
+  }
+
+  if (menuGroup.group) {
+    collapsibleMenuGroupsByElement.set(menuGroup.group, menuGroup);
   }
 
   const { group, parentButton, submenu } = menuGroup;
@@ -2196,6 +2202,16 @@ function isMenuGroupActive(menuGroup) {
   if (!menuGroup) {
     return false;
   }
+
+  if (shouldUseHoverNavigation()) {
+    const activeElement = document.activeElement;
+    const hasFocus = menuGroup.group?.contains(activeElement);
+    const isHovered = menuGroup.group?.matches(':hover');
+    if (!hasFocus && !isHovered) {
+      return false;
+    }
+  }
+
   if (menuGroup.parentButton?.classList.contains('active')) {
     return true;
   }
@@ -5618,8 +5634,10 @@ function setActiveMenu(targetId = null) {
   });
 
   if (collapsibleMenuGroups.length) {
+    const allowAutomaticExpansion = !shouldUseHoverNavigation();
     collapsibleMenuGroups.forEach((menuGroup) => {
-      const shouldExpand = menuGroup.target ? activeTargets.has(menuGroup.target) : false;
+      const shouldExpand =
+        allowAutomaticExpansion && menuGroup.target ? activeTargets.has(menuGroup.target) : false;
       setMenuGroupExpanded(menuGroup, shouldExpand);
     });
   }
@@ -6272,7 +6290,8 @@ if (appMenu) {
     const button = event.target.closest('.menu-button');
     if (!button || button.hidden || button.disabled) return;
     const targetId = button.dataset.target;
-    const menuGroup = targetId ? collapsibleMenuGroupsByTarget.get(targetId) : null;
+    const menuGroupElement = button.closest('.menu-group');
+    const menuGroup = menuGroupElement ? collapsibleMenuGroupsByElement.get(menuGroupElement) : null;
     const hasSubmenu = Boolean(menuGroup?.submenu);
     const submenuExpanded = hasSubmenu ? !menuGroup.submenu.hidden : false;
     const focusFirstItem = shouldUseHoverNavigation();
@@ -6291,6 +6310,13 @@ if (appMenu) {
     }
 
     showSection(targetId);
+
+    if (menuGroup && shouldUseHoverNavigation()) {
+      requestAnimationFrame(() => {
+        button.blur();
+        setMenuGroupExpanded(menuGroup, false);
+      });
+    }
   });
 }
 
