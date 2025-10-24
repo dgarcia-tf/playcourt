@@ -443,6 +443,33 @@ async function getTournamentDetail(req, res) {
       })
     : [];
 
+  if (isAdmin) {
+    const availableCategories = categoriesWithStats.filter(
+      (category) => category.status === TOURNAMENT_CATEGORY_STATUSES.REGISTRATION
+    );
+
+    const shirtSizes = Array.isArray(tournament.shirtSizes) ? tournament.shirtSizes : [];
+    const canAdminEnrollPlayers =
+      tournamentAllowsEnrollment && availableCategories.length > 0 && (!tournament.isPrivate || hasPrivateAccess);
+
+    result.canAdminEnrollPlayers = canAdminEnrollPlayers;
+    result.adminEnrollmentOptions = {
+      canEnrollPlayers: canAdminEnrollPlayers,
+      hasShirt: Boolean(tournament.hasShirt),
+      requiresShirtSize: Boolean(tournament.hasShirt),
+      maxSelectableCategories: availableCategories.length,
+      shirtSizes,
+      categories: availableCategories.map((category) => ({
+        id: category._id ? category._id.toString() : String(category.id),
+        name: category.name || '',
+        menuTitle: category.menuTitle || '',
+        gender: category.gender || '',
+        matchType: category.matchType || '',
+        status: category.status,
+      })),
+    };
+  }
+
   return res.json(result);
 }
 
