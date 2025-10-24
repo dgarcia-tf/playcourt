@@ -107,6 +107,10 @@ const userSchema = new mongoose.Schema(
         return trimmed.length ? trimmed : undefined;
       },
     },
+    membershipNumberVerified: {
+      type: Boolean,
+      default: false,
+    },
     photo: {
       type: String,
       trim: true,

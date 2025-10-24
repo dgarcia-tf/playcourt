@@ -5831,9 +5831,13 @@ function updateProfileCard() {
   }
 
   if (accountMembershipStatus) {
-    accountMembershipStatus.textContent = state.user.isMember
-      ? 'Socio del club'
-      : 'No es socio';
+    if (state.user.isMember) {
+      accountMembershipStatus.textContent = state.user.membershipNumberVerified
+        ? 'Socio del club (validado)'
+        : 'Socio del club (pendiente de validación)';
+    } else {
+      accountMembershipStatus.textContent = 'No es socio';
+    }
   }
 
   if (accountMembershipNumber) {
@@ -6970,6 +6974,13 @@ function renderAccountSummary(summary) {
       summaryUser.membershipNumber !== nextUser.membershipNumber
     ) {
       nextUser.membershipNumber = summaryUser.membershipNumber;
+      updated = true;
+    }
+    if (
+      typeof summaryUser.membershipNumberVerified === 'boolean' &&
+      summaryUser.membershipNumberVerified !== nextUser.membershipNumberVerified
+    ) {
+      nextUser.membershipNumberVerified = summaryUser.membershipNumberVerified;
       updated = true;
     }
 
@@ -18342,6 +18353,23 @@ function renderPlayerDirectory() {
     details.appendChild(document.createElement('span')).textContent = `Categorías: ${categoryLabel}`;
     item.appendChild(details);
 
+    const membershipMeta = document.createElement('div');
+    membershipMeta.className = 'meta';
+    if (player.isMember) {
+      membershipMeta.appendChild(document.createElement('span')).textContent = player.membershipNumber
+        ? `Nº socio: ${player.membershipNumber}`
+        : 'Socio sin número registrado';
+      const verificationTag = document.createElement('span');
+      verificationTag.className = player.membershipNumberVerified ? 'tag tag--success' : 'tag tag--pending';
+      verificationTag.textContent = player.membershipNumberVerified
+        ? 'Nº de socio validado'
+        : 'Validación pendiente';
+      membershipMeta.appendChild(verificationTag);
+    } else {
+      membershipMeta.appendChild(document.createElement('span')).textContent = 'No es socio del club';
+    }
+    item.appendChild(membershipMeta);
+
     if (player.notes) {
       const notes = document.createElement('div');
       notes.className = 'meta';
@@ -20901,8 +20929,12 @@ function buildPlayerPayload(formData, isEditing = false) {
   const membershipNumber = (formData.get('membershipNumber') || '').trim();
   if (isMember) {
     payload.membershipNumber = membershipNumber;
-  } else if (isEditing) {
-    payload.membershipNumber = '';
+    payload.membershipNumberVerified = formData.has('membershipNumberVerified');
+  } else {
+    if (isEditing) {
+      payload.membershipNumber = '';
+    }
+    payload.membershipNumberVerified = false;
   }
 
   const password = formData.get('password');
@@ -21706,6 +21738,13 @@ function openPlayerModal(playerId = '') {
         <input type="text" name="membershipNumber" maxlength="50" />
         <span class="form-hint">Introduce el número asignado por el club.</span>
       </label>
+      <label class="checkbox-option" data-membership-verified-wrapper hidden>
+        <input type="checkbox" name="membershipNumberVerified" value="true" />
+        Nº de socio verificado
+        <span class="form-hint">
+          Marca esta casilla cuando hayas comprobado el número con el registro del club.
+        </span>
+      </label>
     </div>
     <label>
       Notas
@@ -21788,6 +21827,8 @@ function openPlayerModal(playerId = '') {
   const membershipCheckbox = form.elements.isMember;
   const membershipWrapper = form.querySelector('[data-membership-wrapper]');
   const membershipInput = form.elements.membershipNumber;
+  const membershipVerifiedWrapper = form.querySelector('[data-membership-verified-wrapper]');
+  const membershipVerifiedInput = form.elements.membershipNumberVerified;
 
   if (membershipCheckbox) {
     membershipCheckbox.checked = Boolean(player?.isMember);
@@ -21797,16 +21838,40 @@ function openPlayerModal(playerId = '') {
     membershipInput.value = player?.membershipNumber || '';
   }
 
-  if (membershipCheckbox && membershipWrapper) {
+  if (membershipVerifiedInput) {
+    membershipVerifiedInput.checked = Boolean(player?.membershipNumberVerified);
+  }
+
+  function updateMembershipControls({ clearWhenDisabled = false } = {}) {
     toggleMembershipField(membershipCheckbox, membershipWrapper, membershipInput, {
-      clearWhenDisabled: !player,
+      clearWhenDisabled,
     });
 
+    if (!membershipVerifiedWrapper) {
+      return;
+    }
+
+    const isMemberSelected = Boolean(membershipCheckbox?.checked);
+    membershipVerifiedWrapper.hidden = !isMemberSelected;
+
+    if (membershipVerifiedInput) {
+      membershipVerifiedInput.disabled = !isMemberSelected;
+      if (!isMemberSelected && (clearWhenDisabled || !player)) {
+        membershipVerifiedInput.checked = false;
+      }
+    }
+  }
+
+  if (membershipCheckbox) {
+    updateMembershipControls({ clearWhenDisabled: !player });
     membershipCheckbox.addEventListener('change', () => {
-      toggleMembershipField(membershipCheckbox, membershipWrapper, membershipInput, {
-        clearWhenDisabled: false,
-      });
+      updateMembershipControls({ clearWhenDisabled: false });
+      if (!membershipCheckbox.checked && membershipVerifiedInput) {
+        membershipVerifiedInput.checked = false;
+      }
     });
+  } else {
+    updateMembershipControls({ clearWhenDisabled: true });
   }
 
   const status = document.createElement('p');
