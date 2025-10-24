@@ -31,28 +31,6 @@ function nextPowerOfTwo(value) {
   return 2 ** Math.ceil(Math.log2(value));
 }
 
-function resolveMaxSeeds(drawSize) {
-  if (drawSize >= 64) {
-    return 16;
-  }
-  if (drawSize >= 32) {
-    return 8;
-  }
-  if (drawSize >= 16) {
-    return 4;
-  }
-  if (drawSize >= 8) {
-    return 2;
-  }
-  if (drawSize >= 4) {
-    return 2;
-  }
-  if (drawSize >= 2) {
-    return 1;
-  }
-  return 0;
-}
-
 function generateSeedingPositions(size) {
   if (size <= 1) {
     return [1];
@@ -561,17 +539,18 @@ async function autoGenerateTournamentBracket(req, res) {
     ? nextPowerOfTwo(category.drawSize)
     : nextPowerOfTwo(uniquePlayers.length);
 
-  const maxSeeds = resolveMaxSeeds(drawSize);
   const seedPositions = generateSeedingPositions(drawSize);
+  const maxSeedNumber = seedPositions.length;
   const slotAssignments = new Array(drawSize).fill(null);
   const slotSeedNumbers = new Array(drawSize).fill(undefined);
 
   const seeds = Array.isArray(category.seeds)
     ? category.seeds
         .filter((seed) => seed && uniquePlayers.includes(seed.player.toString()))
-        .filter((seed) => seed.seedNumber <= maxSeeds)
+        .filter((seed) => Number.isFinite(seed.seedNumber) && seed.seedNumber > 0)
+        .filter((seed) => seed.seedNumber <= maxSeedNumber)
         .sort((a, b) => a.seedNumber - b.seedNumber)
-        .slice(0, maxSeeds)
+        .slice(0, maxSeedNumber)
     : [];
 
   seeds.forEach((seed, index) => {
