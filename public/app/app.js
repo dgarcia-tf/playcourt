@@ -2089,6 +2089,33 @@ function setMenuGroupExpanded(menuGroup, expanded) {
   }
 }
 
+function focusFirstSubmenuButton(menuGroup) {
+  const candidate = menuGroup?.submenu?.querySelector(
+    '.menu-button:not([disabled]):not([hidden])'
+  );
+  if (!candidate) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    candidate.focus();
+  });
+}
+
+function expandMenuGroup(menuGroup, { focusFirstItem = false } = {}) {
+  if (!menuGroup) {
+    return;
+  }
+  collapsibleMenuGroups.forEach((otherGroup) => {
+    if (otherGroup !== menuGroup) {
+      setMenuGroupExpanded(otherGroup, false);
+    }
+  });
+  setMenuGroupExpanded(menuGroup, true);
+  if (focusFirstItem) {
+    focusFirstSubmenuButton(menuGroup);
+  }
+}
+
 const collapsibleMenuGroups = appMenu
   ? Array.from(appMenu.querySelectorAll('[data-collapsible="true"]'))
       .map((group) => {
@@ -2206,6 +2233,24 @@ function scheduleCollapseIfInactive(menuGroup) {
 }
 
 function collapseInactiveMenuGroups() {
+  collapsibleMenuGroups.forEach((menuGroup) => {
+    if (!isMenuGroupActive(menuGroup)) {
+      setMenuGroupExpanded(menuGroup, false);
+    }
+  });
+}
+
+function handleOutsideMenuClick(event) {
+  if (!shouldUseHoverNavigation()) {
+    return;
+  }
+  if (event.defaultPrevented) {
+    return;
+  }
+  const menuGroupElement = event.target.closest('.menu-group');
+  if (menuGroupElement) {
+    return;
+  }
   collapsibleMenuGroups.forEach((menuGroup) => {
     if (!isMenuGroupActive(menuGroup)) {
       setMenuGroupExpanded(menuGroup, false);
@@ -6251,6 +6296,19 @@ if (appMenu) {
     const button = event.target.closest('.menu-button');
     if (!button || button.hidden || button.disabled) return;
     const targetId = button.dataset.target;
+    const menuGroup = targetId ? collapsibleMenuGroupsByTarget.get(targetId) : null;
+
+    if (
+      menuGroup &&
+      shouldUseHoverNavigation() &&
+      menuGroup.submenu &&
+      menuGroup.submenu.hidden
+    ) {
+      event.preventDefault();
+      expandMenuGroup(menuGroup, { focusFirstItem: true });
+      return;
+    }
+
     if (button.dataset.submenuToggle === 'true') {
       const menuGroup = collapsibleMenuGroupsByTarget.get(targetId || '');
       const expanded = button.getAttribute('aria-expanded') === 'true';
@@ -6300,6 +6358,8 @@ if (hoverMediaQuery?.addEventListener) {
 if (hoverMediaQuery) {
   handleHoverMediaChange();
 }
+
+document.addEventListener('click', handleOutsideMenuClick);
 
 function updateProfileCard() {
   if (!state.user) return;
