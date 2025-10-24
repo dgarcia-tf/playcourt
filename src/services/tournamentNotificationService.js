@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const { Notification } = require('../models/Notification');
+const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { sendPushNotification } = require('./pushNotificationService');
 
 function formatDateTime(value) {
@@ -21,10 +23,65 @@ function formatDateTime(value) {
   }
 }
 
-async function notifyTournamentMatchScheduled({ tournament, category, match, players = [] }) {
+async function notifyTournamentMatchScheduled({
+  tournament,
+  category,
+  match,
+  players = [],
+  playerType = 'User',
+}) {
   if (!match || !Array.isArray(players) || !players.length) {
     return null;
   }
+
+  const participantIds = players
+    .map((player) => {
+      if (!player) return '';
+      if (typeof player === 'string') return player;
+      if (player instanceof Date) return '';
+      if (typeof player === 'object' && player !== null) {
+        if (player._id) return player._id.toString();
+        if (player.id) return player.id.toString();
+      }
+      try {
+        return player.toString();
+      } catch (error) {
+        return '';
+      }
+    })
+    .filter(Boolean);
+
+  let recipientIds = participantIds;
+
+  if (playerType === 'TournamentDoublesPair') {
+    const objectIds = participantIds
+      .map((id) => {
+        try {
+          return new mongoose.Types.ObjectId(id);
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    const pairs = await TournamentDoublesPair.find({ _id: { $in: objectIds } })
+      .select('players')
+      .lean();
+
+    recipientIds = pairs
+      .flatMap((pair) =>
+        Array.isArray(pair.players)
+          ? pair.players.map((player) => player && player.toString()).filter(Boolean)
+          : []
+      )
+      .filter(Boolean);
+  }
+
+  if (!recipientIds.length) {
+    return null;
+  }
+
+  recipientIds = Array.from(new Set(recipientIds));
 
   const title = `Partido programado - ${tournament?.name || 'Torneo'}`;
   const messageParts = [
@@ -38,7 +95,7 @@ async function notifyTournamentMatchScheduled({ tournament, category, match, pla
     title,
     message: messageParts.join(' · '),
     channel: 'app',
-    recipients: players.map((player) => player.toString()),
+    recipients: recipientIds,
     metadata: {
       tournamentId: tournament?._id?.toString() || tournament?.id?.toString(),
       categoryId: category?._id?.toString() || category?.id?.toString(),

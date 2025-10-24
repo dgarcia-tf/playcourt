@@ -87,8 +87,13 @@ const seedSchema = new mongoose.Schema(
   {
     player: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      refPath: 'playerType',
       required: true,
+    },
+    playerType: {
+      type: String,
+      enum: ['User', 'TournamentDoublesPair'],
+      default: 'User',
     },
     seedNumber: {
       type: Number,

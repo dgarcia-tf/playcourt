@@ -821,6 +821,62 @@ async function listTournamentDoublesPlayers(req, res) {
   return res.json(doublesData);
 }
 
+async function listTournamentCategoryDoublesPairs(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId, categoryId } = req.params;
+
+  let context;
+  try {
+    context = await ensureTournamentAndCategory(tournamentId, categoryId);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
+
+  const { tournament, category } = context;
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (category.matchType !== TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES) {
+    return res.json([]);
+  }
+
+  const pairs = await TournamentDoublesPair.find({
+    tournament: tournamentId,
+    category: categoryId,
+  })
+    .populate('players', 'fullName email gender phone photo birthDate isMember preferredSchedule shirtSize')
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const payload = pairs
+    .map((pair) => {
+      const players = Array.isArray(pair.players)
+        ? pair.players.map((player) => sanitizeUser(player)).filter(Boolean)
+        : [];
+
+      if (players.length !== 2) {
+        return null;
+      }
+
+      return {
+        id: pair._id ? pair._id.toString() : undefined,
+        _id: pair._id,
+        players,
+        createdAt: pair.createdAt || null,
+        createdBy: pair.createdBy ? pair.createdBy.toString() : null,
+      };
+    })
+    .filter(Boolean);
+
+  return res.json(payload);
+}
+
 async function createTournamentDoublesPair(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -1056,6 +1112,7 @@ module.exports = {
   listTournamentEnrollments,
   listTournamentPlayers,
   listTournamentDoublesPlayers,
+  listTournamentCategoryDoublesPairs,
   createTournamentDoublesPair,
   deleteTournamentDoublesPair,
   updateEnrollmentStatus,

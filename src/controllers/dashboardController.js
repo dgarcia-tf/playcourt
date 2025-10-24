@@ -160,12 +160,21 @@ async function getGlobalOverview(req, res) {
         { scheduledAt: null },
       ],
     })
-      .populate('players', 'fullName photo')
+      .populate({
+        path: 'players',
+        select: 'fullName photo email players',
+        options: { strictPopulate: false },
+        populate: {
+          path: 'players',
+          select: 'fullName photo email',
+          options: { strictPopulate: false },
+        },
+      })
       .populate('category', 'name color matchFormat')
       .populate('tournament', 'name status isPrivate')
       .sort({ scheduledAt: 1 })
       .limit(12)
-      .lean(),
+      .lean({ virtuals: true }),
   ]);
 
   const canSeePrivate = canAccessPrivateContent(req.user);
@@ -471,12 +480,21 @@ async function getTournamentDashboard(req, res) {
         { scheduledAt: null },
       ],
     })
-      .populate('players', 'fullName photo')
+      .populate({
+        path: 'players',
+        select: 'fullName photo email players',
+        options: { strictPopulate: false },
+        populate: {
+          path: 'players',
+          select: 'fullName photo email',
+          options: { strictPopulate: false },
+        },
+      })
       .populate('category', 'name color matchFormat')
       .populate('tournament', 'name status isPrivate')
       .sort({ scheduledAt: 1 })
       .limit(20)
-      .lean(),
+      .lean({ virtuals: true }),
     TournamentEnrollment.find({ category: { $in: categoryIds } }).lean(),
   ]);
 

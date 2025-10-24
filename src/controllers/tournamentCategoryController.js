@@ -13,6 +13,7 @@ const {
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
 const { USER_ROLES, userHasRole } = require('../models/User');
+const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { hasCategoryMinimumAgeRequirement } = require('../utils/age');
@@ -71,6 +72,108 @@ function sanitizeDrawRounds(rounds = []) {
         matches,
       };
     });
+}
+
+function normalizeSeedPlayerId(seed) {
+  if (!seed) {
+    return '';
+  }
+
+  const player = seed.player;
+
+  if (!player) {
+    return '';
+  }
+
+  if (typeof player === 'string') {
+    return player;
+  }
+
+  if (player instanceof mongoose.Types.ObjectId) {
+    return player.toString();
+  }
+
+  if (typeof player === 'object') {
+    if (player._id) {
+      return player._id.toString();
+    }
+    if (player.id) {
+      return player.id.toString();
+    }
+  }
+
+  return '';
+}
+
+async function hydrateCategorySeedPlayers(categories) {
+  if (!categories) {
+    return;
+  }
+
+  const docs = Array.isArray(categories) ? categories : [categories];
+  const pairIds = new Set();
+
+  docs.forEach((category) => {
+    const seeds = Array.isArray(category?.seeds) ? category.seeds : [];
+    seeds.forEach((seed) => {
+      const type = seed?.playerType || 'User';
+      if (type === 'TournamentDoublesPair') {
+        const id = normalizeSeedPlayerId(seed);
+        if (id) {
+          pairIds.add(id);
+        }
+      }
+    });
+  });
+
+  if (!pairIds.size) {
+    return;
+  }
+
+  const objectIds = Array.from(pairIds)
+    .map((id) => {
+      try {
+        return new mongoose.Types.ObjectId(id);
+      } catch (error) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  if (!objectIds.length) {
+    return;
+  }
+
+  const pairs = await TournamentDoublesPair.find({ _id: { $in: objectIds } })
+    .populate('players', 'fullName email gender rating photo')
+    .lean();
+
+  const pairMap = new Map(pairs.map((pair) => [pair._id.toString(), pair]));
+
+  docs.forEach((category) => {
+    const seeds = Array.isArray(category?.seeds) ? category.seeds : [];
+    seeds.forEach((seed) => {
+      if ((seed?.playerType || 'User') !== 'TournamentDoublesPair') {
+        return;
+      }
+
+      const id = normalizeSeedPlayerId(seed);
+      if (!id || !pairMap.has(id)) {
+        return;
+      }
+
+      const pair = pairMap.get(id);
+      if (!pair) {
+        return;
+      }
+
+      if (typeof seed.set === 'function') {
+        seed.set('player', pair);
+      } else {
+        seed.player = pair;
+      }
+    });
+  });
 }
 
 async function createTournamentCategory(req, res) {
@@ -143,7 +246,9 @@ async function listTournamentCategories(req, res) {
 
   const categories = await TournamentCategory.find({ tournament: tournamentId })
     .sort({ createdAt: 1 })
-    .populate('seeds.player', 'fullName gender rating photo');
+    .populate('seeds.player', 'fullName gender rating photo players');
+
+  await hydrateCategorySeedPlayers(categories);
 
   const visibleCategories = categories.filter(
     (category) => !shouldHideCategoryForUser(category, req.user)
@@ -170,8 +275,10 @@ async function getTournamentCategory(req, res) {
   }
 
   const category = await TournamentCategory.findOne({ _id: categoryId, tournament: tournamentId })
-    .populate('seeds.player', 'fullName gender rating photo')
+    .populate('seeds.player', 'fullName gender rating photo players')
     .lean();
+
+  await hydrateCategorySeedPlayers(category);
 
   if (!category) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
@@ -302,28 +409,54 @@ async function assignTournamentSeeds(req, res) {
     return res.status(404).json({ message: 'Categoría no encontrada' });
   }
 
-  const enrollments = await TournamentEnrollment.find({
-    tournament: tournamentId,
-    category: categoryId,
-    status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
-  }).select('user');
-  const enrolledUsers = new Set(enrollments.map((enrollment) => enrollment.user.toString()));
+  const isDoubles = category.matchType === TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES;
+
+  let allowedParticipants = new Set();
+
+  if (isDoubles) {
+    const pairs = await TournamentDoublesPair.find({
+      tournament: tournamentId,
+      category: categoryId,
+    })
+      .select('_id')
+      .lean();
+
+    allowedParticipants = new Set(pairs.map((pair) => pair._id.toString()));
+  } else {
+    const enrollments = await TournamentEnrollment.find({
+      tournament: tournamentId,
+      category: categoryId,
+      status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+    }).select('user');
+
+    allowedParticipants = new Set(enrollments.map((enrollment) => enrollment.user.toString()));
+  }
 
   const normalizedSeeds = Array.isArray(seeds)
     ? seeds
         .filter((seed) => seed && typeof seed === 'object')
-        .map((seed) => ({
-          player: new mongoose.Types.ObjectId(seed.player),
-          seedNumber: Number(seed.seedNumber),
-        }))
-        .filter(
-          (seed) =>
-            seed.player &&
-            seed.seedNumber &&
-            Number.isFinite(seed.seedNumber) &&
-            seed.seedNumber > 0 &&
-            enrolledUsers.has(seed.player.toString())
-        )
+        .map((seed) => {
+          try {
+            const playerId = new mongoose.Types.ObjectId(seed.player);
+            return {
+              player: playerId,
+              playerType: isDoubles ? 'TournamentDoublesPair' : 'User',
+              seedNumber: Number(seed.seedNumber),
+            };
+          } catch (error) {
+            return null;
+          }
+        })
+        .filter((seed) => {
+          if (!seed) {
+            return false;
+          }
+          const { player, seedNumber } = seed;
+          if (!player || !seedNumber || !Number.isFinite(seedNumber) || seedNumber <= 0) {
+            return false;
+          }
+          return allowedParticipants.has(player.toString());
+        })
     : [];
 
   const uniqueBySeed = new Map();
@@ -342,7 +475,11 @@ async function assignTournamentSeeds(req, res) {
   );
 
   category.seeds = deduplicatedSeeds;
+  category.markModified('seeds');
   await category.save();
+
+  await category.populate('seeds.player', 'fullName gender rating photo players');
+  await hydrateCategorySeedPlayers(category);
 
   return res.json(category);
 }
