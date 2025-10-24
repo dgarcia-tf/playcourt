@@ -12689,6 +12689,23 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
 }
 
 function createBracketPlayerAvatar(player, placeholderLabel = '') {
+  const avatarGroup = document.createElement('div');
+  avatarGroup.className = 'bracket-player__avatars';
+
+  const members = Array.isArray(player?.players)
+    ? player.players.filter(Boolean)
+    : [];
+
+  if (members.length) {
+    avatarGroup.classList.add('bracket-player__avatars--pair');
+    members.forEach((member) => {
+      const avatar = createAvatarElement(member, { size: 'sm' });
+      avatar.classList.add('bracket-player__avatar');
+      avatarGroup.appendChild(avatar);
+    });
+    return avatarGroup;
+  }
+
   const avatar = document.createElement('div');
   avatar.className = 'player-avatar player-avatar--sm bracket-player__avatar';
 
@@ -12706,7 +12723,9 @@ function createBracketPlayerAvatar(player, placeholderLabel = '') {
     avatar.textContent = initial || '—';
   }
 
-  return avatar;
+  avatarGroup.appendChild(avatar);
+
+  return avatarGroup;
 }
 
 function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {

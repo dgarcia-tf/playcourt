@@ -1866,6 +1866,15 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     repeat(var(--player-sets-count, 1), minmax(2.4rem, 3rem));
 }
 
+.bracket-player__avatars {
+  display: inline-flex;
+  align-items: center;
+}
+
+.bracket-player__avatars--pair {
+  gap: 0.4rem;
+}
+
 .bracket-player__seed {
   font-weight: 700;
   color: var(--accent-strong);
