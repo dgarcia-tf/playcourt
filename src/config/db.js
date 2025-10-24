@@ -7,7 +7,7 @@ function resolveMongoUri(uriFromEnv) {
     return uriFromEnv.trim();
   }
 
-  return 'mongodb://127.0.0.1:27017/liga-tenis';
+  return 'mongodb://127.0.0.1:27017/cn-sanmarcos';
 }
 
 async function connectDatabase(uriFromEnv) {
