@@ -602,6 +602,34 @@ async function autoGenerateTournamentBracket(req, res) {
   const totalRounds = Math.ceil(Math.log2(drawSize));
   const mainMatchesMatrix = [];
   const drawRounds = [];
+  const preAssignedSlotsByRound = Array.from({ length: totalRounds }, (_, roundIndex) => {
+    const matchesInRound = drawSize / 2 ** (roundIndex + 1);
+    return Array.from({ length: matchesInRound }, () => [undefined, undefined]);
+  });
+  const feederInfoByRound = Array.from({ length: totalRounds }, (_, roundIndex) => {
+    const matchesInRound = drawSize / 2 ** (roundIndex + 1);
+    return Array.from({ length: matchesInRound }, () => [false, false]);
+  });
+
+  function resolveNextMatchTarget(startRoundIndex, matchIndex) {
+    let parentIndex = Math.floor(matchIndex / 2);
+    let slot = matchIndex % 2;
+
+    for (let roundPointer = startRoundIndex + 1; roundPointer < mainMatchesMatrix.length; roundPointer += 1) {
+      const roundMatches = mainMatchesMatrix[roundPointer];
+      if (!roundMatches || !roundMatches.length) {
+        break;
+      }
+      const candidate = roundMatches[parentIndex];
+      if (candidate) {
+        return { targetMatch: candidate, slot };
+      }
+      slot = parentIndex % 2;
+      parentIndex = Math.floor(parentIndex / 2);
+    }
+
+    return null;
+  }
 
   for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
     const matchesInRound = drawSize / 2 ** (roundIndex + 1);
@@ -611,6 +639,7 @@ async function autoGenerateTournamentBracket(req, res) {
 
     for (let matchIndex = 0; matchIndex < matchesInRound; matchIndex += 1) {
       const players = [];
+      let shouldCreateMatch = true;
       const seedsForMatch = { seedA: undefined, seedB: undefined };
 
       if (roundIndex === 0) {
@@ -644,8 +673,83 @@ async function autoGenerateTournamentBracket(req, res) {
 
         applyByePlaceholders(drawMatch, hasPlayerA, hasPlayerB);
         roundDrawMatches.push(drawMatch);
+
+        if (players.length < 2) {
+          shouldCreateMatch = false;
+          if (players.length === 1 && roundIndex + 1 < totalRounds) {
+            const parentIndex = Math.floor(matchIndex / 2);
+            const slot = matchIndex % 2;
+            preAssignedSlotsByRound[roundIndex + 1][parentIndex][slot] = players[0];
+          }
+        } else if (roundIndex + 1 < totalRounds) {
+          const parentIndex = Math.floor(matchIndex / 2);
+          const slot = matchIndex % 2;
+          feederInfoByRound[roundIndex + 1][parentIndex][slot] = true;
+        }
       } else {
-        roundDrawMatches.push({ matchNumber: matchIndex + 1 });
+        const assignedSlots =
+          (preAssignedSlotsByRound[roundIndex] && preAssignedSlotsByRound[roundIndex][matchIndex]) ||
+          [];
+        const [playerA, playerB] = assignedSlots;
+        const hasPlayerA = Boolean(playerA);
+        const hasPlayerB = Boolean(playerB);
+        const feeders =
+          (feederInfoByRound[roundIndex] && feederInfoByRound[roundIndex][matchIndex]) ||
+          [false, false];
+        const hasFeederA = Boolean(feeders[0]);
+        const hasFeederB = Boolean(feeders[1]);
+        const potentialA = hasPlayerA || hasFeederA;
+        const potentialB = hasPlayerB || hasFeederB;
+        const potentialCount = (potentialA ? 1 : 0) + (potentialB ? 1 : 0);
+        shouldCreateMatch = potentialCount >= 2;
+        if (hasPlayerA) {
+          players.push(playerA);
+        }
+        if (hasPlayerB) {
+          players.push(playerB);
+        }
+
+        const drawMatch = {
+          matchNumber: matchIndex + 1,
+        };
+
+        if (hasPlayerA) {
+          drawMatch.playerA = new mongoose.Types.ObjectId(playerA);
+        }
+        if (hasPlayerB) {
+          drawMatch.playerB = new mongoose.Types.ObjectId(playerB);
+        }
+
+        applyByePlaceholders(drawMatch, hasPlayerA, hasPlayerB);
+        roundDrawMatches.push(drawMatch);
+
+        if (!shouldCreateMatch && roundIndex + 1 < totalRounds) {
+          const parentIndex = Math.floor(matchIndex / 2);
+          const slot = matchIndex % 2;
+
+          if (potentialA && !potentialB) {
+            if (hasPlayerA) {
+              preAssignedSlotsByRound[roundIndex + 1][parentIndex][slot] = playerA;
+            } else if (hasFeederA) {
+              feederInfoByRound[roundIndex + 1][parentIndex][slot] = true;
+            }
+          } else if (potentialB && !potentialA) {
+            if (hasPlayerB) {
+              preAssignedSlotsByRound[roundIndex + 1][parentIndex][slot] = playerB;
+            } else if (hasFeederB) {
+              feederInfoByRound[roundIndex + 1][parentIndex][slot] = true;
+            }
+          }
+        } else if (shouldCreateMatch && roundIndex + 1 < totalRounds) {
+          const parentIndex = Math.floor(matchIndex / 2);
+          const slot = matchIndex % 2;
+          feederInfoByRound[roundIndex + 1][parentIndex][slot] = true;
+        }
+      }
+
+      if (!shouldCreateMatch) {
+        roundMatches.push(null);
+        continue;
       }
 
       const matchId = new mongoose.Types.ObjectId();
@@ -677,17 +781,25 @@ async function autoGenerateTournamentBracket(req, res) {
 
   for (let roundIndex = 0; roundIndex < mainMatchesMatrix.length - 1; roundIndex += 1) {
     const currentRound = mainMatchesMatrix[roundIndex];
-    const nextRound = mainMatchesMatrix[roundIndex + 1];
 
     currentRound.forEach((match, index) => {
-      const targetMatch = nextRound[Math.floor(index / 2)];
+      if (!match) {
+        return;
+      }
+
+      const targetInfo = resolveNextMatchTarget(roundIndex, index);
+      if (!targetInfo) {
+        return;
+      }
+
+      const { targetMatch, slot } = targetInfo;
       match.nextMatch = targetMatch._id;
-      match.nextMatchSlot = index % 2;
+      match.nextMatchSlot = slot;
       targetMatch.previousMatches.push(match._id);
     });
   }
 
-  const firstRoundMatches = mainMatchesMatrix[0];
+  const firstRoundMatches = mainMatchesMatrix[0].filter(Boolean);
   const loserDrawSize = drawSize / 2;
   const consolationPayloads = [];
   const consolationDrawRounds = [];
@@ -754,7 +866,8 @@ async function autoGenerateTournamentBracket(req, res) {
     consolationPayloads.push(...consolationMatrix.flat());
   }
 
-  const payloads = [...mainMatchesMatrix.flat(), ...consolationPayloads];
+  const mainPayloads = mainMatchesMatrix.flat().filter(Boolean);
+  const payloads = [...mainPayloads, ...consolationPayloads];
 
   await TournamentMatch.deleteMany({ tournament: tournamentId, category: categoryId });
   await TournamentMatch.insertMany(payloads);
