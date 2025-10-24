@@ -196,10 +196,6 @@ function populateTournamentMatchPlayers(query) {
   return query.populate({
     path: 'players',
     select: 'fullName gender rating photo email players',
-    populate: {
-      path: 'players',
-      select: 'fullName gender rating photo email',
-    },
   });
 }
 
@@ -240,6 +236,78 @@ function formatMatchPlayers(match) {
   });
 }
 
+async function hydrateMatchPlayerDetails(matches) {
+  if (!matches) {
+    return;
+  }
+
+  const docs = Array.isArray(matches) ? matches : [matches];
+  const pairIds = new Set();
+
+  docs.forEach((match) => {
+    if (!match || getMatchPlayerType(match) !== 'TournamentDoublesPair') {
+      return;
+    }
+    const players = Array.isArray(match.players) ? match.players : [];
+    players.forEach((player) => {
+      const id = normalizeParticipantId(player);
+      if (id) {
+        pairIds.add(id);
+      }
+    });
+  });
+
+  const objectIds = Array.from(pairIds)
+    .map((id) => {
+      try {
+        return new mongoose.Types.ObjectId(id);
+      } catch (error) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  let pairMap;
+  if (objectIds.length) {
+    const pairs = await TournamentDoublesPair.find({ _id: { $in: objectIds } })
+      .populate({
+        path: 'players',
+        select: 'fullName gender rating photo email',
+      })
+      .exec();
+
+    pairMap = new Map();
+    pairs.forEach((pair) => {
+      pairMap.set(pair._id.toString(), pair);
+    });
+  }
+
+  docs.forEach((match) => {
+    if (!match) {
+      return;
+    }
+
+    if (getMatchPlayerType(match) === 'TournamentDoublesPair' && pairMap) {
+      const players = Array.isArray(match.players) ? match.players : [];
+      const resolvedPlayers = players.map((player) => {
+        const id = normalizeParticipantId(player);
+        if (id && pairMap.has(id)) {
+          return pairMap.get(id);
+        }
+        return player;
+      });
+
+      if (typeof match.set === 'function') {
+        match.set('players', resolvedPlayers);
+      } else {
+        match.players = resolvedPlayers;
+      }
+    }
+
+    formatMatchPlayers(match);
+  });
+}
+
 async function populateMatchPlayers(match) {
   if (!match) {
     return;
@@ -248,12 +316,9 @@ async function populateMatchPlayers(match) {
   await match.populate({
     path: 'players',
     select: 'fullName gender rating photo email players',
-    populate: {
-      path: 'players',
-      select: 'fullName gender rating photo email',
-    },
   });
-  formatMatchPlayers(match);
+
+  await hydrateMatchPlayerDetails(match);
 }
 
 async function ensureTournamentContext(tournamentId, categoryId) {
@@ -302,7 +367,7 @@ async function listTournamentMatches(req, res) {
   );
 
   const matches = await matchesQuery;
-  matches.forEach((match) => formatMatchPlayers(match));
+  await hydrateMatchPlayerDetails(matches);
 
   const priority = {
     [TOURNAMENT_BRACKETS.MAIN]: 0,
@@ -502,7 +567,7 @@ async function generateTournamentMatches(req, res) {
     })
   );
   const populatedMatches = await populatedMatchesQuery;
-  populatedMatches.forEach((match) => formatMatchPlayers(match));
+  await hydrateMatchPlayerDetails(populatedMatches);
 
   return res.status(201).json(populatedMatches);
 }
@@ -1098,7 +1163,7 @@ async function autoGenerateTournamentBracket(req, res) {
     })
   );
   const matches = await matchesQuery;
-  matches.forEach((match) => formatMatchPlayers(match));
+  await hydrateMatchPlayerDetails(matches);
 
   return res.status(201).json(matches);
 }
@@ -1280,7 +1345,7 @@ async function recalculateTournamentBracket(req, res) {
     }).sort({ roundOrder: 1, matchNumber: 1, createdAt: 1 })
   );
   const populatedMatches = await populatedMatchesQuery;
-  populatedMatches.forEach((matchItem) => formatMatchPlayers(matchItem));
+  await hydrateMatchPlayerDetails(populatedMatches);
 
   return res.json(populatedMatches);
 }
