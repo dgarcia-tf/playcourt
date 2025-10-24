@@ -1875,6 +1875,7 @@ const tournamentBracketStatus = document.getElementById('tournament-bracket-stat
 const tournamentBracketSaveSeedsButton = document.getElementById('tournament-bracket-save-seeds');
 const tournamentBracketGenerateButton = document.getElementById('tournament-bracket-generate');
 const tournamentBracketRecalculateButton = document.getElementById('tournament-bracket-recalculate');
+const tournamentBracketPrintButton = document.getElementById('tournament-bracket-print');
 const topbarLogo = document.getElementById('topbar-logo');
 const clubNameHeading = document.getElementById('club-name-heading');
 const clubSloganHeading = document.getElementById('club-slogan');
@@ -12838,6 +12839,189 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map(), dr
   }
 
   return grid;
+}
+
+function buildPrintableBracketSvg({
+  rounds = [4, 2, 1],
+  matchWidth = 180,
+  matchHeight = 50,
+  horizontalSpacing = 140,
+  verticalSpacing = 50,
+  margin = 32,
+  championTailLength = 100,
+} = {}) {
+  if (!Array.isArray(rounds) || rounds.length === 0) {
+    return '';
+  }
+
+  const normalizedRounds = rounds.map((count) => Math.max(1, Number(count) || 1));
+  const totalHeight =
+    normalizedRounds[0] * matchHeight + Math.max(0, normalizedRounds[0] - 1) * verticalSpacing;
+  const svgHeight = totalHeight + margin * 2;
+
+  const roundPositions = normalizedRounds.map((_, index) => {
+    return margin + index * (matchWidth + horizontalSpacing);
+  });
+
+  const centersByRound = [];
+  const firstRoundCenters = [];
+  for (let index = 0; index < normalizedRounds[0]; index += 1) {
+    const top = margin + index * (matchHeight + verticalSpacing);
+    firstRoundCenters.push(top + matchHeight / 2);
+  }
+  centersByRound.push(firstRoundCenters);
+
+  for (let roundIndex = 1; roundIndex < normalizedRounds.length; roundIndex += 1) {
+    const previousCenters = centersByRound[roundIndex - 1];
+    const roundMatchCount = normalizedRounds[roundIndex];
+    const currentCenters = [];
+    for (let matchIndex = 0; matchIndex < roundMatchCount; matchIndex += 1) {
+      const firstChildIndex = matchIndex * 2;
+      const secondChildIndex = Math.min(firstChildIndex + 1, previousCenters.length - 1);
+      const center = (previousCenters[firstChildIndex] + previousCenters[secondChildIndex]) / 2;
+      currentCenters.push(center);
+    }
+    centersByRound.push(currentCenters);
+  }
+
+  const shapes = [];
+
+  for (let roundIndex = 0; roundIndex < normalizedRounds.length; roundIndex += 1) {
+    const centers = centersByRound[roundIndex];
+    const x = roundPositions[roundIndex];
+    centers.forEach((centerY) => {
+      const top = centerY - matchHeight / 2;
+      shapes.push(
+        `<rect x="${x.toFixed(2)}" y="${top.toFixed(2)}" width="${matchWidth}" height="${matchHeight}" rx="8" ry="8" fill="#ffffff" stroke="#d4d4d8" stroke-width="2" />`
+      );
+    });
+
+    if (roundIndex < normalizedRounds.length - 1) {
+      const connectorMidX = x + matchWidth + horizontalSpacing / 2;
+      const nextRoundX = roundPositions[roundIndex + 1];
+      centers.forEach((centerY) => {
+        shapes.push(
+          `<line x1="${(x + matchWidth).toFixed(2)}" y1="${centerY.toFixed(2)}" x2="${connectorMidX.toFixed(2)}" y2="${centerY.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
+        );
+      });
+
+      for (let matchIndex = 0; matchIndex < centers.length; matchIndex += 2) {
+        const firstCenter = centers[matchIndex];
+        const secondCenter = centers[Math.min(matchIndex + 1, centers.length - 1)];
+        const midY = (firstCenter + secondCenter) / 2;
+        shapes.push(
+          `<line x1="${connectorMidX.toFixed(2)}" y1="${firstCenter.toFixed(2)}" x2="${connectorMidX.toFixed(2)}" y2="${secondCenter.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
+        );
+        shapes.push(
+          `<line x1="${connectorMidX.toFixed(2)}" y1="${midY.toFixed(2)}" x2="${nextRoundX.toFixed(2)}" y2="${midY.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
+        );
+      }
+    }
+  }
+
+  const finalRoundIndex = normalizedRounds.length - 1;
+  const finalRoundCenters = centersByRound[finalRoundIndex];
+  const finalRoundX = roundPositions[finalRoundIndex];
+  const championLineStartX = finalRoundX + matchWidth;
+  const championLineEndX = championLineStartX + championTailLength;
+  const championCenterY = finalRoundCenters[0] || svgHeight / 2;
+
+  shapes.push(
+    `<line x1="${championLineStartX.toFixed(2)}" y1="${championCenterY.toFixed(2)}" x2="${championLineEndX.toFixed(2)}" y2="${championCenterY.toFixed(2)}" stroke="#d4d4d8" stroke-width="2" />`
+  );
+
+  shapes.push(
+    `<text x="${(championLineEndX + 16).toFixed(2)}" y="${(championCenterY + 6).toFixed(2)}" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="18" fill="#52525b">Campeón</text>`
+  );
+
+  const svgWidth = championLineEndX + margin + 120;
+
+  return `
+    <svg width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cuadro de torneo">
+      <rect x="0" y="0" width="${svgWidth}" height="${svgHeight}" fill="#f8fafc" />
+      ${shapes.join('\n      ')}
+    </svg>
+  `;
+}
+
+function openTournamentBracketPrintPreview() {
+  const svgMarkup = buildPrintableBracketSvg();
+  const html = `<!DOCTYPE html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8" />
+        <title>Cuadro de torneo</title>
+        <style>
+          :root {
+            color-scheme: light;
+          }
+          body {
+            margin: 0;
+            font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+            background: #f4f4f5;
+            color: #18181b;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .print-container {
+            background: #ffffff;
+            padding: 32px 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+            max-width: 900px;
+            width: 100%;
+          }
+          h1 {
+            margin: 0 0 32px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 28px;
+          }
+          svg {
+            width: 100%;
+            height: auto;
+            display: block;
+          }
+          @media print {
+            body {
+              background: #ffffff;
+            }
+            .print-container {
+              box-shadow: none;
+              border-radius: 0;
+              padding: 24px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-container">
+          <h1>Cuadro de torneo</h1>
+          ${svgMarkup}
+        </div>
+        <script>
+          window.addEventListener('load', () => {
+            window.focus();
+            window.print();
+          });
+          window.addEventListener('afterprint', () => {
+            window.close();
+          });
+        </script>
+      </body>
+    </html>`;
+
+  const printWindow = window.open('', '_blank', 'width=900,height=700');
+  if (!printWindow) {
+    alert('No fue posible abrir la vista de impresión. Verifica que el bloqueo de ventanas emergentes esté desactivado.');
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
 }
 
 function createTournamentBracketSection({
@@ -27473,6 +27657,10 @@ tournamentBracketGenerateButton?.addEventListener('click', async () => {
     tournamentBracketGenerateButton.disabled = false;
     updateTournamentActionAvailability();
   }
+});
+
+tournamentBracketPrintButton?.addEventListener('click', () => {
+  openTournamentBracketPrintPreview();
 });
 
 tournamentBracketRecalculateButton?.addEventListener('click', async () => {
