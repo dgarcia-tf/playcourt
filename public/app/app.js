@@ -2024,6 +2024,7 @@ let pendingTournamentEnrollmentKey = '';
 let pendingTournamentMatchesKey = '';
 let pendingTournamentBracketKey = '';
 let pendingTournamentDoublesId = '';
+let html2PdfLoadPromise = null;
 const generalChatMessagesList = document.getElementById('general-chat-messages');
 const generalChatForm = document.getElementById('general-chat-form');
 const generalChatInput = document.getElementById('general-chat-input');
@@ -2691,30 +2692,35 @@ function updateTournamentBracketExportControls({
   const mainOption = tournamentBracketPdfTypeSelect.querySelector('option[value="principal"]');
   const consolationOption = tournamentBracketPdfTypeSelect.querySelector('option[value="consolacion"]');
 
+  const allowSampleExport = hasSelection && !hasMain && !hasConsolation;
+
   if (mainOption) {
-    mainOption.disabled = !hasMain;
+    mainOption.disabled = !hasMain && !allowSampleExport;
   }
   if (consolationOption) {
     consolationOption.disabled = !hasConsolation;
   }
 
-  let disableControls =
-    !hasSelection || loading || hasError || (!hasMain && !hasConsolation);
+  let disableControls = !hasSelection || loading || hasError;
 
   if (!disableControls) {
-    const currentValue = tournamentBracketPdfTypeSelect.value;
-    if (currentValue === 'principal' && !hasMain) {
-      tournamentBracketPdfTypeSelect.value = hasConsolation ? 'consolacion' : '';
-    } else if (currentValue === 'consolacion' && !hasConsolation) {
-      tournamentBracketPdfTypeSelect.value = hasMain ? 'principal' : '';
-    }
+    if (allowSampleExport) {
+      tournamentBracketPdfTypeSelect.value = 'principal';
+    } else {
+      const currentValue = tournamentBracketPdfTypeSelect.value;
+      if (currentValue === 'principal' && !hasMain) {
+        tournamentBracketPdfTypeSelect.value = hasConsolation ? 'consolacion' : '';
+      } else if (currentValue === 'consolacion' && !hasConsolation) {
+        tournamentBracketPdfTypeSelect.value = hasMain ? 'principal' : '';
+      }
 
-    if (!tournamentBracketPdfTypeSelect.value) {
-      tournamentBracketPdfTypeSelect.value = hasMain
-        ? 'principal'
-        : hasConsolation
-        ? 'consolacion'
-        : '';
+      if (!tournamentBracketPdfTypeSelect.value) {
+        tournamentBracketPdfTypeSelect.value = hasMain
+          ? 'principal'
+          : hasConsolation
+          ? 'consolacion'
+          : '';
+      }
     }
 
     disableControls = !tournamentBracketPdfTypeSelect.value;
@@ -2724,6 +2730,317 @@ function updateTournamentBracketExportControls({
 
   tournamentBracketPdfTypeSelect.disabled = disableControls;
   tournamentBracketExportButton.disabled = disableControls;
+}
+
+function resolveHtml2PdfGenerator() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  if (typeof window.html2pdf === 'function') {
+    return window.html2pdf;
+  }
+
+  if (window.html2pdf && typeof window.html2pdf === 'object') {
+    if (typeof window.html2pdf.default === 'function') {
+      return window.html2pdf.default;
+    }
+  }
+
+  return null;
+}
+
+function loadHtml2PdfGenerator() {
+  if (typeof window === 'undefined') {
+    return Promise.resolve(null);
+  }
+
+  const existing = resolveHtml2PdfGenerator();
+  if (typeof existing === 'function') {
+    return Promise.resolve(existing);
+  }
+
+  if (html2PdfLoadPromise) {
+    return html2PdfLoadPromise;
+  }
+
+  html2PdfLoadPromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = './assets/html2pdf.bundle.min.js';
+    script.async = true;
+    script.onload = () => {
+      resolve(resolveHtml2PdfGenerator());
+    };
+    script.onerror = () => {
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  }).finally(() => {
+    html2PdfLoadPromise = null;
+  });
+
+  return html2PdfLoadPromise;
+}
+
+async function ensureHtml2PdfGenerator() {
+  const immediate = resolveHtml2PdfGenerator();
+  if (typeof immediate === 'function') {
+    return immediate;
+  }
+
+  const loaded = await loadHtml2PdfGenerator();
+  if (typeof loaded === 'function') {
+    return loaded;
+  }
+
+  return null;
+}
+
+function prepareBracketExportView(view) {
+  if (!view) {
+    return null;
+  }
+
+  view.classList.add('printable-bracket-view');
+
+  view.querySelectorAll('[hidden]').forEach((element) => {
+    element.removeAttribute('hidden');
+  });
+
+  view.querySelectorAll('.bracket-match__actions').forEach((element) => {
+    element.remove();
+  });
+
+  view.querySelectorAll('.player-avatar img').forEach((image) => {
+    const avatar = image.parentElement;
+    if (!avatar) {
+      return;
+    }
+
+    const fallbackSource = image.getAttribute('alt') || avatar.getAttribute('data-initial') || '';
+    const initial = fallbackSource.trim().charAt(0).toUpperCase() || '—';
+
+    avatar.innerHTML = '';
+    avatar.classList.add('player-avatar--placeholder');
+    avatar.textContent = initial;
+  });
+
+  return view;
+}
+
+function buildSampleBracketExport(bracketType = 'principal') {
+  const tournamentName = 'Copa San Marcos 2025';
+  const categoryName = 'Individual Masculino - Primera';
+  const mainLabel = 'Cuadro principal';
+  const consolationLabel = 'Cuadro de consolación';
+
+  const players = {
+    zverev: { id: 'sample-player-zverev', fullName: 'Alexander Zverev' },
+    rublev: { id: 'sample-player-rublev', fullName: 'Andrey Rublev' },
+    shelton: { id: 'sample-player-shelton', fullName: 'Ben Shelton' },
+    sinner: { id: 'sample-player-sinner', fullName: 'Jannik Sinner' },
+    alcaraz: { id: 'sample-player-alcaraz', fullName: 'Carlos Alcaraz' },
+    musetti: { id: 'sample-player-musetti', fullName: 'Lorenzo Musetti' },
+    djokovic: { id: 'sample-player-djokovic', fullName: 'Novak Djokovic' },
+    garcia: { id: 'sample-player-garcia', fullName: 'David Garcia Gonzalez' },
+  };
+
+  const seedEntries = [
+    ['zverev', 1],
+    ['alcaraz', 2],
+    ['sinner', 3],
+    ['djokovic', 4],
+    ['garcia', 5],
+    ['shelton', 6],
+    ['musetti', 7],
+    ['rublev', 8],
+  ];
+
+  const seedByPlayer = new Map(
+    seedEntries
+      .map(([key, seed]) => {
+        const player = players[key];
+        if (!player) {
+          return null;
+        }
+        return [player.id, seed];
+      })
+      .filter(Boolean)
+  );
+
+  const finalLabel = bracketType === 'consolacion' ? consolationLabel : mainLabel;
+
+  const mainMatches = [
+    {
+      matchNumber: 1,
+      roundOrder: 1,
+      status: 'programado',
+      scheduledAt: '2025-05-25T16:00:00Z',
+      court: 'Pista central',
+      players: ['zverev', 'rublev'],
+    },
+    {
+      matchNumber: 2,
+      roundOrder: 1,
+      status: 'pendiente',
+      scheduledAt: '2025-05-25T18:00:00Z',
+      court: 'Pista 2',
+      players: ['shelton', 'sinner'],
+    },
+    {
+      matchNumber: 3,
+      roundOrder: 1,
+      status: 'programado',
+      scheduledAt: '2025-05-26T16:00:00Z',
+      court: 'Pista central',
+      players: ['alcaraz', 'musetti'],
+    },
+    {
+      matchNumber: 4,
+      roundOrder: 1,
+      status: 'pendiente',
+      scheduledAt: '2025-05-26T18:30:00Z',
+      court: 'Pista 1',
+      players: ['djokovic', 'garcia'],
+    },
+    {
+      matchNumber: 5,
+      roundOrder: 2,
+      status: 'programado',
+      scheduledAt: '2025-05-27T19:00:00Z',
+      court: 'Pista central',
+      players: ['zverev', 'sinner'],
+      placeholderA: 'Ganador Partido 1',
+      placeholderB: 'Ganador Partido 2',
+    },
+    {
+      matchNumber: 6,
+      roundOrder: 2,
+      status: 'programado',
+      scheduledAt: '2025-05-27T21:00:00Z',
+      court: 'Pista central',
+      players: ['alcaraz', 'djokovic'],
+      placeholderA: 'Ganador Partido 3',
+      placeholderB: 'Ganador Partido 4',
+    },
+    {
+      matchNumber: 7,
+      roundOrder: 3,
+      status: 'completado',
+      scheduledAt: '2025-05-29T20:30:00Z',
+      court: 'Estadio principal',
+      players: ['zverev', 'djokovic'],
+      placeholderA: 'Ganador Semifinal 1',
+      placeholderB: 'Ganador Semifinal 2',
+      resultStatus: 'confirmado',
+      result: {
+        winner: players.zverev.id,
+        sets: [
+          {
+            number: 1,
+            scores: {
+              [players.zverev.id]: 6,
+              [players.djokovic.id]: 4,
+            },
+          },
+          {
+            number: 2,
+            scores: {
+              [players.zverev.id]: 4,
+              [players.djokovic.id]: 6,
+            },
+          },
+          {
+            number: 3,
+            tieBreak: true,
+            scores: {
+              [players.zverev.id]: 10,
+              [players.djokovic.id]: 8,
+            },
+          },
+        ],
+        notes: 'Zverev gana en super tie-break.',
+      },
+    },
+  ];
+
+  const consolationMatches = [
+    {
+      matchNumber: 1,
+      roundOrder: 1,
+      status: 'programado',
+      scheduledAt: '2025-05-27T16:00:00Z',
+      court: 'Pista 4',
+      players: ['rublev', 'shelton'],
+    },
+    {
+      matchNumber: 2,
+      roundOrder: 1,
+      status: 'programado',
+      scheduledAt: '2025-05-27T17:30:00Z',
+      court: 'Pista 4',
+      players: ['musetti', 'garcia'],
+    },
+    {
+      matchNumber: 3,
+      roundOrder: 2,
+      status: 'completado',
+      scheduledAt: '2025-05-28T19:00:00Z',
+      court: 'Pista 3',
+      players: ['rublev', 'musetti'],
+      placeholderA: 'Ganador Partido 1',
+      placeholderB: 'Ganador Partido 2',
+      resultStatus: 'confirmado',
+      result: {
+        winner: players.rublev.id,
+        sets: [
+          {
+            number: 1,
+            scores: {
+              [players.rublev.id]: 6,
+              [players.musetti.id]: 2,
+            },
+          },
+          {
+            number: 2,
+            scores: {
+              [players.rublev.id]: 7,
+              [players.musetti.id]: 5,
+            },
+          },
+        ],
+        notes: 'Rublev conquista la consolación.',
+      },
+    },
+  ];
+
+  const rawMatches = bracketType === 'consolacion' ? consolationMatches : mainMatches;
+
+  const matches = rawMatches.map((match) => ({
+    ...match,
+    players: Array.isArray(match.players)
+      ? match.players.map((key) => players[key] || null)
+      : [],
+  }));
+
+  const view = document.createElement('div');
+  view.className = 'tournament-bracket-view printable-bracket-view';
+
+  const section = createTournamentBracketSection({
+    title: finalLabel,
+    matches,
+    seedByPlayer,
+    drawSize: bracketType === 'consolacion' ? 4 : 8,
+  });
+
+  view.appendChild(section);
+
+  return {
+    bracketLabel: finalLabel,
+    categoryName,
+    tournamentName,
+    view,
+  };
 }
 
 async function handleTournamentBracketExport() {
@@ -2749,62 +3066,57 @@ async function handleTournamentBracketExport() {
     return;
   }
 
-  const hasBracketContent = sourceView.querySelector('.tournament-bracket-section');
-  if (!hasBracketContent) {
-    showGlobalMessage('El cuadro seleccionado no tiene información para exportar.', 'error');
-    return;
-  }
-
   const tournamentId = state.selectedBracketTournamentId;
   const categoryId = state.selectedBracketCategoryId;
-  if (!tournamentId || !categoryId) {
+  const hasBracketContent = Boolean(sourceView.querySelector('.tournament-bracket-section'));
+  const useSampleBracket = !hasBracketContent;
+
+  if (!useSampleBracket && (!tournamentId || !categoryId)) {
     showGlobalMessage('Selecciona un torneo y una categoría válidos.', 'error');
     return;
   }
 
-  const tournament = getTournamentById(tournamentId) || {};
-  const category = getTournamentCategoryById(tournamentId, categoryId) || {};
-  const bracketLabel = isConsolation ? 'Cuadro de consolación' : 'Cuadro principal';
-  const tournamentName = typeof tournament.name === 'string' ? tournament.name : '';
-  const categoryName =
-    typeof category.menuTitle === 'string' && category.menuTitle
-      ? category.menuTitle
-      : typeof category.name === 'string'
-      ? category.name
-      : '';
+  let bracketLabel = isConsolation ? 'Cuadro de consolación' : 'Cuadro principal';
+  let tournamentName = '';
+  let categoryName = '';
+  let exportView;
 
-  const clonedView = sourceView.cloneNode(true);
-  clonedView.removeAttribute('id');
-  clonedView.classList.add('printable-bracket-view');
-  clonedView.querySelectorAll('[hidden]').forEach((element) => {
-    element.removeAttribute('hidden');
-  });
-  clonedView.querySelectorAll('.bracket-match__actions').forEach((element) => {
-    element.remove();
-  });
+  if (useSampleBracket) {
+    const sampleExport = buildSampleBracketExport(bracketType);
+    if (!sampleExport || !sampleExport.view) {
+      showGlobalMessage('No fue posible preparar un cuadro de ejemplo para exportar.', 'error');
+      return;
+    }
+    exportView = sampleExport.view;
+    bracketLabel = sampleExport.bracketLabel || bracketLabel;
+    tournamentName = sampleExport.tournamentName || tournamentName;
+    categoryName = sampleExport.categoryName || categoryName;
+  } else {
+    const tournament = getTournamentById(tournamentId) || {};
+    const category = getTournamentCategoryById(tournamentId, categoryId) || {};
+    tournamentName = typeof tournament.name === 'string' ? tournament.name : '';
+    categoryName =
+      typeof category.menuTitle === 'string' && category.menuTitle
+        ? category.menuTitle
+        : typeof category.name === 'string'
+        ? category.name
+        : '';
+    exportView = sourceView.cloneNode(true);
+    exportView.removeAttribute('id');
+  }
 
-  const titleParts = [bracketLabel, categoryName, tournamentName].filter(Boolean);
-  const safeBracketLabel = escapeHtml(bracketLabel);
-  const safeCategory = escapeHtml(categoryName);
-  const safeTournament = escapeHtml(tournamentName);
+  prepareBracketExportView(exportView);
 
-  const pdfGenerator = typeof window !== 'undefined' ? window.html2pdf : null;
+  const pdfGenerator = await ensureHtml2PdfGenerator();
   if (typeof pdfGenerator !== 'function') {
     showGlobalMessage('No fue posible generar el PDF del cuadro.', 'error');
     return;
   }
 
-  const exportContainer = document.createElement('div');
-  exportContainer.className = 'print-bracket print-bracket--export';
-  exportContainer.innerHTML = `
-    <header class="print-bracket__header">
-      <h1 class="print-bracket__title">${safeBracketLabel}</h1>
-      <p class="print-bracket__subtitle">
-        ${safeCategory}${safeCategory && safeTournament ? ' · ' : ''}${safeTournament}
-      </p>
-    </header>
-  `;
-  exportContainer.appendChild(clonedView);
+  const titleParts = [bracketLabel, categoryName, tournamentName].filter(Boolean);
+  const safeBracketLabel = escapeHtml(bracketLabel);
+  const safeCategory = escapeHtml(categoryName);
+  const safeTournament = escapeHtml(tournamentName);
 
   const slugify = (value) =>
     value
@@ -2828,6 +3140,18 @@ async function handleTournamentBracketExport() {
   tournamentBracketExportButton.disabled = true;
   tournamentBracketExportButton.setAttribute('aria-busy', 'true');
   tournamentBracketExportButton.textContent = 'Generando…';
+
+  const exportContainer = document.createElement('div');
+  exportContainer.className = 'print-bracket print-bracket--export';
+  exportContainer.innerHTML = `
+    <header class="print-bracket__header">
+      <h1 class="print-bracket__title">${safeBracketLabel}</h1>
+      <p class="print-bracket__subtitle">
+        ${safeCategory}${safeCategory && safeTournament ? ' · ' : ''}${safeTournament}
+      </p>
+    </header>
+  `;
+  exportContainer.appendChild(exportView);
 
   document.body.appendChild(exportContainer);
 
@@ -2862,6 +3186,9 @@ async function handleTournamentBracketExport() {
 
   try {
     await pdfGenerator().set(pdfOptions).from(exportContainer).save();
+    if (useSampleBracket) {
+      showGlobalMessage('Se descargó un ejemplo de cuadro en PDF.', 'info');
+    }
   } catch (error) {
     console.error('Error generating bracket PDF', error);
     showGlobalMessage('No fue posible generar el PDF del cuadro.', 'error');
