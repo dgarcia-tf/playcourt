@@ -6,6 +6,7 @@
     <title>Liga Tennis · Panel web</title>
     <link rel="icon" type="image/png" href="assets/club-logo.png" />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
   </head>
   <body>
     <main class="layout">
@@ -1081,6 +1082,14 @@
                         Consulta el avance por rondas y los resultados registrados.
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      class="ghost"
+                      id="tournament-bracket-print"
+                      disabled
+                    >
+                      Imprimir cuadro
+                    </button>
                   </div>
                   <div class="tournament-bracket-view" id="tournament-bracket-view">
                     <p class="empty-state" id="tournament-bracket-empty">

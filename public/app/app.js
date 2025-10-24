@@ -1691,6 +1691,7 @@ const state = {
   },
   tournamentMatches: new Map(),
   tournamentBracketMatches: new Map(),
+  tournamentBracketHasContent: false,
   tournamentBracketAlignmentCallbacks: new Set(),
   tournamentBracketResizeHandler: null,
   tournamentPayments: new Map(),
@@ -1866,6 +1867,7 @@ const tournamentBracketCategorySelect = document.getElementById('tournament-brac
 const tournamentBracketSizeSelect = document.getElementById('tournament-bracket-size');
 const tournamentBracketSizeWrapper = document.getElementById('tournament-bracket-size-wrapper');
 const tournamentBracketSeedsContainer = document.getElementById('tournament-bracket-seeds');
+const tournamentBracketViewCard = document.getElementById('tournament-bracket-view-card');
 const tournamentBracketView = document.getElementById('tournament-bracket-view');
 const tournamentBracketEmpty = document.getElementById('tournament-bracket-empty');
 const tournamentConsolationViewCard = document.getElementById('tournament-consolation-view-card');
@@ -1875,6 +1877,7 @@ const tournamentBracketStatus = document.getElementById('tournament-bracket-stat
 const tournamentBracketSaveSeedsButton = document.getElementById('tournament-bracket-save-seeds');
 const tournamentBracketGenerateButton = document.getElementById('tournament-bracket-generate');
 const tournamentBracketRecalculateButton = document.getElementById('tournament-bracket-recalculate');
+const tournamentBracketPrintButton = document.getElementById('tournament-bracket-print');
 const topbarLogo = document.getElementById('topbar-logo');
 const clubNameHeading = document.getElementById('club-name-heading');
 const clubSloganHeading = document.getElementById('club-slogan');
@@ -2521,6 +2524,11 @@ function updateTournamentActionAvailability() {
 
   if (tournamentBracketRecalculateButton) {
     tournamentBracketRecalculateButton.disabled = !isAdmin() || !hasBracketSelection;
+  }
+
+  if (tournamentBracketPrintButton) {
+    const hasPrintableBracket = hasBracketSelection && state.tournamentBracketHasContent;
+    tournamentBracketPrintButton.disabled = !hasPrintableBracket;
   }
 }
 
@@ -12874,6 +12882,8 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     state.tournamentBracketAlignmentCallbacks.clear();
   }
 
+  state.tournamentBracketHasContent = false;
+
   const hideConsolationCard = (message) => {
     if (tournamentConsolationEmpty) {
       tournamentConsolationEmpty.hidden = false;
@@ -12904,6 +12914,7 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent =
       'Selecciona una categoría para visualizar su cuadro de juego.';
+    updateTournamentActionAvailability();
     return;
   }
 
@@ -12911,6 +12922,7 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = 'Cargando cuadro de juego...';
     showConsolationMessage('Cargando cuadro de consolación...');
+    updateTournamentActionAvailability();
     return;
   }
 
@@ -12918,6 +12930,7 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = error;
     showConsolationMessage('No fue posible cargar el cuadro de consolación.');
+    updateTournamentActionAvailability();
     return;
   }
 
@@ -12929,6 +12942,7 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
     tournamentBracketEmpty.hidden = false;
     tournamentBracketEmpty.textContent = 'Aún no se ha generado el cuadro para esta categoría.';
     showConsolationMessage('Aún no se ha generado el cuadro de consolación para esta categoría.');
+    updateTournamentActionAvailability();
     return;
   }
 
@@ -12968,6 +12982,9 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
   } else {
     showConsolationMessage('Esta categoría no tiene partidos en el cuadro de consolación.');
   }
+
+  state.tournamentBracketHasContent = Boolean(mainMatches.length || consolationMatches.length);
+  updateTournamentActionAvailability();
 }
 
 function renderTournamentBracketSeeds({
@@ -27318,6 +27335,7 @@ tournamentBracketTournamentSelect?.addEventListener('change', async (event) => {
   state.selectedBracketTournamentId = value;
   state.selectedBracketCategoryId = '';
   state.tournamentBracketSeedsDirty = false;
+  state.tournamentBracketHasContent = false;
   setStatusMessage(tournamentBracketStatus, '', '');
   if (value && !state.tournamentDetails.has(value)) {
     try {
@@ -27334,6 +27352,7 @@ tournamentBracketCategorySelect?.addEventListener('change', async (event) => {
   const value = event.target.value || '';
   state.selectedBracketCategoryId = value;
   state.tournamentBracketSeedsDirty = false;
+  state.tournamentBracketHasContent = false;
   setStatusMessage(tournamentBracketStatus, '', '');
   if (value) {
     await loadTournamentBracketContext({
@@ -27512,6 +27531,133 @@ tournamentBracketRecalculateButton?.addEventListener('click', async () => {
     setStatusMessage(tournamentBracketStatus, 'error', error.message);
   } finally {
     tournamentBracketRecalculateButton.disabled = false;
+    updateTournamentActionAvailability();
+  }
+});
+
+tournamentBracketPrintButton?.addEventListener('click', async () => {
+  const tournamentId = state.selectedBracketTournamentId;
+  const categoryId = state.selectedBracketCategoryId;
+
+  if (!tournamentId || !categoryId) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      'Selecciona un torneo y una categoría válidos antes de imprimir.'
+    );
+    return;
+  }
+
+  if (!state.tournamentBracketHasContent) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      'Genera el cuadro de juego para poder imprimirlo.'
+    );
+    return;
+  }
+
+  if (typeof window === 'undefined' || typeof window.html2canvas !== 'function') {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      'No se pudo cargar la herramienta de impresión del cuadro.'
+    );
+    return;
+  }
+
+  const card = tournamentBracketViewCard;
+  const bracketView = tournamentBracketView;
+  if (!card || !bracketView) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      'No fue posible localizar el contenido del cuadro para imprimirlo.'
+    );
+    return;
+  }
+
+  const previousOverflow = bracketView.style.overflow;
+  const previousMaxWidth = bracketView.style.maxWidth;
+  const previousButtonDisplay = tournamentBracketPrintButton.style.display;
+
+  tournamentBracketPrintButton.disabled = true;
+  tournamentBracketPrintButton.setAttribute('aria-busy', 'true');
+  tournamentBracketPrintButton.style.display = 'none';
+  bracketView.style.overflow = 'visible';
+  bracketView.style.maxWidth = 'none';
+
+  setStatusMessage(tournamentBracketStatus, 'info', 'Preparando imagen del cuadro...');
+
+  try {
+    const width = Math.max(card.scrollWidth, bracketView.scrollWidth);
+    const height = card.scrollHeight;
+    const computedStyles = window.getComputedStyle(card);
+    const backgroundColor =
+      computedStyles?.backgroundColor &&
+      computedStyles.backgroundColor !== 'transparent' &&
+      computedStyles.backgroundColor !== 'rgba(0, 0, 0, 0)'
+        ? computedStyles.backgroundColor
+        : '#ffffff';
+
+    const canvas = await window.html2canvas(card, {
+      backgroundColor,
+      scale: Math.max(2, Math.min(3, window.devicePixelRatio || 1.5)),
+      width,
+      height,
+      windowWidth: width,
+      windowHeight: height,
+      scrollX: 0,
+      scrollY: 0,
+      useCORS: true,
+    });
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const tournament = getTournamentById(tournamentId);
+    const category = getTournamentCategoryById(tournamentId, categoryId);
+    const parts = [];
+    if (tournament?.name) {
+      parts.push(tournament.name);
+    }
+    if (category?.name) {
+      parts.push(category.name);
+    }
+    const rawName = parts.join(' - ') || 'cuadro';
+    let normalized = rawName;
+    if (normalized && typeof normalized.normalize === 'function') {
+      normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    normalized = normalized
+      .replace(/[^a-zA-Z0-9\s_-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase();
+    const filename = `${normalized || 'cuadro'}-cuadro.png`;
+
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setStatusMessage(
+      tournamentBracketStatus,
+      'success',
+      'Imagen del cuadro descargada correctamente.'
+    );
+  } catch (error) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      error?.message || 'No fue posible generar la imagen del cuadro.'
+    );
+  } finally {
+    tournamentBracketPrintButton.style.display = previousButtonDisplay;
+    bracketView.style.overflow = previousOverflow;
+    bracketView.style.maxWidth = previousMaxWidth;
+    tournamentBracketPrintButton.removeAttribute('aria-busy');
+    tournamentBracketPrintButton.disabled = false;
     updateTournamentActionAvailability();
   }
 });
