@@ -13578,11 +13578,9 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
     ['Cuadro', bracketSizeLabel],
   ];
 
-  if (formatLabel) {
-    metaItems.push(['Formato', formatLabel]);
-  }
-  if (clubName) {
-    metaItems.push(['Club', clubName]);
+  if (!tournamentId || !categoryId) {
+    showGlobalMessage('Selecciona un torneo y una categoría para imprimir el cuadro.', 'error');
+    return;
   }
   if (clubAddress) {
     metaItems.push(['Sede', clubAddress]);
@@ -13601,15 +13599,14 @@ async function printTournamentBracketSheet(tournamentId, categoryId, options = {
     )
     .join('');
 
-  const logoMarkup = clubLogo
-    ? `<div class="print-header__logo-wrapper"><img src="${clubLogo}" alt="${escapeHtml(
-        clubName || 'Logo del club'
-      )}" class="print-header__logo" /></div>`
-    : '';
+  const mainBracketSection = tournamentBracketView?.querySelector('.tournament-bracket-section');
+  const consolationBracketSection = tournamentConsolationView?.querySelector(
+    '.tournament-bracket-section'
+  );
 
-  const printWindow = window.open('', '_blank', 'width=1200,height=800');
-  if (!printWindow) {
-    throw new Error('No fue posible abrir la vista de impresión. Permite las ventanas emergentes.');
+  if (!mainBracketSection && !consolationBracketSection) {
+    showGlobalMessage('Esta categoría aún no tiene un cuadro generado para imprimir.', 'error');
+    return;
   }
 
   const documentHtml = `<!DOCTYPE html>
