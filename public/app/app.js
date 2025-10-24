@@ -2489,6 +2489,62 @@ function openModal({ title, content, onClose } = {}) {
   });
 }
 
+function openConfirmationDialog({
+  title = 'Confirmación',
+  message = '¿Seguro que deseas continuar?',
+  confirmLabel = 'Aceptar',
+  cancelLabel = 'Cancelar',
+} = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(Boolean(value));
+    };
+
+    const container = document.createElement('div');
+    container.className = 'modal-confirm';
+
+    const text = document.createElement('p');
+    text.textContent = message;
+    container.appendChild(text);
+
+    const actions = document.createElement('div');
+    actions.className = 'form-actions';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'ghost';
+    cancelButton.textContent = cancelLabel;
+    cancelButton.addEventListener('click', () => {
+      settle(false);
+      closeModal();
+    });
+
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.className = 'primary';
+    confirmButton.textContent = confirmLabel;
+    confirmButton.addEventListener('click', () => {
+      settle(true);
+      closeModal();
+    });
+
+    actions.appendChild(cancelButton);
+    actions.appendChild(confirmButton);
+    container.appendChild(actions);
+
+    openModal({
+      title,
+      content: container,
+      onClose: () => {
+        settle(false);
+      },
+    });
+  });
+}
+
 function showGlobalMessage(message = '', type = 'info') {
   globalMessage.textContent = message;
   globalMessage.classList.remove('show', 'error');
@@ -27979,7 +28035,12 @@ tournamentBracketGenerateButton?.addEventListener('click', async () => {
   }
 
   if (cachedMatches.length) {
-    const confirmed = window.confirm(TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION);
+    const confirmed = await openConfirmationDialog({
+      title: 'Generar nuevo cuadro',
+      message: TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION,
+      confirmLabel: 'Generar nuevo cuadro',
+      cancelLabel: 'Cancelar',
+    });
     if (!confirmed) {
       updateTournamentActionAvailability();
       return;
