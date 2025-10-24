@@ -10492,6 +10492,7 @@ function renderTournamentCategories({ loading = false } = {}) {
 function createTournamentDoublesCategoryCard(group) {
   const category = group?.category || {};
   const players = Array.isArray(group?.players) ? group.players : [];
+  const pairs = Array.isArray(group?.pairs) ? group.pairs : [];
 
   const card = document.createElement('div');
   card.className = 'collection-card';
@@ -10536,6 +10537,8 @@ function createTournamentDoublesCategoryCard(group) {
   }
   const playerCount = players.length;
   metaParts.push(`${playerCount} ${playerCount === 1 ? 'jugador' : 'jugadores'}`);
+  const pairCount = pairs.length;
+  metaParts.push(`${pairCount} ${pairCount === 1 ? 'pareja' : 'parejas'}`);
 
   if (metaParts.length) {
     const meta = document.createElement('div');
@@ -10552,8 +10555,17 @@ function createTournamentDoublesCategoryCard(group) {
     return card;
   }
 
-  const list = document.createElement('ul');
-  list.className = 'collection-card__list';
+  const categoryId = normalizeId(category);
+  const pairByPlayerId = new Map();
+  pairs.forEach((pair) => {
+    const members = Array.isArray(pair.players) ? pair.players : [];
+    members.forEach((member) => {
+      const memberId = normalizeId(member);
+      if (memberId) {
+        pairByPlayerId.set(memberId, pair);
+      }
+    });
+  });
 
   const formatMetadataLabel = (key) => {
     if (!key) return '';
@@ -10564,6 +10576,9 @@ function createTournamentDoublesCategoryCard(group) {
       .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
       .join(' ');
   };
+
+  const list = document.createElement('ul');
+  list.className = 'collection-card__list';
 
   players.forEach((entry) => {
     const listItem = document.createElement('li');
@@ -10612,6 +10627,23 @@ function createTournamentDoublesCategoryCard(group) {
       details.push(label ? `${label}: ${text}` : text);
     });
 
+    const playerId = normalizeId(entry?.user);
+    const pair = playerId ? pairByPlayerId.get(playerId) : null;
+    if (pair) {
+      const partners = Array.isArray(pair.players) ? pair.players : [];
+      const partnerEntry = partners.find((member) => {
+        const memberId = normalizeId(member);
+        return memberId && memberId !== playerId;
+      });
+      const partnerNames = partners
+        .map((member) => member.fullName || member.email || '')
+        .filter(Boolean);
+      const partnerName = partnerEntry?.fullName || partnerEntry?.email || partnerNames.join(' / ');
+      if (partnerName) {
+        details.push(`Pareja: ${partnerName}`);
+      }
+    }
+
     if (entry?.notes) {
       details.push(`Notas: ${entry.notes}`);
     }
@@ -10636,6 +10668,128 @@ function createTournamentDoublesCategoryCard(group) {
   });
 
   card.appendChild(list);
+
+  const pairsTitle = document.createElement('h4');
+  pairsTitle.className = 'collection-card__subtitle';
+  pairsTitle.textContent = 'Parejas registradas';
+  card.appendChild(pairsTitle);
+
+  if (pairs.length) {
+    const pairList = document.createElement('ul');
+    pairList.className = 'collection-card__list';
+
+    pairs.forEach((pair) => {
+      const item = document.createElement('li');
+      item.className = 'collection-card__list-item';
+
+      const pairInfo = document.createElement('div');
+      pairInfo.className = 'collection-card__player';
+      const names = Array.isArray(pair.players)
+        ? pair.players.map((player) => player.fullName || player.email || 'Jugador')
+        : [];
+      const pairLabel = names.length ? names.join(' · ') : 'Pareja';
+      const pairName = document.createElement('strong');
+      pairName.textContent = pairLabel;
+      pairInfo.appendChild(pairName);
+
+      if (pair.createdAt) {
+        const created = document.createElement('span');
+        created.textContent = `Creada: ${formatShortDate(pair.createdAt)}`;
+        pairInfo.appendChild(created);
+      }
+
+      item.appendChild(pairInfo);
+
+      if (isAdmin()) {
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'danger';
+        deleteButton.textContent = 'Eliminar pareja';
+        deleteButton.dataset.action = 'delete-pair';
+        deleteButton.dataset.pairId = normalizeId(pair);
+        deleteButton.dataset.categoryId = categoryId;
+        item.appendChild(deleteButton);
+      }
+
+      pairList.appendChild(item);
+    });
+
+    card.appendChild(pairList);
+  } else {
+    const emptyPairs = document.createElement('p');
+    emptyPairs.className = 'empty-state';
+    emptyPairs.textContent = 'Aún no hay parejas registradas.';
+    card.appendChild(emptyPairs);
+  }
+
+  if (isAdmin()) {
+    const availablePlayers = players.filter((entry) => {
+      const userId = normalizeId(entry?.user);
+      if (!userId) {
+        return false;
+      }
+      return !pairByPlayerId.has(userId);
+    });
+
+    const formWrapper = document.createElement('div');
+    formWrapper.className = 'collection-card__form doubles-pair-form-wrapper';
+
+    if (availablePlayers.length >= 2) {
+      const form = document.createElement('form');
+      form.className = 'doubles-pair-form';
+      form.dataset.categoryId = categoryId;
+
+      const playerOneField = document.createElement('label');
+      playerOneField.className = 'inline-field';
+      playerOneField.textContent = 'Jugador 1';
+      const playerOneSelect = document.createElement('select');
+      playerOneSelect.name = 'playerA';
+      playerOneSelect.innerHTML = '<option value="">Selecciona jugador</option>';
+      availablePlayers.forEach((entry) => {
+        const option = document.createElement('option');
+        option.value = normalizeId(entry?.user);
+        option.textContent = entry?.user?.fullName || entry?.user?.email || 'Jugador';
+        playerOneSelect.appendChild(option);
+      });
+      playerOneField.appendChild(playerOneSelect);
+
+      const playerTwoField = document.createElement('label');
+      playerTwoField.className = 'inline-field';
+      playerTwoField.textContent = 'Jugador 2';
+      const playerTwoSelect = document.createElement('select');
+      playerTwoSelect.name = 'playerB';
+      playerTwoSelect.innerHTML = '<option value="">Selecciona jugador</option>';
+      availablePlayers.forEach((entry) => {
+        const option = document.createElement('option');
+        option.value = normalizeId(entry?.user);
+        option.textContent = entry?.user?.fullName || entry?.user?.email || 'Jugador';
+        playerTwoSelect.appendChild(option);
+      });
+      playerTwoField.appendChild(playerTwoSelect);
+
+      const actions = document.createElement('div');
+      actions.className = 'doubles-pair-form__actions';
+      const submitButton = document.createElement('button');
+      submitButton.type = 'submit';
+      submitButton.className = 'secondary';
+      submitButton.textContent = 'Crear pareja';
+      actions.appendChild(submitButton);
+
+      form.appendChild(playerOneField);
+      form.appendChild(playerTwoField);
+      form.appendChild(actions);
+
+      formWrapper.appendChild(form);
+    } else {
+      const info = document.createElement('p');
+      info.className = 'meta';
+      info.textContent = 'No hay suficientes jugadores sin pareja para crear una nueva.';
+      formWrapper.appendChild(info);
+    }
+
+    card.appendChild(formWrapper);
+  }
+
   return card;
 }
 
@@ -25624,6 +25778,92 @@ tournamentDoublesTournamentSelect?.addEventListener('change', async (event) => {
 
   await refreshTournamentDoubles();
   updateTournamentActionAvailability();
+});
+
+tournamentDoublesContainer?.addEventListener('submit', async (event) => {
+  const form = event.target.closest('form.doubles-pair-form');
+  if (!form || !isAdmin()) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const { categoryId } = form.dataset;
+  const playerA = form.elements.playerA?.value || '';
+  const playerB = form.elements.playerB?.value || '';
+  const tournamentId = state.selectedDoublesTournamentId || '';
+
+  if (!tournamentId || !categoryId) {
+    showGlobalMessage('Selecciona un torneo antes de crear parejas.', 'error');
+    return;
+  }
+
+  if (!playerA || !playerB) {
+    showGlobalMessage('Selecciona dos jugadores para crear la pareja.', 'error');
+    return;
+  }
+
+  if (playerA === playerB) {
+    showGlobalMessage('Los jugadores deben ser distintos.', 'error');
+    return;
+  }
+
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    await request(
+      `/tournaments/${tournamentId}/categories/${categoryId}/doubles-pairs`,
+      {
+        method: 'POST',
+        body: { players: [playerA, playerB] },
+      }
+    );
+    form.reset();
+    showGlobalMessage('Pareja creada correctamente.', 'success');
+    await refreshTournamentDoubles({ force: true });
+  } catch (error) {
+    showGlobalMessage(error.message || 'No fue posible crear la pareja.', 'error');
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
+  }
+});
+
+tournamentDoublesContainer?.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action="delete-pair"]');
+  if (!button || !isAdmin()) {
+    return;
+  }
+
+  const { pairId, categoryId } = button.dataset;
+  const tournamentId = state.selectedDoublesTournamentId || '';
+
+  if (!pairId || !categoryId || !tournamentId) {
+    return;
+  }
+
+  const confirmed = window.confirm('¿Seguro que deseas eliminar esta pareja?');
+  if (!confirmed) {
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    await request(
+      `/tournaments/${tournamentId}/categories/${categoryId}/doubles-pairs/${pairId}`,
+      { method: 'DELETE' }
+    );
+    showGlobalMessage('Pareja eliminada correctamente.', 'success');
+    await refreshTournamentDoubles({ force: true });
+  } catch (error) {
+    showGlobalMessage(error.message || 'No fue posible eliminar la pareja.', 'error');
+  } finally {
+    button.disabled = false;
+  }
 });
 
 tournamentEnrollmentCategorySelect?.addEventListener('change', async (event) => {
