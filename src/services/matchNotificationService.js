@@ -188,7 +188,167 @@ async function notifyResultConfirmed(matchDoc, actorId, options = {}) {
   }
 }
 
+async function notifyScheduleConfirmationRequest(matchDoc, actorId) {
+  if (!matchDoc || !matchDoc.players || !matchDoc.scheduledAt) {
+    return;
+  }
+
+  const players = Array.isArray(matchDoc.players) ? matchDoc.players : [];
+  const playerIds = players
+    .map((player) => toObjectIdString(player?._id || player))
+    .filter(Boolean);
+
+  if (!playerIds.length) {
+    return;
+  }
+
+  try {
+    const users = await User.find({ _id: { $in: playerIds } })
+      .select('fullName email notifyMatchRequests')
+      .lean();
+    const nameMap = buildNameMap(users);
+    const recipients = users
+      .filter((user) => user && user._id && user.notifyMatchRequests !== false)
+      .map((user) => user._id.toString());
+
+    if (!recipients.length) {
+      return;
+    }
+
+    const opponentNames = playerIds
+      .map((playerId) => nameMap.get(playerId) || 'Jugador')
+      .join(' vs ');
+
+    const scheduledAt =
+      matchDoc.scheduledAt instanceof Date
+        ? matchDoc.scheduledAt
+        : new Date(matchDoc.scheduledAt);
+
+    if (!(scheduledAt instanceof Date) || Number.isNaN(scheduledAt.getTime())) {
+      return;
+    }
+
+    const courtLabel = matchDoc.court ? ` en la pista ${matchDoc.court}` : '';
+    const baseMessage = opponentNames
+      ? `Se programó el partido ${opponentNames} para el ${scheduledAt.toISOString()}${courtLabel}.`
+      : `Se programó un partido para el ${scheduledAt.toISOString()}${courtLabel}.`;
+
+    const metadata = {
+      tipo: 'horario_pendiente',
+      categoria: matchDoc.category?.name || '',
+      programadoPara: scheduledAt.toISOString(),
+    };
+
+    if (matchDoc.court) {
+      metadata.pista = matchDoc.court;
+    }
+
+    await Notification.create({
+      title: 'Confirma la fecha del partido',
+      message: `${baseMessage} Confírmala o recházala desde la app.`,
+      channel: 'app',
+      scheduledFor: new Date(),
+      recipients,
+      match: matchDoc._id,
+      metadata,
+      createdBy: toObjectIdString(actorId) || undefined,
+    });
+  } catch (error) {
+    console.error('No se pudo crear la notificación de confirmación de horario', error);
+  }
+}
+
+async function notifyScheduleRejected(matchDoc, rejectingPlayerId, reason) {
+  if (!matchDoc || !matchDoc.players) {
+    return;
+  }
+
+  const players = Array.isArray(matchDoc.players) ? matchDoc.players : [];
+  const playerIds = players
+    .map((player) => toObjectIdString(player?._id || player))
+    .filter(Boolean);
+
+  if (!playerIds.length) {
+    return;
+  }
+
+  const rejectingPlayer = toObjectIdString(rejectingPlayerId);
+
+  try {
+    const [users, admins] = await Promise.all([
+      User.find({ _id: { $in: playerIds } }).select('fullName email').lean(),
+      User.find({ roles: USER_ROLES.ADMIN }).select('_id').lean(),
+    ]);
+
+    const adminRecipients = admins
+      .map((admin) => toObjectIdString(admin && admin._id))
+      .filter(Boolean);
+
+    if (!adminRecipients.length) {
+      return;
+    }
+
+    const nameMap = buildNameMap(users);
+    const rejectingName = rejectingPlayer ? nameMap.get(rejectingPlayer) || 'Un jugador' : 'Un jugador';
+    const opponentNames = playerIds
+      .map((playerId) => nameMap.get(playerId) || 'Jugador')
+      .join(' vs ');
+
+    const scheduledAt =
+      matchDoc.scheduledAt instanceof Date
+        ? matchDoc.scheduledAt
+        : matchDoc.scheduledAt
+        ? new Date(matchDoc.scheduledAt)
+        : null;
+
+    const scheduledLabel =
+      scheduledAt && !Number.isNaN(scheduledAt.getTime())
+        ? ` programado para el ${scheduledAt.toISOString()}`
+        : '';
+
+    const courtLabel = matchDoc.court ? ` en la pista ${matchDoc.court}` : '';
+
+    const baseMessage = opponentNames
+      ? `${rejectingName} rechazó la fecha del partido ${opponentNames}${scheduledLabel}${courtLabel}.`
+      : `${rejectingName} rechazó la fecha de un partido${scheduledLabel}${courtLabel}.`;
+
+    const reasonMessage = reason ? ` Motivo: ${reason}` : '';
+
+    const metadata = {
+      tipo: 'horario_rechazado',
+      categoria: matchDoc.category?.name || '',
+    };
+
+    if (matchDoc.scheduledAt instanceof Date && !Number.isNaN(matchDoc.scheduledAt.getTime())) {
+      metadata.programadoPara = matchDoc.scheduledAt.toISOString();
+    }
+
+    if (matchDoc.court) {
+      metadata.pista = matchDoc.court;
+    }
+
+    if (reason) {
+      metadata.motivo = reason;
+    }
+
+    await Notification.create({
+      title: 'Horario de partido rechazado',
+      message: `${baseMessage}${reasonMessage}`,
+      channel: 'app',
+      scheduledFor: new Date(),
+      recipients: adminRecipients,
+      match: matchDoc._id,
+      metadata,
+      createdBy: rejectingPlayer || undefined,
+    });
+  } catch (error) {
+    console.error('No se pudo crear la notificación de rechazo de horario', error);
+  }
+}
+
 module.exports = {
   notifyPendingResultConfirmation,
   notifyResultConfirmed,
+  notifyScheduleConfirmationRequest,
+  notifyScheduleRejected,
 };

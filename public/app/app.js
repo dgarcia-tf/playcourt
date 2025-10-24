@@ -969,6 +969,120 @@ async function updateMatchScheduleSlots({
   });
 }
 
+function attachSchedulePicker({
+  scheduleTemplates = getClubMatchScheduleTemplates(),
+  scheduleDateField = null,
+  scheduleSlotField = null,
+  scheduledField = null,
+  courtField = null,
+  existingValue = '',
+  scope = 'player',
+} = {}) {
+  const templates = Array.isArray(scheduleTemplates) ? scheduleTemplates : [];
+  if (!templates.length || !scheduleDateField || !scheduleSlotField || !scheduledField) {
+    if (scheduledField) {
+      scheduledField.value = existingValue || '';
+    }
+    return {
+      syncScheduledValue: () => {},
+      updateScheduleSlotOptions: () => Promise.resolve({ matched: false, hasOptions: false }),
+    };
+  }
+
+  const syncScheduledValue = () => {
+    const dateValue = scheduleDateField.value;
+    const timeValue = scheduleSlotField.value;
+    scheduledField.value = dateValue && timeValue ? `${dateValue}T${timeValue}` : '';
+    return scheduledField.value;
+  };
+
+  const getSelectedCourtValue = () => {
+    if (!courtField) {
+      return '';
+    }
+    const value = courtField.value || '';
+    return typeof value === 'string' ? value.trim() : '';
+  };
+
+  const updateScheduleSlotOptions = async (selectedTime = '') => {
+    return updateMatchScheduleSlots({
+      select: scheduleSlotField,
+      dateValue: scheduleDateField.value,
+      templates,
+      selectedTime,
+      scope,
+      courtValue: getSelectedCourtValue(),
+    });
+  };
+
+  const handleScheduleDateChange = () => {
+    updateScheduleSlotOptions('')
+      .catch((error) => {
+        console.warn('No fue posible cargar la disponibilidad de pistas', error);
+      })
+      .finally(() => {
+        syncScheduledValue();
+      });
+  };
+
+  scheduleDateField.addEventListener('change', handleScheduleDateChange);
+  scheduleDateField.addEventListener('input', handleScheduleDateChange);
+
+  scheduleSlotField.addEventListener('change', () => {
+    syncScheduledValue();
+  });
+
+  if (courtField) {
+    const handleCourtChange = () => {
+      updateScheduleSlotOptions(scheduleSlotField?.value || '')
+        .catch((error) => {
+          console.warn('No fue posible cargar la disponibilidad de pistas', error);
+        })
+        .finally(() => {
+          syncScheduledValue();
+        });
+    };
+
+    courtField.addEventListener('change', handleCourtChange);
+    courtField.addEventListener('input', handleCourtChange);
+  }
+
+  const normalizedExisting = typeof existingValue === 'string' ? existingValue : '';
+  if (normalizedExisting) {
+    const [existingDate, existingTime] = normalizedExisting.split('T');
+    if (existingDate) {
+      scheduleDateField.value = existingDate;
+    }
+    updateScheduleSlotOptions(existingTime || '')
+      .then((result) => {
+        if (existingTime && !result?.matched && scheduleSlotField.value !== existingTime) {
+          scheduleSlotField.value = existingTime;
+          if (scheduleSlotField.value !== existingTime) {
+            scheduleSlotField.value = existingTime;
+          }
+        }
+      })
+      .catch((error) => {
+        console.warn('No fue posible cargar la disponibilidad de pistas', error);
+      })
+      .finally(() => {
+        syncScheduledValue();
+      });
+  } else {
+    updateScheduleSlotOptions('')
+      .catch((error) => {
+        console.warn('No fue posible cargar la disponibilidad de pistas', error);
+      })
+      .finally(() => {
+        syncScheduledValue();
+      });
+  }
+
+  syncScheduledValue();
+
+  return { syncScheduledValue, updateScheduleSlotOptions };
+}
+
 function populateCourtReservationCourts() {
   if (!courtReservationCourtSelect) {
     return;
@@ -11990,6 +12104,7 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
 
   matches.forEach((match) => {
     const item = document.createElement('li');
+    item.classList.add('tournament-match-item');
     const title = document.createElement('strong');
     const players = Array.isArray(match?.players)
       ? match.players.map((player) => player?.fullName).filter(Boolean)
@@ -12031,6 +12146,31 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
     meta.appendChild(statusTag);
 
     item.appendChild(meta);
+
+    if (isAdmin()) {
+      const matchId = normalizeId(match);
+      if (matchId) {
+        const actions = document.createElement('div');
+        actions.className = 'tournament-match-item__actions';
+
+        const scheduleButton = document.createElement('button');
+        scheduleButton.type = 'button';
+        const hasSchedule = Boolean(match?.scheduledAt);
+        scheduleButton.className = hasSchedule ? 'secondary' : 'primary';
+        scheduleButton.dataset.action = 'schedule-tournament-match';
+        scheduleButton.dataset.matchId = matchId;
+        const tournamentIdAttr =
+          normalizeId(match?.tournament) || state.selectedMatchTournamentId || '';
+        const categoryIdAttr =
+          normalizeId(match?.category) || state.selectedMatchCategoryId || '';
+        scheduleButton.dataset.tournamentId = tournamentIdAttr;
+        scheduleButton.dataset.categoryId = categoryIdAttr;
+        scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
+        actions.appendChild(scheduleButton);
+
+        item.appendChild(actions);
+      }
+    }
     tournamentMatchesList.appendChild(item);
   });
 }
@@ -12104,6 +12244,9 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
     matchNumber = '',
     placeholderLabels = [],
   } = options;
+
+  const matchId = match ? normalizeId(match) : '';
+  const editable = Boolean(matchId) && isAdmin();
 
   const card = document.createElement('div');
   card.className = 'bracket-match';
@@ -12230,6 +12373,30 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
 
   if (meta.childElementCount) {
     card.appendChild(meta);
+  }
+
+  if (editable) {
+    const actions = document.createElement('div');
+    actions.className = 'bracket-match__actions';
+
+    const scheduleButton = document.createElement('button');
+    scheduleButton.type = 'button';
+    const hasSchedule = Boolean(match?.scheduledAt);
+    scheduleButton.className = hasSchedule
+      ? 'secondary bracket-match__action'
+      : 'primary bracket-match__action';
+    scheduleButton.dataset.action = 'schedule-tournament-match';
+    scheduleButton.dataset.matchId = matchId;
+    const bracketTournamentId =
+      normalizeId(match?.tournament) || state.selectedBracketTournamentId || '';
+    const bracketCategoryId =
+      normalizeId(match?.category) || state.selectedBracketCategoryId || '';
+    scheduleButton.dataset.tournamentId = bracketTournamentId;
+    scheduleButton.dataset.categoryId = bracketCategoryId;
+    scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
+
+    actions.appendChild(scheduleButton);
+    card.appendChild(actions);
   }
 
   return card;
@@ -14071,6 +14238,72 @@ function findMatchById(matchId) {
   }
 
   return null;
+}
+
+function findTournamentMatchContext(matchId) {
+  const normalizedId = normalizeId(matchId);
+  if (!normalizedId) {
+    return null;
+  }
+
+  const parseKey = (key = '') => {
+    if (!key) {
+      return { tournamentId: '', categoryId: '' };
+    }
+    const [tournamentId = '', categoryId = ''] = key.split(':');
+    return {
+      tournamentId: tournamentId || '',
+      categoryId: categoryId || '',
+    };
+  };
+
+  const sources = [
+    state.tournamentMatches instanceof Map ? state.tournamentMatches : null,
+    state.tournamentBracketMatches instanceof Map ? state.tournamentBracketMatches : null,
+  ].filter(Boolean);
+
+  for (const source of sources) {
+    for (const [key, matches] of source.entries()) {
+      if (!Array.isArray(matches)) continue;
+      const found = matches.find((entry) => normalizeId(entry) === normalizedId);
+      if (found) {
+        const context = parseKey(key);
+        return {
+          match: found,
+          tournamentId: context.tournamentId,
+          categoryId: context.categoryId,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function applyTournamentMatchUpdate(updatedMatch) {
+  const normalizedId = normalizeId(updatedMatch);
+  if (!normalizedId) {
+    return;
+  }
+
+  const maps = [state.tournamentMatches, state.tournamentBracketMatches];
+  maps.forEach((map) => {
+    if (!(map instanceof Map)) return;
+    for (const [key, matches] of map.entries()) {
+      if (!Array.isArray(matches)) continue;
+      let changed = false;
+      const nextMatches = matches.map((entry) => {
+        if (normalizeId(entry) === normalizedId) {
+          changed = true;
+          return updatedMatch;
+        }
+        return entry;
+      });
+      if (changed) {
+        map.set(key, nextMatches);
+      }
+    }
+  });
 }
 
 function isUserMatchParticipant(match, user = state.user) {
@@ -23123,6 +23356,113 @@ async function submitMatchFormData({ form, matchId, statusElement, creating = fa
   }
 }
 
+async function submitTournamentMatchSchedule({
+  form,
+  tournamentId,
+  categoryId,
+  matchId,
+  statusElement,
+  submitButton,
+} = {}) {
+  if (!form || !tournamentId || !categoryId || !matchId) {
+    return false;
+  }
+
+  const normalizedTournamentId = normalizeId(tournamentId);
+  const normalizedCategoryId = normalizeId(categoryId);
+  const normalizedMatchId = normalizeId(matchId);
+
+  if (!normalizedTournamentId || !normalizedCategoryId || !normalizedMatchId) {
+    setStatusMessage(statusElement, 'error', 'Selecciona un torneo y partido válidos.');
+    return false;
+  }
+
+  const formData = new FormData(form);
+  const scheduledAtRaw = (formData.get('scheduledAt') || '').toString();
+  const courtValue = (formData.get('court') || '').toString().trim();
+  const statusValue = (formData.get('status') || '').toString();
+  const notifyPlayers = formData.get('notifyPlayers') === 'true';
+
+  if (scheduledAtRaw) {
+    const scheduledDate = new Date(scheduledAtRaw);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      setStatusMessage(statusElement, 'error', 'Selecciona una fecha y hora válidas.');
+      return false;
+    }
+    if (!isValidReservationSlotStart(scheduledDate)) {
+      setStatusMessage(
+        statusElement,
+        'error',
+        'Selecciona un horario válido de 75 minutos entre las 08:30 y las 22:15.'
+      );
+      return false;
+    }
+  }
+
+  if (!scheduledAtRaw && ['programado', 'confirmado'].includes(statusValue)) {
+    setStatusMessage(
+      statusElement,
+      'error',
+      'Asigna día y hora antes de marcar el partido como programado o confirmado.'
+    );
+    return false;
+  }
+
+  const payload = {
+    scheduledAt: scheduledAtRaw || null,
+    court: courtValue || null,
+  };
+
+  if (statusValue) {
+    payload.status = statusValue;
+  }
+
+  if (notifyPlayers) {
+    payload.notifyPlayers = true;
+  }
+
+  setStatusMessage(statusElement, 'info', 'Guardando horario del partido...');
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    const updated = await request(
+      `/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}/matches/${normalizedMatchId}`,
+      {
+        method: 'PATCH',
+        body: payload,
+      }
+    );
+
+    applyTournamentMatchUpdate(updated);
+
+    const listKey = `${normalizedTournamentId}:${normalizedCategoryId}`;
+    if (state.tournamentMatches instanceof Map && state.tournamentMatches.has(listKey)) {
+      renderTournamentMatches(state.tournamentMatches.get(listKey) || []);
+    }
+
+    const bracketKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
+    if (bracketKey && state.tournamentBracketMatches instanceof Map) {
+      const matches = state.tournamentBracketMatches.get(bracketKey);
+      if (matches) {
+        renderTournamentBracket(matches);
+      }
+    }
+
+    setStatusMessage(statusElement, 'success', 'Horario guardado correctamente.');
+    showGlobalMessage('Horario del partido actualizado.', 'success');
+    return true;
+  } catch (error) {
+    setStatusMessage(statusElement, 'error', error.message);
+    return false;
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
+  }
+}
+
 async function deleteMatchById(matchId, { statusElement, button } = {}) {
   if (!matchId || !isAdmin()) {
     return false;
@@ -24272,96 +24612,15 @@ function openMatchModal(matchId = '') {
     scheduledField.value = formatDateTimeLocal(match?.scheduledAt);
   }
   if (usingSchedulePicker) {
-    const syncScheduledValue = () => {
-      const dateValue = scheduleDateField.value;
-      const timeValue = scheduleSlotField.value;
-      scheduledField.value = dateValue && timeValue ? `${dateValue}T${timeValue}` : '';
-    };
-
-    const getSelectedCourtValue = () => {
-      if (!courtField) {
-        return '';
-      }
-      const value = courtField.value || '';
-      return typeof value === 'string' ? value.trim() : '';
-    };
-
-    const updateScheduleSlotOptions = async (selectedTime = '') => {
-      return updateMatchScheduleSlots({
-        select: scheduleSlotField,
-        dateValue: scheduleDateField.value,
-        templates: scheduleTemplates,
-        selectedTime,
-        scope: 'admin',
-        courtValue: getSelectedCourtValue(),
-      });
-    };
-
-    const handleScheduleDateChange = async () => {
-      try {
-        await updateScheduleSlotOptions('');
-      } catch (error) {
-        console.warn('No fue posible cargar la disponibilidad de pistas', error);
-      } finally {
-        syncScheduledValue();
-      }
-    };
-
-    scheduleDateField.addEventListener('change', () => {
-      handleScheduleDateChange();
+    attachSchedulePicker({
+      scheduleTemplates,
+      scheduleDateField,
+      scheduleSlotField,
+      scheduledField,
+      courtField,
+      existingValue: scheduledField?.value || '',
+      scope: 'admin',
     });
-    scheduleDateField.addEventListener('input', () => {
-      handleScheduleDateChange();
-    });
-    scheduleSlotField.addEventListener('change', () => {
-      syncScheduledValue();
-    });
-
-    if (courtField) {
-      const handleCourtChange = () => {
-        updateScheduleSlotOptions(scheduleSlotField?.value || '')
-          .catch((error) => {
-            console.warn('No fue posible cargar la disponibilidad de pistas', error);
-          })
-          .finally(() => {
-            syncScheduledValue();
-          });
-      };
-
-      courtField.addEventListener('change', handleCourtChange);
-      courtField.addEventListener('input', handleCourtChange);
-    }
-
-    const existingScheduledValue = scheduledField.value || '';
-    if (existingScheduledValue) {
-      const [existingDate, existingTime] = existingScheduledValue.split('T');
-      if (existingDate) {
-        scheduleDateField.value = existingDate;
-      }
-      updateScheduleSlotOptions(existingTime || '')
-        .then((result) => {
-          if (existingTime && !result?.matched && scheduleSlotField.value !== existingTime) {
-            scheduleSlotField.value = existingTime;
-            if (scheduleSlotField.value !== existingTime) {
-              scheduleSlotField.value = existingTime;
-            }
-          }
-        })
-        .catch((error) => {
-          console.warn('No fue posible cargar la disponibilidad de pistas', error);
-        })
-        .finally(() => {
-          syncScheduledValue();
-        });
-    } else {
-      updateScheduleSlotOptions('')
-        .catch((error) => {
-          console.warn('No fue posible cargar la disponibilidad de pistas', error);
-        })
-        .finally(() => {
-          syncScheduledValue();
-        });
-    }
   }
   if (courtField) {
     const courtValue = match?.court || '';
@@ -24588,6 +24847,323 @@ function openClubModal() {
       body.appendChild(status);
     },
     onClose: () => setStatusMessage(status, '', ''),
+  });
+}
+
+function openTournamentMatchScheduleModal(matchId, context = {}) {
+  if (!isAdmin()) return;
+  const normalizedMatchId = normalizeId(matchId);
+  if (!normalizedMatchId) {
+    showGlobalMessage('Selecciona un partido válido.', 'error');
+    return;
+  }
+
+  let resolvedTournamentId = normalizeId(context.tournamentId) || '';
+  let resolvedCategoryId = normalizeId(context.categoryId) || '';
+  let match = context.match || null;
+
+  if (!match) {
+    const located = findTournamentMatchContext(normalizedMatchId);
+    if (located) {
+      match = located.match;
+      resolvedTournamentId = resolvedTournamentId || normalizeId(located.tournamentId) || '';
+      resolvedCategoryId = resolvedCategoryId || normalizeId(located.categoryId) || '';
+    }
+  }
+
+  if (!resolvedTournamentId) {
+    resolvedTournamentId =
+      normalizeId(state.selectedMatchTournamentId) ||
+      normalizeId(state.selectedBracketTournamentId) ||
+      '';
+  }
+
+  if (!resolvedCategoryId) {
+    resolvedCategoryId =
+      normalizeId(state.selectedMatchCategoryId) ||
+      normalizeId(state.selectedBracketCategoryId) ||
+      '';
+  }
+
+  if (!match && resolvedTournamentId && resolvedCategoryId) {
+    const cacheKey = `${resolvedTournamentId}:${resolvedCategoryId}`;
+    if (state.tournamentMatches instanceof Map && state.tournamentMatches.has(cacheKey)) {
+      const list = state.tournamentMatches.get(cacheKey) || [];
+      match = list.find((entry) => normalizeId(entry) === normalizedMatchId) || match;
+    }
+    if (!match && state.tournamentBracketMatches instanceof Map) {
+      const bracketMatches = state.tournamentBracketMatches.get(cacheKey);
+      if (Array.isArray(bracketMatches)) {
+        match = bracketMatches.find((entry) => normalizeId(entry) === normalizedMatchId) || match;
+      }
+    }
+  }
+
+  if (!match) {
+    showGlobalMessage('No se encontró el partido del torneo.', 'error');
+    return;
+  }
+
+  const tournament = getTournamentById(resolvedTournamentId) || {};
+  let category = getTournamentCategoryById(resolvedTournamentId, resolvedCategoryId);
+
+  if (!category && resolvedTournamentId) {
+    const detail = state.tournamentDetails.get(resolvedTournamentId);
+    if (detail && Array.isArray(detail.categories)) {
+      category = detail.categories.find((entry) => normalizeId(entry) === resolvedCategoryId) || null;
+    }
+  }
+
+  const courtNames = getClubCourtNames();
+  const courtOptions = courtNames
+    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+    .join('');
+
+  const courtFieldMarkup = courtNames.length
+    ? `
+    <label>
+      Pista
+      <select name="court">
+        <option value="">Sin pista asignada</option>
+        ${courtOptions}
+      </select>
+      <span class="form-hint">Las pistas disponibles se gestionan en el perfil del club.</span>
+    </label>
+  `
+    : `
+    <label>
+      Pista
+      <input type="text" name="court" placeholder="Añade pistas en la sección del club" disabled />
+      <span class="form-hint">Añade pistas en la sección del club para poder asignarlas.</span>
+    </label>
+  `;
+
+  const scheduleTemplates = getClubMatchScheduleTemplates();
+  const scheduleFieldMarkup = scheduleTemplates.length
+    ? `
+    <div class="form-grid">
+      <label>
+        Día del partido
+        <input type="date" name="scheduledDate" data-match-schedule="date" />
+      </label>
+      <label>
+        Franja horaria
+        <select name="scheduledSlot" data-match-schedule="slot" disabled>
+          <option value="">Selecciona un día para ver horarios</option>
+        </select>
+      </label>
+    </div>
+    <input type="hidden" name="scheduledAt" />
+  `
+    : `
+    <label>
+      Fecha y hora
+      <input type="datetime-local" name="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
+      <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
+    </label>
+  `;
+
+  const statusOptions = Object.entries(TOURNAMENT_MATCH_STATUS_LABELS)
+    .map(([value, label]) => `<option value="${value}">${escapeHtml(label)}</option>`)
+    .join('');
+
+  const form = document.createElement('form');
+  form.className = 'form';
+  form.innerHTML = `
+    <label>
+      Torneo
+      <input type="text" name="tournamentLabel" readonly />
+    </label>
+    <label>
+      Categoría
+      <input type="text" name="categoryLabel" readonly />
+    </label>
+    <div class="form-grid">
+      <label>
+        Jugador 1
+        <input type="text" name="playerLabel1" readonly />
+      </label>
+      <label>
+        Jugador 2
+        <input type="text" name="playerLabel2" readonly />
+      </label>
+    </div>
+    <label>
+      Estado
+      <select name="status" required>
+        ${statusOptions}
+      </select>
+    </label>
+    ${courtFieldMarkup}
+    ${scheduleFieldMarkup}
+    <label class="checkbox-option">
+      <input type="checkbox" name="notifyPlayers" value="true" />
+      Notificar a los jugadores por correo y push
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary">Guardar horario</button>
+      <button type="button" class="ghost" data-action="cancel">Cancelar</button>
+    </div>
+  `;
+
+  const statusMessage = document.createElement('p');
+  statusMessage.className = 'status-message';
+  statusMessage.style.display = 'none';
+
+  const tournamentField = form.elements.tournamentLabel;
+  const categoryField = form.elements.categoryLabel;
+  const playerOneField = form.elements.playerLabel1;
+  const playerTwoField = form.elements.playerLabel2;
+  const statusField = form.elements.status;
+  const courtField = form.elements.court;
+  const scheduledField = form.elements.scheduledAt;
+  const scheduleDateField = form.elements.scheduledDate;
+  const scheduleSlotField = form.elements.scheduledSlot;
+  const notifyField = form.elements.notifyPlayers;
+  const cancelButton = form.querySelector('button[data-action="cancel"]');
+  const submitButton = form.querySelector('button[type="submit"]');
+
+  const playerNames = Array.isArray(match?.players)
+    ? match.players.map((player, index) => {
+        if (typeof player === 'object' && player) {
+          return getPlayerDisplayName(player) || `Jugador ${index + 1}`;
+        }
+        const playerId = normalizeId(player);
+        if (!playerId) {
+          return `Jugador ${index + 1} por definir`;
+        }
+        const statePlayer = Array.isArray(state.players)
+          ? state.players.find((item) => normalizeId(item) === playerId)
+          : null;
+        return getPlayerDisplayName(statePlayer) || `Jugador ${index + 1}`;
+      })
+    : [];
+
+  if (tournamentField) {
+    tournamentField.value = tournament?.name || 'Torneo';
+  }
+  if (categoryField) {
+    categoryField.value = category?.name || 'Categoría';
+  }
+  if (playerOneField) {
+    playerOneField.value = playerNames[0] || 'Jugador por definir';
+  }
+  if (playerTwoField) {
+    playerTwoField.value = playerNames[1] || 'Jugador por definir';
+  }
+
+  const metaParts = [];
+  if (Number.isFinite(Number(match?.matchNumber))) {
+    metaParts.push(`Partido ${match.matchNumber}`);
+  }
+  if (match?.round) {
+    metaParts.push(`Ronda: ${match.round}`);
+  }
+  if (metaParts.length) {
+    const metaInfo = document.createElement('p');
+    metaInfo.className = 'form-hint';
+    metaInfo.textContent = metaParts.join(' · ');
+    form.prepend(metaInfo);
+  }
+
+  const scheduledValue = formatDateTimeLocal(match?.scheduledAt);
+  if (scheduledField) {
+    scheduledField.value = scheduledValue;
+  }
+
+  if (statusField) {
+    const currentStatus = match?.status && TOURNAMENT_MATCH_STATUS_LABELS[match.status]
+      ? match.status
+      : scheduledValue
+      ? 'programado'
+      : 'pendiente';
+    statusField.value = currentStatus;
+  }
+
+  if (courtField) {
+    const courtValue = match?.court || '';
+    if (courtValue && courtField.tagName === 'SELECT') {
+      const options = Array.from(courtField.options || []);
+      const hasOption = options.some((option) => option.value === courtValue);
+      if (!hasOption) {
+        const option = new Option(courtValue, courtValue, true, true);
+        courtField.appendChild(option);
+      }
+    }
+    courtField.value = courtValue;
+  }
+
+  if (notifyField) {
+    notifyField.checked = !match?.scheduledAt;
+  }
+
+  const usingSchedulePicker =
+    scheduleTemplates.length > 0 && scheduleDateField && scheduleSlotField && scheduledField;
+  if (usingSchedulePicker) {
+    attachSchedulePicker({
+      scheduleTemplates,
+      scheduleDateField,
+      scheduleSlotField,
+      scheduledField,
+      courtField,
+      existingValue: scheduledField?.value || '',
+      scope: 'admin',
+    });
+  }
+
+  if (scheduledField && statusField) {
+    const updateStatusForSchedule = () => {
+      const hasSchedule = Boolean(scheduledField.value);
+      if (hasSchedule && statusField.value === 'pendiente') {
+        statusField.value = 'programado';
+      } else if (!hasSchedule && statusField.value === 'programado') {
+        statusField.value = 'pendiente';
+      }
+    };
+
+    if (usingSchedulePicker) {
+      scheduleDateField?.addEventListener('change', updateStatusForSchedule);
+      scheduleDateField?.addEventListener('input', updateStatusForSchedule);
+      scheduleSlotField?.addEventListener('change', updateStatusForSchedule);
+    } else {
+      scheduledField.addEventListener('input', updateStatusForSchedule);
+      scheduledField.addEventListener('change', updateStatusForSchedule);
+    }
+
+    updateStatusForSchedule();
+  }
+
+  cancelButton?.addEventListener('click', (event) => {
+    event.preventDefault();
+    setStatusMessage(statusMessage, '', '');
+    closeModal();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!isAdmin()) return;
+
+    const succeeded = await submitTournamentMatchSchedule({
+      form,
+      tournamentId: resolvedTournamentId,
+      categoryId: resolvedCategoryId,
+      matchId: normalizedMatchId,
+      statusElement: statusMessage,
+      submitButton,
+    });
+
+    if (succeeded) {
+      closeModal();
+    }
+  });
+
+  openModal({
+    title: match?.scheduledAt ? 'Editar horario del partido' : 'Programar partido',
+    content: (body) => {
+      body.appendChild(form);
+      body.appendChild(statusMessage);
+    },
+    onClose: () => setStatusMessage(statusMessage, '', ''),
   });
 }
 
@@ -27719,6 +28295,36 @@ matchGenerateButton?.addEventListener('click', () => {
 matchCreateButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
   openMatchModal();
+});
+
+tournamentMatchesList?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action="schedule-tournament-match"]');
+  if (!button || !isAdmin()) {
+    return;
+  }
+
+  const { matchId } = button.dataset;
+  if (!matchId) {
+    return;
+  }
+
+  const { tournamentId = '', categoryId = '' } = button.dataset;
+  openTournamentMatchScheduleModal(matchId, { tournamentId, categoryId });
+});
+
+tournamentBracketView?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action="schedule-tournament-match"]');
+  if (!button || !isAdmin()) {
+    return;
+  }
+
+  const { matchId } = button.dataset;
+  if (!matchId) {
+    return;
+  }
+
+  const { tournamentId = '', categoryId = '' } = button.dataset;
+  openTournamentMatchScheduleModal(matchId, { tournamentId, categoryId });
 });
 
 modalClose?.addEventListener('click', () => {

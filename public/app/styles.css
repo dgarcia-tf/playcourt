@@ -1894,6 +1894,17 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-muted);
 }
 
+.bracket-match__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.bracket-match__action {
+  padding: 0.55rem 1rem;
+  font-size: 0.78rem;
+}
+
 .tournament-bracket-card .result-scoreboard {
   margin-top: 0.25rem;
 }
@@ -2670,12 +2681,24 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-primary);
 }
 
+.tournament-match-item {
+  display: grid;
+  gap: 0.55rem;
+}
+
 .tournament-match-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
   font-size: 0.85rem;
   color: var(--text-secondary);
+}
+
+.tournament-match-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .tournament-detail__categories,

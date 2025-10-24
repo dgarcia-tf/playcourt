@@ -8,6 +8,7 @@ const {
   reportResult,
   confirmResult,
   proposeMatch,
+  respondToScheduleConfirmation,
   respondToProposal,
 } = require('../controllers/matchController');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
@@ -138,6 +139,17 @@ router.post(
   authenticate,
   [param('matchId').isMongoId(), body('decision').isIn(['approve', 'reject'])],
   confirmResult
+);
+
+router.post(
+  '/:matchId/schedule/respond',
+  authenticate,
+  [
+    param('matchId').isMongoId(),
+    body('decision').isIn(['accept', 'reject']),
+    body('reason').optional({ nullable: true }).isString().isLength({ max: 500 }),
+  ],
+  respondToScheduleConfirmation
 );
 
 router.post(
