@@ -1823,6 +1823,7 @@ const tournamentDetailCard = document.getElementById('tournament-detail-card');
 const tournamentDetailTitle = document.getElementById('tournament-detail-title');
 const tournamentDetailSubtitle = document.getElementById('tournament-detail-subtitle');
 const tournamentDetailBody = document.getElementById('tournament-detail-body');
+const tournamentAdminEnrollButton = document.getElementById('tournament-admin-enroll-button');
 const tournamentCategoryTournamentSelect = document.getElementById('tournament-category-tournament');
 const tournamentCategoriesList = document.getElementById('tournament-categories-list');
 const tournamentCategoriesEmpty = document.getElementById('tournament-categories-empty');
@@ -2358,6 +2359,10 @@ function updateLeagueActionAvailability() {
 function updateTournamentActionAvailability() {
   if (tournamentEditButton) {
     tournamentEditButton.disabled = !state.selectedTournamentId;
+  }
+
+  if (tournamentAdminEnrollButton) {
+    tournamentAdminEnrollButton.disabled = !state.selectedTournamentId;
   }
 
   const hasTournaments = Array.isArray(state.tournaments) && state.tournaments.length > 0;
@@ -9526,6 +9531,12 @@ function renderTournaments(tournaments = state.tournaments) {
 function renderTournamentDetail() {
   if (!tournamentDetailBody) return;
 
+  if (tournamentAdminEnrollButton) {
+    tournamentAdminEnrollButton.hidden = true;
+    tournamentAdminEnrollButton.disabled = true;
+    delete tournamentAdminEnrollButton.dataset.tournamentId;
+  }
+
   const tournamentId = state.selectedTournamentId;
   updateTournamentActionAvailability();
   if (!tournamentId) {
@@ -9556,6 +9567,22 @@ function renderTournamentDetail() {
   }
   if (tournamentDetailSubtitle) {
     tournamentDetailSubtitle.textContent = formatTournamentDateRange(detail);
+  }
+
+  if (tournamentAdminEnrollButton) {
+    const options = detail?.adminEnrollmentOptions;
+    const canShow =
+      isAdmin() &&
+      Boolean(options?.canEnrollPlayers) &&
+      Array.isArray(options?.categories) &&
+      options.categories.length > 0;
+    tournamentAdminEnrollButton.hidden = !canShow;
+    tournamentAdminEnrollButton.disabled = !canShow;
+    if (canShow) {
+      tournamentAdminEnrollButton.dataset.tournamentId = tournamentId;
+    } else {
+      delete tournamentAdminEnrollButton.dataset.tournamentId;
+    }
   }
 
   tournamentDetailBody.innerHTML = '';
@@ -10149,6 +10176,477 @@ async function openTournamentSelfEnrollmentModal({
 
   openModal({
     title: allowMultiple ? 'Inscribirse en el torneo' : 'Solicitar inscripción',
+    content: (body) => {
+      body.appendChild(form);
+      body.appendChild(status);
+    },
+    onClose: () => setStatusMessage(status, '', ''),
+  });
+}
+
+async function openTournamentAdminEnrollmentModal({
+  tournamentId = state.selectedTournamentId,
+} = {}) {
+  if (!isAdmin()) {
+    return;
+  }
+
+  const normalizedTournamentId = tournamentId
+    ? normalizeId(tournamentId)
+    : normalizeId(state.selectedTournamentId);
+
+  if (!normalizedTournamentId) {
+    showGlobalMessage('Selecciona un torneo para inscribir jugadores.', 'info');
+    return;
+  }
+
+  if (!state.tournamentDetails.has(normalizedTournamentId)) {
+    try {
+      await refreshTournamentDetail(normalizedTournamentId);
+    } catch (error) {
+      showGlobalMessage(
+        error.message || 'No fue posible cargar el detalle del torneo.',
+        'error'
+      );
+      return;
+    }
+  }
+
+  const detail =
+    state.tournamentDetails.get(normalizedTournamentId) ||
+    getTournamentById(normalizedTournamentId);
+  const options = detail?.adminEnrollmentOptions;
+
+  if (
+    !options?.canEnrollPlayers ||
+    !Array.isArray(options.categories) ||
+    options.categories.length === 0
+  ) {
+    showGlobalMessage('No hay categorías disponibles para inscribir jugadores.', 'info');
+    return;
+  }
+
+  try {
+    await ensurePlayersLoaded();
+  } catch (error) {
+    return;
+  }
+
+  const players = Array.isArray(state.players) ? state.players : [];
+  const eligiblePlayers = players
+    .filter((player) => entityHasRole(player, 'player'))
+    .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'es'));
+
+  if (!eligiblePlayers.length) {
+    showGlobalMessage('No hay jugadores disponibles para inscribir.', 'info');
+    return;
+  }
+
+  const categories = options.categories
+    .map((category) => {
+      const id = normalizeId(category);
+      if (!id) {
+        return null;
+      }
+      const label = category.menuTitle || category.name || 'Categoría';
+      return {
+        id,
+        label,
+        gender: category.gender || '',
+        matchType: category.matchType || '',
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+
+  if (!categories.length) {
+    showGlobalMessage('No hay categorías disponibles para inscribir jugadores.', 'info');
+    return;
+  }
+
+  const rawMaxSelectable = Number(options.maxSelectableCategories);
+  const maxSelectable = Number.isFinite(rawMaxSelectable) && rawMaxSelectable > 0
+    ? Math.min(rawMaxSelectable, categories.length)
+    : categories.length;
+
+  const requiresShirtSize = Boolean(options.requiresShirtSize);
+  const hasShirtOption = Boolean(options.hasShirt || requiresShirtSize);
+  const allowedShirtSizes = Array.isArray(options.shirtSizes)
+    ? options.shirtSizes
+        .map((size) => (typeof size === 'string' ? size.trim().toUpperCase() : ''))
+        .filter((size, index, array) => size && array.indexOf(size) === index)
+    : [];
+
+  const form = document.createElement('form');
+  form.className = 'form';
+
+  const playerLabel = document.createElement('label');
+  playerLabel.textContent = 'Jugador';
+  const playerSelect = document.createElement('select');
+  playerSelect.name = 'userId';
+  playerSelect.required = true;
+  playerSelect.innerHTML = '<option value="">Selecciona un jugador</option>';
+  eligiblePlayers.forEach((player) => {
+    const option = document.createElement('option');
+    option.value = player._id || player.id || '';
+    option.textContent = player.fullName || player.email || 'Jugador';
+    playerSelect.appendChild(option);
+  });
+  playerLabel.appendChild(playerSelect);
+  form.appendChild(playerLabel);
+
+  let categoryCountSelect = null;
+  if (maxSelectable > 1) {
+    const countLabel = document.createElement('label');
+    countLabel.textContent = 'Número de categorías';
+    categoryCountSelect = document.createElement('select');
+    categoryCountSelect.name = 'categoryCount';
+    categoryCountSelect.required = true;
+    for (let count = 1; count <= maxSelectable; count += 1) {
+      const option = document.createElement('option');
+      option.value = String(count);
+      option.textContent = count === 1 ? '1 categoría' : `${count} categorías`;
+      categoryCountSelect.appendChild(option);
+    }
+    countLabel.appendChild(categoryCountSelect);
+    form.appendChild(countLabel);
+  }
+
+  const categoryFieldset = document.createElement('fieldset');
+  categoryFieldset.className = 'checkbox-group';
+  const legend = document.createElement('legend');
+  legend.textContent = 'Categorías disponibles';
+  categoryFieldset.appendChild(legend);
+
+  const selectionHint = document.createElement('p');
+  selectionHint.className = 'form-hint';
+  categoryFieldset.appendChild(selectionHint);
+
+  const categoryCheckboxes = categories.map((category) => {
+    const optionLabel = document.createElement('label');
+    optionLabel.className = 'checkbox-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.name = 'categoryIds';
+    checkbox.value = category.id;
+    optionLabel.appendChild(checkbox);
+    const text = document.createElement('span');
+    const details = [];
+    if (category.gender) {
+      details.push(translateGender(category.gender));
+    }
+    if (category.matchType) {
+      details.push(formatTournamentMatchType(category.matchType));
+    }
+    text.textContent = details.length
+      ? `${category.label} · ${details.join(' · ')}`
+      : category.label;
+    optionLabel.appendChild(text);
+    categoryFieldset.appendChild(optionLabel);
+    return checkbox;
+  });
+
+  form.appendChild(categoryFieldset);
+
+  let shirtField = null;
+  if (hasShirtOption) {
+    const shirtLabel = document.createElement('label');
+    shirtLabel.textContent = 'Talla de camiseta';
+    const hint = document.createElement('span');
+    hint.className = 'form-hint';
+    hint.textContent = requiresShirtSize
+      ? 'Obligatoria para completar la inscripción.'
+      : 'Opcional; si no se indica se mantendrá la registrada en el perfil.';
+    shirtLabel.appendChild(hint);
+
+    if (allowedShirtSizes.length) {
+      const select = document.createElement('select');
+      select.name = 'shirtSize';
+      select.innerHTML = '<option value="">Selecciona una talla</option>';
+      allowedShirtSizes.forEach((size) => {
+        const option = document.createElement('option');
+        option.value = size;
+        option.textContent = size;
+        select.appendChild(option);
+      });
+      if (requiresShirtSize) {
+        select.required = true;
+      }
+      shirtField = select;
+      shirtLabel.appendChild(select);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = 'shirtSize';
+      input.placeholder = 'Ej. S, M, L, XL';
+      if (requiresShirtSize) {
+        input.required = true;
+      }
+      shirtField = input;
+      shirtLabel.appendChild(input);
+    }
+
+    form.appendChild(shirtLabel);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'form-actions';
+
+  const submitButton = document.createElement('button');
+  submitButton.type = 'submit';
+  submitButton.className = 'primary';
+  submitButton.textContent = 'Inscribir jugador';
+  submitButton.disabled = true;
+  actions.appendChild(submitButton);
+
+  const cancelButton = document.createElement('button');
+  cancelButton.type = 'button';
+  cancelButton.className = 'ghost';
+  cancelButton.textContent = 'Cancelar';
+  actions.appendChild(cancelButton);
+
+  form.appendChild(actions);
+
+  const status = document.createElement('p');
+  status.className = 'status-message';
+  status.style.display = 'none';
+
+  const parseDesiredCount = () => {
+    if (!categoryCountSelect) {
+      return null;
+    }
+    const value = Number(categoryCountSelect.value || '0');
+    return Number.isFinite(value) && value > 0 ? Math.min(value, maxSelectable) : null;
+  };
+
+  const countSelectedCategories = () =>
+    categoryCheckboxes.filter((checkbox) => checkbox.checked).length;
+
+  const updateSelectionHint = () => {
+    if (!selectionHint) {
+      return;
+    }
+    const desired = parseDesiredCount();
+    const selected = countSelectedCategories();
+    if (desired) {
+      selectionHint.textContent =
+        desired === 1
+          ? `Selecciona 1 categoría (actualmente ${selected}).`
+          : `Selecciona ${desired} categorías (actualmente ${selected}).`;
+      return;
+    }
+    if (maxSelectable && maxSelectable < categories.length) {
+      selectionHint.textContent =
+        maxSelectable === 1
+          ? 'Selecciona una única categoría disponible.'
+          : `Selecciona hasta ${maxSelectable} categorías (actualmente ${selected}).`;
+      return;
+    }
+    selectionHint.textContent = 'Selecciona las categorías en las que participará el jugador.';
+  };
+
+  const getSelectionLimit = () => {
+    const desired = parseDesiredCount();
+    if (desired) {
+      return Math.min(desired, maxSelectable);
+    }
+    return maxSelectable;
+  };
+
+  const enforceCategoryLimit = () => {
+    const limit = Math.max(1, getSelectionLimit());
+    const selected = countSelectedCategories();
+    categoryCheckboxes.forEach((checkbox) => {
+      if (!checkbox.checked) {
+        checkbox.disabled = selected >= limit;
+      } else {
+        checkbox.disabled = false;
+      }
+    });
+    updateSelectionHint();
+  };
+
+  const getShirtValue = () => {
+    if (!shirtField) {
+      return '';
+    }
+    return (shirtField.value || '').trim();
+  };
+
+  const updateSubmitState = () => {
+    const playerSelected = Boolean(playerSelect.value);
+    const selectedCount = countSelectedCategories();
+    const desired = parseDesiredCount();
+    const limit = getSelectionLimit();
+    const categoriesValid =
+      selectedCount > 0 && (desired ? selectedCount === desired : selectedCount <= limit);
+    const shirtValid = requiresShirtSize ? Boolean(getShirtValue()) : true;
+    submitButton.disabled = !(playerSelected && categoriesValid && shirtValid);
+  };
+
+  function applyDefaultShirtSize() {
+    if (!shirtField) {
+      return;
+    }
+    const playerId = playerSelect.value || '';
+    const player = eligiblePlayers.find((entry) => normalizeId(entry) === playerId);
+    const defaultSize = player?.shirtSize
+      ? String(player.shirtSize).trim().toUpperCase()
+      : '';
+    if (!defaultSize) {
+      updateSubmitState();
+      return;
+    }
+    if (shirtField.tagName === 'SELECT') {
+      const optionsList = Array.from(shirtField.options);
+      const matching = optionsList.find(
+        (option) => (option.value || '').toUpperCase() === defaultSize
+      );
+      if (matching) {
+        shirtField.value = matching.value;
+      }
+    } else if (!shirtField.value) {
+      shirtField.value = defaultSize;
+    }
+    updateSubmitState();
+  }
+
+  categoryCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      enforceCategoryLimit();
+      updateSubmitState();
+      setStatusMessage(status, '', '');
+    });
+  });
+
+  if (categoryCountSelect) {
+    categoryCountSelect.addEventListener('change', () => {
+      enforceCategoryLimit();
+      updateSubmitState();
+      setStatusMessage(status, '', '');
+    });
+  }
+
+  playerSelect.addEventListener('change', () => {
+    applyDefaultShirtSize();
+    updateSubmitState();
+    setStatusMessage(status, '', '');
+  });
+
+  if (shirtField) {
+    const eventName = shirtField.tagName === 'SELECT' ? 'change' : 'input';
+    shirtField.addEventListener(eventName, () => {
+      updateSubmitState();
+      setStatusMessage(status, '', '');
+    });
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const playerId = playerSelect.value || '';
+    if (!playerId) {
+      setStatusMessage(status, 'error', 'Selecciona un jugador.');
+      return;
+    }
+
+    const selectedCategories = categoryCheckboxes
+      .filter((checkbox) => checkbox.checked)
+      .map((checkbox) => checkbox.value);
+
+    if (!selectedCategories.length) {
+      setStatusMessage(status, 'error', 'Selecciona al menos una categoría.');
+      return;
+    }
+
+    const desired = parseDesiredCount();
+    const limit = getSelectionLimit();
+    if (desired && selectedCategories.length !== desired) {
+      setStatusMessage(
+        status,
+        'error',
+        desired === 1
+          ? 'Debes seleccionar exactamente 1 categoría.'
+          : `Debes seleccionar exactamente ${desired} categorías.`,
+      );
+      return;
+    }
+
+    if (selectedCategories.length > limit) {
+      setStatusMessage(
+        status,
+        'error',
+        limit === 1
+          ? 'Solo puedes seleccionar una categoría para este jugador.'
+          : `Solo puedes seleccionar hasta ${limit} categorías para este jugador.`,
+      );
+      return;
+    }
+
+    let shirtSizeValue = getShirtValue();
+    if (requiresShirtSize && !shirtSizeValue) {
+      setStatusMessage(status, 'error', 'Indica la talla de camiseta del jugador.');
+      return;
+    }
+
+    if (shirtSizeValue) {
+      shirtSizeValue = shirtSizeValue.toUpperCase();
+    }
+
+    submitButton.disabled = true;
+    setStatusMessage(status, 'info', 'Inscribiendo jugador...');
+
+    const payload = {
+      userId: playerId,
+      categories: selectedCategories,
+    };
+
+    if (desired) {
+      payload.categoryCount = desired;
+    }
+
+    if (shirtSizeValue) {
+      payload.shirtSize = shirtSizeValue;
+    }
+
+    try {
+      const response = await request(`/tournaments/${normalizedTournamentId}/enrollments`, {
+        method: 'POST',
+        body: payload,
+      });
+      const created = Array.isArray(response?.enrollments)
+        ? response.enrollments
+        : [];
+      const processedCount = created.length || selectedCategories.length;
+      const successMessage =
+        processedCount > 1
+          ? 'Jugador inscrito en las categorías seleccionadas.'
+          : 'Jugador inscrito correctamente.';
+      setStatusMessage(status, 'success', successMessage);
+      closeModal();
+      showGlobalMessage(successMessage);
+      state.tournamentDetails.delete(normalizedTournamentId);
+      await Promise.all([
+        reloadTournaments({ selectTournamentId: normalizedTournamentId }),
+        refreshTournamentDetail(normalizedTournamentId),
+      ]);
+    } catch (error) {
+      submitButton.disabled = false;
+      setStatusMessage(status, 'error', error.message);
+    }
+  });
+
+  cancelButton.addEventListener('click', () => {
+    setStatusMessage(status, '', '');
+    closeModal();
+  });
+
+  enforceCategoryLimit();
+  updateSubmitState();
+  applyDefaultShirtSize();
+  setStatusMessage(status, '', '');
+
+  openModal({
+    title: 'Inscribir jugador en el torneo',
     content: (body) => {
       body.appendChild(form);
       body.appendChild(status);
@@ -26371,6 +26869,12 @@ tournamentDetailBody?.addEventListener('click', (event) => {
       categoryId: categoryId || '',
     });
   }
+});
+
+tournamentAdminEnrollButton?.addEventListener('click', () => {
+  const targetTournamentId =
+    tournamentAdminEnrollButton.dataset.tournamentId || state.selectedTournamentId;
+  openTournamentAdminEnrollmentModal({ tournamentId: targetTournamentId });
 });
 
 tournamentMatchTournamentSelect?.addEventListener('change', async (event) => {
