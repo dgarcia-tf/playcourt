@@ -2065,6 +2065,9 @@ const adminToggleElements = document.querySelectorAll('[data-admin-visible="togg
 function setMenuGroupExpanded(menuGroup, expanded) {
   if (!menuGroup) return;
   const { parentButton, submenu, group } = menuGroup;
+  if (expanded) {
+    cancelScheduledCollapse(menuGroup);
+  }
   if (parentButton) {
     parentButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   }
@@ -2116,12 +2119,21 @@ const collapsibleMenuGroups = appMenu
           parentButton,
           submenu,
           target: parentButton.dataset.target || null,
+          collapseTimeoutId: null,
         };
         setMenuGroupExpanded(menuGroup, false);
         return menuGroup;
       })
       .filter(Boolean)
   : [];
+
+function cancelScheduledCollapse(menuGroup) {
+  if (!menuGroup || menuGroup.collapseTimeoutId == null) {
+    return;
+  }
+  clearTimeout(menuGroup.collapseTimeoutId);
+  menuGroup.collapseTimeoutId = null;
+}
 
 const collapsibleMenuGroupsByElement = new Map();
 
@@ -2144,6 +2156,7 @@ collapsibleMenuGroups.forEach((menuGroup) => {
     if (!shouldUseHoverNavigation()) {
       return;
     }
+    cancelScheduledCollapse(menuGroup);
     setMenuGroupExpanded(menuGroup, true);
   });
 
@@ -2162,6 +2175,7 @@ collapsibleMenuGroups.forEach((menuGroup) => {
     if (!shouldUseHoverNavigation()) {
       return;
     }
+    cancelScheduledCollapse(menuGroup);
     setMenuGroupExpanded(menuGroup, true);
   });
 
@@ -2182,7 +2196,20 @@ collapsibleMenuGroups.forEach((menuGroup) => {
   }
 
   if (submenu) {
+    submenu.addEventListener('mouseenter', () => {
+      if (!shouldUseHoverNavigation()) {
+        return;
+      }
+      cancelScheduledCollapse(menuGroup);
+      setMenuGroupExpanded(menuGroup, true);
+    });
     submenu.addEventListener('focusout', () => {
+      if (!shouldUseHoverNavigation()) {
+        return;
+      }
+      scheduleCollapseIfInactive(menuGroup);
+    });
+    submenu.addEventListener('mouseleave', () => {
       if (!shouldUseHoverNavigation()) {
         return;
       }
@@ -2221,7 +2248,9 @@ function scheduleCollapseIfInactive(menuGroup) {
   if (!menuGroup) {
     return;
   }
-  requestAnimationFrame(() => {
+  cancelScheduledCollapse(menuGroup);
+  const delay = shouldUseHoverNavigation() ? 120 : 0;
+  const collapse = () => {
     const activeElement = document.activeElement;
     if (menuGroup.group?.contains(activeElement)) {
       return;
@@ -2230,7 +2259,13 @@ function scheduleCollapseIfInactive(menuGroup) {
       return;
     }
     setMenuGroupExpanded(menuGroup, false);
-  });
+    menuGroup.collapseTimeoutId = null;
+  };
+  if (delay > 0) {
+    menuGroup.collapseTimeoutId = window.setTimeout(collapse, delay);
+  } else {
+    requestAnimationFrame(collapse);
+  }
 }
 
 function collapseInactiveMenuGroups() {
