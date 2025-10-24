@@ -45,6 +45,7 @@ const {
   submitTournamentMatchResult,
   approveTournamentMatchResult,
   resetTournamentMatchResult,
+  downloadTournamentOrderOfPlay,
 } = require('../controllers/tournamentMatchController');
 const { authenticate, authenticateOptional, authorizeRoles } = require('../middleware/auth');
 const { TOURNAMENT_STATUS } = require('../models/Tournament');
@@ -105,6 +106,13 @@ router.get(
   authenticateOptional,
   [param('tournamentId').isMongoId()],
   listTournamentDoublesPlayers
+);
+
+router.get(
+  '/:tournamentId/order-of-play',
+  authenticateOptional,
+  [param('tournamentId').isMongoId(), query('day').trim().notEmpty()],
+  downloadTournamentOrderOfPlay
 );
 
 router.use(authenticate);

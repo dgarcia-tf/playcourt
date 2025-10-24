@@ -18,6 +18,7 @@ const {
 const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { notifyTournamentMatchScheduled } = require('../services/tournamentNotificationService');
 const { canAccessPrivateContent } = require('../utils/accessControl');
+const { createOrderOfPlayPdf } = require('../services/tournamentOrderOfPlayPdfService');
 
 const ROUND_NAME_LABELS = {
   1: 'Final',
@@ -392,6 +393,224 @@ async function listTournamentMatches(req, res) {
   });
 
   return res.json(matches);
+}
+
+function parseDayRange(day) {
+  if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return null;
+  }
+
+  const [year, month, date] = day.split('-').map((value) => Number.parseInt(value, 10));
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(date)) {
+    return null;
+  }
+
+  const start = new Date(year, month - 1, date);
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  if (
+    start.getFullYear() !== year ||
+    start.getMonth() !== month - 1 ||
+    start.getDate() !== date
+  ) {
+    return null;
+  }
+
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return { start, end };
+}
+
+function formatMatchLabel(match) {
+  const parts = [];
+  if (match.round && typeof match.round === 'string') {
+    parts.push(match.round.trim());
+  }
+  if (Number.isFinite(Number(match.matchNumber))) {
+    parts.push(`Partido ${Number(match.matchNumber)}`);
+  }
+  if (match.bracketType === TOURNAMENT_BRACKETS.CONSOLATION) {
+    parts.push('Consolación');
+  }
+
+  if (!parts.length) {
+    return 'Partido';
+  }
+
+  return parts.join(' - ');
+}
+
+function formatMatchPlayersForDisplay(match) {
+  const players = Array.isArray(match.players) ? match.players : [];
+
+  if (!players.length) {
+    return 'Por definir';
+  }
+
+  const names = players.map((player) => {
+    if (!player) {
+      return 'Por definir';
+    }
+
+    if (typeof player === 'string') {
+      return player;
+    }
+
+    if (player.fullName && player.fullName.trim()) {
+      return player.fullName.trim();
+    }
+
+    if (player.email) {
+      return player.email;
+    }
+
+    if (Array.isArray(player.players)) {
+      const pairNames = player.players
+        .map((entry) => {
+          if (!entry) {
+            return '';
+          }
+          if (typeof entry === 'string') {
+            return entry;
+          }
+          if (entry.fullName && entry.fullName.trim()) {
+            return entry.fullName.trim();
+          }
+          if (entry.email) {
+            return entry.email;
+          }
+          return '';
+        })
+        .filter((value) => Boolean(value && value.trim()));
+      if (pairNames.length) {
+        return pairNames.join(' / ');
+      }
+    }
+
+    return 'Por definir';
+  });
+
+  return names.join(' vs ');
+}
+
+async function downloadTournamentOrderOfPlay(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { tournamentId } = req.params;
+  const { day } = req.query;
+
+  const tournament = await Tournament.findById(tournamentId).select('name isPrivate');
+  if (!tournament) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  if (tournament.isPrivate && !canAccessPrivateContent(req.user)) {
+    return res.status(404).json({ message: 'Torneo no encontrado' });
+  }
+
+  const range = parseDayRange(day);
+  if (!range) {
+    return res.status(400).json({ message: 'Debe proporcionar un día válido con el formato AAAA-MM-DD' });
+  }
+
+  const matchesQuery = populateTournamentMatchPlayers(
+    TournamentMatch.find({
+      tournament: tournamentId,
+      scheduledAt: { $gte: range.start, $lt: range.end },
+    })
+      .populate({ path: 'category', select: 'name matchType order color' })
+      .sort({ scheduledAt: 1, court: 1, createdAt: 1 })
+  );
+
+  const matches = await matchesQuery.exec();
+  await hydrateMatchPlayerDetails(matches);
+
+  const categoryMap = new Map();
+
+  matches.forEach((match) => {
+    if (!match || !match.category || !match.scheduledAt) {
+      return;
+    }
+
+    const categoryId = match.category._id ? match.category._id.toString() : match.category.toString();
+    if (!categoryMap.has(categoryId)) {
+      categoryMap.set(categoryId, {
+        name: match.category.name || 'Categoría sin nombre',
+        matches: [],
+      });
+    }
+
+    categoryMap.get(categoryId).matches.push(match);
+  });
+
+  const timeFormatter = new Intl.DateTimeFormat('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const categories = Array.from(categoryMap.values())
+    .map((category) => {
+      const sortedMatches = category.matches
+        .slice()
+        .sort((a, b) => {
+          const timeDiff = new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+          if (timeDiff !== 0) {
+            return timeDiff;
+          }
+          const courtA = a.court || '';
+          const courtB = b.court || '';
+          if (courtA && courtB) {
+            return courtA.localeCompare(courtB, 'es', { sensitivity: 'base' });
+          }
+          if (courtA) {
+            return -1;
+          }
+          if (courtB) {
+            return 1;
+          }
+          return (a.createdAt || 0) - (b.createdAt || 0);
+        });
+
+      return {
+        name: category.name,
+        matches: sortedMatches.map((match) => ({
+          label: formatMatchLabel(match),
+          players: formatMatchPlayersForDisplay(match),
+          time: timeFormatter.format(new Date(match.scheduledAt)),
+          court: match.court ? match.court : 'Por definir',
+        })),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+
+  const dayLabel = new Intl.DateTimeFormat('es-ES', { dateStyle: 'full' }).format(range.start);
+
+  const document = createOrderOfPlayPdf({
+    tournamentName: tournament.name,
+    dayLabel,
+    categories,
+  });
+
+  const filename = `orden-juego-${day}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  document.on('error', () => {
+    if (!res.headersSent) {
+      res.status(500);
+    }
+    res.end();
+  });
+
+  document.pipe(res);
+  document.end();
 }
 
 function sanitizeMatchPayload(match, { allowedPlayers = new Set(), playerType = 'User' } = {}) {
@@ -1700,4 +1919,5 @@ module.exports = {
   resetTournamentMatchResult,
   confirmTournamentMatch,
   rejectTournamentMatch,
+  downloadTournamentOrderOfPlay,
 };
