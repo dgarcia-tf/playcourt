@@ -78,13 +78,21 @@ function calculateNaturalYearAge(birthDate, reference = new Date()) {
   return referenceYear - birth.getFullYear();
 }
 
-function userMeetsCategoryMinimumAge(category, user, referenceDate = new Date()) {
+function hasCategoryMinimumAgeRequirement(category) {
   if (!category || category.minimumAge === undefined || category.minimumAge === null) {
-    return true;
+    return false;
   }
 
   const minimumAge = Number(category.minimumAge);
   if (!Number.isFinite(minimumAge) || minimumAge <= 0) {
+    return false;
+  }
+
+  return true;
+}
+
+function userMeetsCategoryMinimumAge(category, user, referenceDate = new Date()) {
+  if (!hasCategoryMinimumAgeRequirement(category)) {
     return true;
   }
 
@@ -109,5 +117,6 @@ module.exports = {
   getCategoryReferenceYear,
   calculateNaturalYearAge,
   userMeetsCategoryMinimumAge,
+  hasCategoryMinimumAgeRequirement,
 };
 

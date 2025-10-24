@@ -11,8 +11,10 @@ const {
   TournamentEnrollment,
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
+const { USER_ROLES, userHasRole } = require('../models/User');
 const { TournamentMatch } = require('../models/TournamentMatch');
 const { canAccessPrivateContent } = require('../utils/accessControl');
+const { hasCategoryMinimumAgeRequirement } = require('../utils/age');
 
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 const POSTER_UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'tournaments');
@@ -400,11 +402,13 @@ async function getTournamentDetail(req, res) {
     const userEnrollment = userEnrollmentMap.get(categoryId) || null;
     const categoryAllowsEnrollment =
       plainCategory.status === TOURNAMENT_CATEGORY_STATUSES.REGISTRATION;
+    const hasMinimumAgeRequirement = hasCategoryMinimumAgeRequirement(plainCategory);
     const canRequestEnrollment = Boolean(req.user) &&
       tournamentAllowsEnrollment &&
       categoryAllowsEnrollment &&
       (!tournament.isPrivate || hasPrivateAccess) &&
-      (!userEnrollment || userEnrollment.status === TOURNAMENT_ENROLLMENT_STATUS.CANCELLED);
+      (!userEnrollment || userEnrollment.status === TOURNAMENT_ENROLLMENT_STATUS.CANCELLED) &&
+      !hasMinimumAgeRequirement;
 
     return {
       ...plainCategory,
@@ -424,7 +428,10 @@ async function getTournamentDetail(req, res) {
 
   const result = tournament.toObject();
   const toTimestamp = (value) => (value ? new Date(value).getTime() : -Infinity);
-  result.categories = categoriesWithStats;
+  const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
+  result.categories = isAdmin
+    ? categoriesWithStats
+    : categoriesWithStats.filter((category) => !hasCategoryMinimumAgeRequirement(category));
   result.materials = Array.isArray(result.materials) ? result.materials : [];
   result.payments = Array.isArray(result.payments)
     ? [...result.payments].sort((a, b) => {
