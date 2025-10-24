@@ -28,6 +28,8 @@ const ROUND_NAME_LABELS = {
 };
 
 const BYE_PLACEHOLDER = 'BYE';
+const BRACKET_RESULTS_BLOCKED_MESSAGE =
+  'No es posible generar un nuevo cuadro porque esta categoría ya tiene resultados registrados.';
 
 function nextPowerOfTwo(value) {
   if (value <= 1) {
@@ -84,6 +86,21 @@ function createConfirmationEntries(playerIds = []) {
     acc[playerId] = { status: 'pendiente' };
     return acc;
   }, {});
+}
+
+async function hasCategoryMatchesWithResults(tournamentId, categoryId) {
+  const query = {
+    tournament: tournamentId,
+    category: categoryId,
+    $or: [
+      { resultStatus: { $ne: 'sin_resultado' } },
+      { status: TOURNAMENT_MATCH_STATUS.COMPLETED },
+      { 'result.winner': { $exists: true, $ne: null } },
+    ],
+  };
+
+  const result = await TournamentMatch.exists(query);
+  return Boolean(result);
 }
 
 function applyByePlaceholders(entry, hasPlayerA, hasPlayerB) {
@@ -496,6 +513,11 @@ async function generateTournamentMatches(req, res) {
     }
   }
 
+  const hasRecordedResults = await hasCategoryMatchesWithResults(tournamentId, categoryId);
+  if (hasRecordedResults) {
+    return res.status(400).json({ message: BRACKET_RESULTS_BLOCKED_MESSAGE });
+  }
+
   const sanitizedMatches = Array.isArray(matches)
     ? matches
         .map((match) =>
@@ -813,6 +835,11 @@ async function autoGenerateTournamentBracket(req, res) {
         ? 'Se necesitan al menos dos parejas para generar el cuadro'
         : 'Se necesitan al menos dos jugadores para generar el cuadro',
     });
+  }
+
+  const hasRecordedResults = await hasCategoryMatchesWithResults(tournamentId, categoryId);
+  if (hasRecordedResults) {
+    return res.status(400).json({ message: BRACKET_RESULTS_BLOCKED_MESSAGE });
   }
 
   const drawSize =

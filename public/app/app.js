@@ -60,6 +60,10 @@ const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const TOURNAMENT_BRACKET_SIZES = [8, 16, 24, 32, 64];
+const TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION =
+  'El cuadro actual desaparecerá y se generará uno nuevo. ¿Deseas continuar?';
+const TOURNAMENT_BRACKET_RESULTS_BLOCKED_MESSAGE =
+  'No es posible generar un nuevo cuadro porque esta categoría ya tiene resultados registrados.';
 const TOURNAMENT_BRACKET_BASE_MATCH_GAP_REM = 2.5;
 const TOURNAMENT_BRACKET_MATCH_GAP_GROWTH_RATE = 1.65;
 const TOURNAMENT_BRACKET_MATCH_HEIGHT_REM = 9.75;
@@ -2485,6 +2489,62 @@ function openModal({ title, content, onClose } = {}) {
   });
 }
 
+function openConfirmationDialog({
+  title = 'Confirmación',
+  message = '¿Seguro que deseas continuar?',
+  confirmLabel = 'Aceptar',
+  cancelLabel = 'Cancelar',
+} = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(Boolean(value));
+    };
+
+    const container = document.createElement('div');
+    container.className = 'modal-confirm';
+
+    const text = document.createElement('p');
+    text.textContent = message;
+    container.appendChild(text);
+
+    const actions = document.createElement('div');
+    actions.className = 'form-actions';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'ghost';
+    cancelButton.textContent = cancelLabel;
+    cancelButton.addEventListener('click', () => {
+      settle(false);
+      closeModal();
+    });
+
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.className = 'primary';
+    confirmButton.textContent = confirmLabel;
+    confirmButton.addEventListener('click', () => {
+      settle(true);
+      closeModal();
+    });
+
+    actions.appendChild(cancelButton);
+    actions.appendChild(confirmButton);
+    container.appendChild(actions);
+
+    openModal({
+      title,
+      content: container,
+      onClose: () => {
+        settle(false);
+      },
+    });
+  });
+}
+
 function showGlobalMessage(message = '', type = 'info') {
   globalMessage.textContent = message;
   globalMessage.classList.remove('show', 'error');
@@ -2495,6 +2555,42 @@ function showGlobalMessage(message = '', type = 'info') {
     globalMessage.classList.add('error');
   }
   globalMessage.classList.add('show');
+}
+
+function getCachedTournamentBracketMatches(tournamentId, categoryId) {
+  if (!tournamentId || !categoryId) {
+    return [];
+  }
+
+  if (!(state.tournamentBracketMatches instanceof Map)) {
+    return [];
+  }
+
+  const cacheKey = getTournamentBracketCacheKey(tournamentId, categoryId);
+  const cached = state.tournamentBracketMatches.get(cacheKey);
+  return Array.isArray(cached) ? cached : [];
+}
+
+function bracketMatchesHaveRecordedResults(matches = []) {
+  return matches.some((match) => {
+    if (!match || typeof match !== 'object') {
+      return false;
+    }
+
+    if (typeof match.resultStatus === 'string' && match.resultStatus !== 'sin_resultado') {
+      return true;
+    }
+
+    if (match.status === 'completado') {
+      return true;
+    }
+
+    if (match.result && match.result.winner) {
+      return true;
+    }
+
+    return false;
+  });
 }
 
 function updateLeagueActionAvailability() {
@@ -2535,7 +2631,26 @@ function updateTournamentActionAvailability() {
   }
 
   if (tournamentBracketGenerateButton) {
-    tournamentBracketGenerateButton.disabled = !isAdmin() || !hasBracketSelection;
+    let disableGenerate = !isAdmin() || !hasBracketSelection;
+    let disabledMessage = '';
+
+    if (!disableGenerate) {
+      const matches = getCachedTournamentBracketMatches(
+        state.selectedBracketTournamentId,
+        state.selectedBracketCategoryId
+      );
+      if (bracketMatchesHaveRecordedResults(matches)) {
+        disableGenerate = true;
+        disabledMessage = TOURNAMENT_BRACKET_RESULTS_BLOCKED_MESSAGE;
+      }
+    }
+
+    tournamentBracketGenerateButton.disabled = disableGenerate;
+    if (disabledMessage) {
+      tournamentBracketGenerateButton.title = disabledMessage;
+    } else {
+      tournamentBracketGenerateButton.removeAttribute('title');
+    }
   }
 
   if (tournamentBracketRecalculateButton) {
@@ -13538,6 +13653,7 @@ async function refreshTournamentBracketMatches({ forceReload = false } = {}) {
     });
     state.tournamentBracketMatches.set(cacheKey, cached);
     renderTournamentBracket(cached);
+    updateTournamentActionAvailability();
     return;
   }
 
@@ -13551,12 +13667,14 @@ async function refreshTournamentBracketMatches({ forceReload = false } = {}) {
     state.tournamentBracketMatches.set(cacheKey, list);
     if (pendingTournamentBracketKey === cacheKey) {
       renderTournamentBracket(list);
+      updateTournamentActionAvailability();
     }
   } catch (error) {
     if (pendingTournamentBracketKey === cacheKey) {
       renderTournamentBracket([], {
         error: error.message || 'No fue posible cargar el cuadro.',
       });
+      updateTournamentActionAvailability();
     }
   } finally {
     if (pendingTournamentBracketKey === cacheKey) {
@@ -27903,6 +28021,30 @@ tournamentBracketGenerateButton?.addEventListener('click', async () => {
       'Selecciona un torneo y una categoría válidos.'
     );
     return;
+  }
+
+  const cachedMatches = getCachedTournamentBracketMatches(tournamentId, categoryId);
+  if (bracketMatchesHaveRecordedResults(cachedMatches)) {
+    setStatusMessage(
+      tournamentBracketStatus,
+      'error',
+      TOURNAMENT_BRACKET_RESULTS_BLOCKED_MESSAGE
+    );
+    updateTournamentActionAvailability();
+    return;
+  }
+
+  if (cachedMatches.length) {
+    const confirmed = await openConfirmationDialog({
+      title: 'Generar nuevo cuadro',
+      message: TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION,
+      confirmLabel: 'Generar nuevo cuadro',
+      cancelLabel: 'Cancelar',
+    });
+    if (!confirmed) {
+      updateTournamentActionAvailability();
+      return;
+    }
   }
 
   const assignments = collectTournamentSeedAssignments();
