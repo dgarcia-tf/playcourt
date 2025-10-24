@@ -1823,7 +1823,6 @@ const registerIsMemberCheckbox = document.getElementById('register-is-member');
 const registerMembershipWrapper = document.getElementById('register-membership-wrapper');
 const registerMembershipNumberInput = document.getElementById('register-membership-number');
 const profileName = document.getElementById('profile-name');
-const profileRole = document.getElementById('profile-role');
 const profileAvatar = document.getElementById('profile-avatar');
 const profileEditButton = document.getElementById('profile-edit');
 const profileForm = document.getElementById('profile-form');
@@ -2065,21 +2064,12 @@ const adminToggleElements = document.querySelectorAll('[data-admin-visible="togg
 
 function setMenuGroupExpanded(menuGroup, expanded) {
   if (!menuGroup) return;
-  const { parentButton, submenu, group, toggleButton } = menuGroup;
+  const { parentButton, submenu, group } = menuGroup;
+  if (expanded) {
+    cancelScheduledCollapse(menuGroup);
+  }
   if (parentButton) {
     parentButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-  }
-  if (toggleButton) {
-    toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    const toggleLabel = toggleButton.dataset.toggleLabel || parentButton?.textContent?.trim() || 'menú';
-    toggleButton.setAttribute(
-      'aria-label',
-      `${expanded ? 'Contraer' : 'Expandir'} ${toggleLabel}`
-    );
-    const icon = toggleButton.querySelector('.menu-toggle__icon');
-    if (icon) {
-      icon.textContent = expanded ? '−' : '+';
-    }
   }
   if (group) {
     group.classList.toggle('menu-group--expanded', expanded);
@@ -2089,12 +2079,38 @@ function setMenuGroupExpanded(menuGroup, expanded) {
   }
 }
 
+function focusFirstSubmenuButton(menuGroup) {
+  const candidate = menuGroup?.submenu?.querySelector(
+    '.menu-button:not([disabled]):not([hidden])'
+  );
+  if (!candidate) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    candidate.focus();
+  });
+}
+
+function expandMenuGroup(menuGroup, { focusFirstItem = false } = {}) {
+  if (!menuGroup) {
+    return;
+  }
+  collapsibleMenuGroups.forEach((otherGroup) => {
+    if (otherGroup !== menuGroup) {
+      setMenuGroupExpanded(otherGroup, false);
+    }
+  });
+  setMenuGroupExpanded(menuGroup, true);
+  if (focusFirstItem) {
+    focusFirstSubmenuButton(menuGroup);
+  }
+}
+
 const collapsibleMenuGroups = appMenu
   ? Array.from(appMenu.querySelectorAll('[data-collapsible="true"]'))
       .map((group) => {
         const parentButton = group.querySelector('.menu-button--parent');
         const submenu = group.querySelector('.menu-submenu');
-        const toggleButton = group.querySelector('[data-submenu-toggle="true"]');
         if (!parentButton || !submenu) {
           return null;
         }
@@ -2102,8 +2118,8 @@ const collapsibleMenuGroups = appMenu
           group,
           parentButton,
           submenu,
-          toggleButton,
           target: parentButton.dataset.target || null,
+          collapseTimeoutId: null,
         };
         setMenuGroupExpanded(menuGroup, false);
         return menuGroup;
@@ -2111,13 +2127,172 @@ const collapsibleMenuGroups = appMenu
       .filter(Boolean)
   : [];
 
+function cancelScheduledCollapse(menuGroup) {
+  if (!menuGroup || menuGroup.collapseTimeoutId == null) {
+    return;
+  }
+  clearTimeout(menuGroup.collapseTimeoutId);
+  menuGroup.collapseTimeoutId = null;
+}
+
+const collapsibleMenuGroupsByElement = new Map();
+
 const collapsibleMenuGroupsByTarget = new Map();
 collapsibleMenuGroups.forEach((menuGroup) => {
   if (menuGroup.target) {
     collapsibleMenuGroupsByTarget.set(menuGroup.target, menuGroup);
   }
+
+  if (menuGroup.group) {
+    collapsibleMenuGroupsByElement.set(menuGroup.group, menuGroup);
+  }
+
+  const { group, parentButton, submenu } = menuGroup;
+  if (!group) {
+    return;
+  }
+
+  group.addEventListener('mouseenter', () => {
+    if (!shouldUseHoverNavigation()) {
+      return;
+    }
+    cancelScheduledCollapse(menuGroup);
+    setMenuGroupExpanded(menuGroup, true);
+  });
+
+  group.addEventListener('mouseleave', (event) => {
+    if (!shouldUseHoverNavigation()) {
+      return;
+    }
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget && group.contains(relatedTarget)) {
+      return;
+    }
+    scheduleCollapseIfInactive(menuGroup);
+  });
+
+  group.addEventListener('focusin', () => {
+    if (!shouldUseHoverNavigation()) {
+      return;
+    }
+    cancelScheduledCollapse(menuGroup);
+    setMenuGroupExpanded(menuGroup, true);
+  });
+
+  group.addEventListener('focusout', () => {
+    if (!shouldUseHoverNavigation()) {
+      return;
+    }
+    scheduleCollapseIfInactive(menuGroup);
+  });
+
+  if (parentButton) {
+    parentButton.addEventListener('blur', () => {
+      if (!shouldUseHoverNavigation()) {
+        return;
+      }
+      scheduleCollapseIfInactive(menuGroup);
+    });
+  }
+
+  if (submenu) {
+    submenu.addEventListener('mouseenter', () => {
+      if (!shouldUseHoverNavigation()) {
+        return;
+      }
+      cancelScheduledCollapse(menuGroup);
+      setMenuGroupExpanded(menuGroup, true);
+    });
+    submenu.addEventListener('focusout', () => {
+      if (!shouldUseHoverNavigation()) {
+        return;
+      }
+      scheduleCollapseIfInactive(menuGroup);
+    });
+    submenu.addEventListener('mouseleave', () => {
+      if (!shouldUseHoverNavigation()) {
+        return;
+      }
+      scheduleCollapseIfInactive(menuGroup);
+    });
+  }
 });
 const desktopMediaQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(min-width: 1025px)') : null;
+const hoverMediaQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(hover: hover)') : null;
+
+function shouldUseHoverNavigation() {
+  return Boolean(desktopMediaQuery?.matches && hoverMediaQuery?.matches);
+}
+
+function isMenuGroupActive(menuGroup) {
+  if (!menuGroup) {
+    return false;
+  }
+
+  if (shouldUseHoverNavigation()) {
+    const activeElement = document.activeElement;
+    const hasFocus = menuGroup.group?.contains(activeElement);
+    const isHovered = menuGroup.group?.matches(':hover');
+    if (!hasFocus && !isHovered) {
+      return false;
+    }
+  }
+
+  if (menuGroup.parentButton?.classList.contains('active')) {
+    return true;
+  }
+  return Boolean(menuGroup.submenu?.querySelector('.menu-button.active'));
+}
+
+function scheduleCollapseIfInactive(menuGroup) {
+  if (!menuGroup) {
+    return;
+  }
+  cancelScheduledCollapse(menuGroup);
+  const delay = shouldUseHoverNavigation() ? 120 : 0;
+  const collapse = () => {
+    const activeElement = document.activeElement;
+    if (menuGroup.group?.contains(activeElement)) {
+      return;
+    }
+    if (isMenuGroupActive(menuGroup)) {
+      return;
+    }
+    setMenuGroupExpanded(menuGroup, false);
+    menuGroup.collapseTimeoutId = null;
+  };
+  if (delay > 0) {
+    menuGroup.collapseTimeoutId = window.setTimeout(collapse, delay);
+  } else {
+    requestAnimationFrame(collapse);
+  }
+}
+
+function collapseInactiveMenuGroups() {
+  collapsibleMenuGroups.forEach((menuGroup) => {
+    if (!isMenuGroupActive(menuGroup)) {
+      setMenuGroupExpanded(menuGroup, false);
+    }
+  });
+}
+
+function handleOutsideMenuClick(event) {
+  if (!shouldUseHoverNavigation()) {
+    return;
+  }
+  if (event.defaultPrevented) {
+    return;
+  }
+  const menuGroupElement = event.target.closest('.menu-group');
+  if (menuGroupElement) {
+    return;
+  }
+  collapsibleMenuGroups.forEach((menuGroup) => {
+    if (!isMenuGroupActive(menuGroup)) {
+      setMenuGroupExpanded(menuGroup, false);
+    }
+  });
+}
 
 function isMobileMenuSupported() {
   return Boolean(appSidebar && mobileMenuToggle);
@@ -2198,6 +2373,17 @@ function toggleMobileMenu() {
 function handleDesktopMediaChange(event) {
   if (event.matches) {
     closeMobileMenu();
+    setActiveMenu(state.activeSection);
+  } else {
+    collapseInactiveMenuGroups();
+  }
+}
+
+function handleHoverMediaChange() {
+  if (shouldUseHoverNavigation()) {
+    setActiveMenu(state.activeSection);
+  } else {
+    collapseInactiveMenuGroups();
   }
 }
 const adminCategoryForm = document.getElementById('admin-category-form');
@@ -5470,8 +5656,7 @@ function setActiveMenu(targetId = null) {
   if (targetId) {
     activeTargets.add(targetId);
     const matchingButtons = menuButtons.filter((button) => button.dataset.target === targetId);
-    const targetButton =
-      matchingButtons.find((button) => button.dataset.submenuToggle !== 'true') || matchingButtons[0];
+    const targetButton = matchingButtons[0];
     if (targetButton) {
       addParentTargets(targetButton, activeTargets);
     }
@@ -5483,8 +5668,10 @@ function setActiveMenu(targetId = null) {
   });
 
   if (collapsibleMenuGroups.length) {
+    const allowAutomaticExpansion = !shouldUseHoverNavigation();
     collapsibleMenuGroups.forEach((menuGroup) => {
-      const shouldExpand = menuGroup.target ? activeTargets.has(menuGroup.target) : false;
+      const shouldExpand =
+        allowAutomaticExpansion && menuGroup.target ? activeTargets.has(menuGroup.target) : false;
       setMenuGroupExpanded(menuGroup, shouldExpand);
     });
   }
@@ -6134,32 +6321,57 @@ tabButtons.forEach((button) => {
 
 if (appMenu) {
   appMenu.addEventListener('click', (event) => {
-    const toggle = event.target.closest('[data-submenu-toggle="true"]');
-    if (toggle) {
-      event.preventDefault();
-      const toggleTargetId = toggle.dataset.target;
-      const menuGroup = collapsibleMenuGroupsByTarget.get(toggleTargetId || '');
-      const expanded = toggle.getAttribute('aria-expanded') === 'true';
-      setMenuGroupExpanded(menuGroup, !expanded);
-      return;
-    }
     const button = event.target.closest('.menu-button');
     if (!button || button.hidden || button.disabled) return;
     const targetId = button.dataset.target;
-    if (button.dataset.submenuToggle === 'true') {
-      const menuGroup = collapsibleMenuGroupsByTarget.get(targetId || '');
-      const expanded = button.getAttribute('aria-expanded') === 'true';
-      if (expanded) {
-        const isActiveTarget = state.activeSection === targetId;
-        const activeNestedButton = menuGroup?.submenu?.querySelector('.menu-button.active');
-        if (isActiveTarget || activeNestedButton) {
-          return;
-        }
+    const menuGroupElement = button.closest('.menu-group');
+    const menuGroup = menuGroupElement ? collapsibleMenuGroupsByElement.get(menuGroupElement) : null;
+    const hasSubmenu = Boolean(menuGroup?.submenu);
+    const submenuExpanded = hasSubmenu ? !menuGroup.submenu.hidden : false;
+    const hoverNavigation = shouldUseHoverNavigation();
+    const isParentButton = menuGroup?.parentButton === button;
+
+    if (hasSubmenu && isParentButton) {
+      event.preventDefault();
+
+      if (!hoverNavigation && !submenuExpanded) {
+        expandMenuGroup(menuGroup, { focusFirstItem: false });
+        return;
       }
-      setMenuGroupExpanded(menuGroup, !expanded);
+
+      if (!hoverNavigation && submenuExpanded) {
+        setMenuGroupExpanded(menuGroup, false);
+        if (targetId) {
+          showSection(targetId);
+        }
+        return;
+      }
+
+      if (hoverNavigation && !submenuExpanded) {
+        expandMenuGroup(menuGroup, { focusFirstItem: true });
+      }
+
+      if (targetId) {
+        showSection(targetId);
+      }
+
+      if (menuGroup && hoverNavigation) {
+        requestAnimationFrame(() => {
+          button.blur();
+          setMenuGroupExpanded(menuGroup, false);
+        });
+      }
       return;
     }
+
     showSection(targetId);
+
+    if (menuGroup && hoverNavigation) {
+      requestAnimationFrame(() => {
+        button.blur();
+        setMenuGroupExpanded(menuGroup, false);
+      });
+    }
   });
 }
 
@@ -6186,13 +6398,22 @@ if (desktopMediaQuery) {
   handleDesktopMediaChange(desktopMediaQuery);
 }
 
+if (hoverMediaQuery?.addEventListener) {
+  hoverMediaQuery.addEventListener('change', handleHoverMediaChange);
+} else if (hoverMediaQuery?.addListener) {
+  hoverMediaQuery.addListener(handleHoverMediaChange);
+}
+
+if (hoverMediaQuery) {
+  handleHoverMediaChange();
+}
+
+document.addEventListener('click', handleOutsideMenuClick);
+
 function updateProfileCard() {
   if (!state.user) return;
 
   profileName.textContent = state.user.fullName || '';
-  profileRole.textContent = formatRoles(state.user.roles || state.user.role);
-  profileRole.classList.toggle('admin', entityHasRole(state.user, 'admin'));
-
   const photo = state.user.photo;
   profileAvatar.style.backgroundImage = photo ? `url('${photo}')` : '';
   if (accountPhoto) {

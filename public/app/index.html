@@ -149,37 +149,7 @@
 
       <section id="app-view" class="app-view" hidden>
         <div class="app-shell">
-          <aside id="app-sidebar" class="sidebar" tabindex="-1">
-            <div class="sidebar-brand">
-              <div class="topbar-logo-wrapper">
-                <img
-                  id="topbar-logo"
-                  class="topbar-logo"
-                  src="assets/club-logo.svg"
-                  alt="Logotipo del club"
-                />
-              </div>
-              <div class="app-switcher" id="app-switcher" role="group" aria-label="Seleccionar aplicación">
-                <button
-                  type="button"
-                  class="app-switcher__button app-switcher__button--active"
-                  data-app="tennis"
-                  aria-pressed="true"
-                  id="app-switcher-tennis"
-                >
-                  Tenis
-                </button>
-                <button
-                  type="button"
-                  class="app-switcher__button"
-                  data-app="padel"
-                  aria-pressed="false"
-                  id="app-switcher-padel"
-                >
-                  Padel
-                </button>
-              </div>
-            </div>
+          <header id="app-sidebar" class="app-header" tabindex="-1">
             <button
               type="button"
               class="mobile-menu-close"
@@ -188,295 +158,344 @@
             >
               <span class="mobile-menu-close__icon" aria-hidden="true"></span>
             </button>
-            <nav class="main-menu" id="app-menu" hidden>
-              <button type="button" class="menu-button" data-target="section-dashboard">Dashboard</button>
-              <button type="button" class="menu-button" data-target="section-court-reservations">
-                Reservar pistas
-              </button>
-              <button
-                type="button"
-                class="menu-button"
-                data-target="section-court-admin"
-                data-requires-court-manager="true"
-                hidden
-              >
-                Gestión de pistas
-              </button>
-              <button type="button" class="menu-button" data-target="section-chat">
-                <span class="menu-label">Panel de avisos</span>
-                <span class="menu-badge" id="menu-notices-badge" hidden>0</span>
-              </button>
-              <button type="button" class="menu-button" data-target="section-notifications">
-                <span class="menu-label">Notificaciones</span>
-                <span class="menu-badge" id="menu-notifications-badge" hidden>0</span>
-              </button>
-              <div class="menu-group" data-collapsible="true">
-                <div class="menu-group__header">
-                  <button
-                    type="button"
-                    class="menu-button menu-button--parent"
-                    data-target="section-leagues"
-                    aria-expanded="false"
-                  >
-                    Ligas
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-toggle"
-                    data-submenu-toggle="true"
-                    data-target="section-leagues"
-                    data-toggle-label="secciones de ligas"
-                    aria-expanded="false"
-                    aria-label="Expandir secciones de ligas"
-                  >
-                    <span class="menu-toggle__icon" aria-hidden="true">+</span>
-                    <span class="sr-only">Alternar secciones de ligas</span>
-                  </button>
+            <div class="app-header__inner">
+              <div class="app-header__brand">
+                <div class="app-header__logo">
+                  <img
+                    id="topbar-logo"
+                    class="app-header__logo-image"
+                    src="assets/club-logo.svg"
+                    alt="Logotipo del club"
+                  />
                 </div>
-                <div class="menu-submenu" role="group" aria-label="Secciones de ligas" hidden>
+                <div class="app-switcher" id="app-switcher" role="group" aria-label="Seleccionar aplicación">
                   <button
                     type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-leagues"
-                    data-parent-target="section-leagues"
+                    class="app-switcher__button app-switcher__button--active"
+                    data-app="tennis"
+                    aria-pressed="true"
+                    id="app-switcher-tennis"
                   >
-                    Resumen
+                    Tenis
                   </button>
                   <button
                     type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-league-dashboard"
-                    data-parent-target="section-leagues"
+                    class="app-switcher__button"
+                    data-app="padel"
+                    aria-pressed="false"
+                    id="app-switcher-padel"
                   >
-                    Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-categories"
-                    data-parent-target="section-leagues"
-                  >
-                    Categorías
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-league-players"
-                    data-parent-target="section-leagues"
-                  >
-                    Jugadores
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-league-payments"
-                    data-parent-target="section-leagues"
-                    data-requires-admin="true"
-                  >
-                    Pagos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-matches"
-                    data-parent-target="section-leagues"
-                  >
-                    <span class="menu-label">Partidos</span>
-                    <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-calendar"
-                    data-parent-target="section-leagues"
-                  >
-                    Calendario
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-ranking"
-                    data-parent-target="section-leagues"
-                  >
-                    Ranking
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-rules"
-                    data-parent-target="section-leagues"
-                  >
-                    Reglamento
+                    Padel
                   </button>
                 </div>
               </div>
-              <div class="menu-group" data-collapsible="true">
-                <div class="menu-group__header">
-                  <button
-                    type="button"
-                    class="menu-button menu-button--parent"
-                    data-target="section-tournaments"
-                    aria-expanded="false"
-                  >
-                    Torneos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-toggle"
-                    data-submenu-toggle="true"
-                    data-target="section-tournaments"
-                    data-toggle-label="secciones de torneos"
-                    aria-expanded="false"
-                    aria-label="Expandir secciones de torneos"
-                  >
-                    <span class="menu-toggle__icon" aria-hidden="true">+</span>
-                    <span class="sr-only">Alternar secciones de torneos</span>
-                  </button>
-                </div>
-                <div class="menu-submenu" role="group" aria-label="Secciones de torneos" hidden>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-dashboard"
-                    data-parent-target="section-tournaments"
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournaments"
-                    data-parent-target="section-tournaments"
-                  >
-                    Resumen
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-categories"
-                    data-parent-target="section-tournaments"
-                  >
-                    Categorías
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-brackets"
-                    data-parent-target="section-tournaments"
-                  >
-                    Cuadros de juego
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-enrollments"
-                    data-parent-target="section-tournaments"
-                  >
-                    Jugadores
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-doubles"
-                    data-parent-target="section-tournaments"
-                  >
-                    Dobles
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-payments"
-                    data-parent-target="section-tournaments"
+              <nav id="app-menu" class="main-menu" aria-label="Menú principal" hidden>
+                <ul class="main-menu__list">
+                  <li class="main-menu__item">
+                    <button type="button" class="menu-button" data-target="section-dashboard">Dashboard</button>
+                  </li>
+                  <li class="main-menu__item">
+                    <button type="button" class="menu-button" data-target="section-court-reservations">
+                      Reservar pistas
+                    </button>
+                  </li>
+                  <li class="main-menu__item">
+                    <button
+                      type="button"
+                      class="menu-button"
+                      data-target="section-court-admin"
+                      data-requires-court-manager="true"
+                      hidden
+                    >
+                      Gestión de pistas
+                    </button>
+                  </li>
+                  <li class="main-menu__item">
+                    <button type="button" class="menu-button" data-target="section-chat">
+                      <span class="menu-label">Panel de avisos</span>
+                      <span class="menu-badge" id="menu-notices-badge" hidden>0</span>
+                    </button>
+                  </li>
+                  <li class="main-menu__item">
+                    <button type="button" class="menu-button" data-target="section-notifications">
+                      <span class="menu-label">Notificaciones</span>
+                      <span class="menu-badge" id="menu-notifications-badge" hidden>0</span>
+                    </button>
+                  </li>
+                  <li class="main-menu__item menu-group" data-collapsible="true">
+                    <button
+                      type="button"
+                      class="menu-button menu-button--parent"
+                      data-target="section-league-dashboard"
+                      aria-expanded="false"
+                    >
+                      Ligas
+                    </button>
+                    <div class="menu-submenu" role="group" aria-label="Secciones de ligas" hidden>
+                      <ul class="menu-submenu__list">
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            Inscribirse
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-league-dashboard"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            Dashboard
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-categories"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            Categorías
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-league-players"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            Jugadores
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-league-payments"
+                            data-parent-target="section-league-dashboard"
+                            data-requires-admin="true"
+                          >
+                            Pagos
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-matches"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            <span class="menu-label">Partidos</span>
+                            <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-calendar"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            Calendario
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-ranking"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            Ranking
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-rules"
+                            data-parent-target="section-league-dashboard"
+                          >
+                            Reglamento
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </li>
+                  <li class="main-menu__item menu-group" data-collapsible="true">
+                    <button
+                      type="button"
+                      class="menu-button menu-button--parent"
+                      data-target="section-tournament-dashboard"
+                      aria-expanded="false"
+                    >
+                      Torneos
+                    </button>
+                    <div class="menu-submenu" role="group" aria-label="Secciones de torneos" hidden>
+                      <ul class="menu-submenu__list">
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-dashboard"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Dashboard
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournaments"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Inscribirse
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-categories"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Categorías
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-brackets"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Cuadros de juego
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-enrollments"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Jugadores
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-doubles"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Dobles
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-payments"
+                            data-parent-target="section-tournament-dashboard"
+                            data-requires-admin="true"
+                          >
+                            Pagos
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-matches"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Partidos
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-tournament-rules"
+                            data-parent-target="section-tournament-dashboard"
+                          >
+                            Reglamento
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </li>
+                  <li
+                    class="main-menu__item menu-group"
                     data-requires-admin="true"
+                    data-admin-visible="toggle"
+                    data-collapsible="true"
+                    hidden
                   >
-                    Pagos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-matches"
-                    data-parent-target="section-tournaments"
-                  >
-                    Partidos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-rules"
-                    data-parent-target="section-tournaments"
-                  >
-                    Reglamento
-                  </button>
-                </div>
-              </div>
-              <div
-                class="menu-group"
-                data-requires-admin="true"
-                data-admin-visible="toggle"
-                data-collapsible="true"
-                hidden
-              >
-                <div class="menu-group__header">
-                  <button
-                    type="button"
-                    class="menu-button menu-button--parent"
-                    data-target="section-admin"
-                    data-requires-admin="true"
-                    aria-expanded="false"
-                  >
-                    Administración
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-toggle"
-                    data-submenu-toggle="true"
-                    data-target="section-admin"
-                    data-toggle-label="secciones de administración"
-                    aria-expanded="false"
-                    aria-label="Expandir secciones de administración"
-                  >
-                    <span class="menu-toggle__icon" aria-hidden="true">+</span>
-                    <span class="sr-only">Alternar secciones de administración</span>
-                  </button>
-                </div>
-                <div class="menu-submenu" role="group" aria-label="Secciones de administración" hidden>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-club"
-                    data-parent-target="section-admin"
-                    data-requires-admin="true"
-                  >
-                    Club
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-user-directory"
-                    data-parent-target="section-admin"
-                    data-requires-admin="true"
-                  >
-                    Usuarios
-                  </button>
-                </div>
-              </div>
-              <button type="button" class="menu-button" data-target="section-account">Mi cuenta</button>
-              <button type="button" class="menu-button menu-button--logout" data-action="logout">
-                Cerrar sesión
-              </button>
-            </nav>
-            <div class="sidebar-account">
-              <div class="sidebar-user">
-                <div class="profile-avatar" id="profile-avatar" aria-hidden="true"></div>
-                <div class="sidebar-user__info">
-                  <h2 id="profile-name" class="profile-name"></h2>
-                  <p class="profile-meta">
-                    <span id="profile-role" class="tag"></span>
-                  </p>
+                    <button
+                      type="button"
+                      class="menu-button menu-button--parent"
+                      data-target="section-admin"
+                      data-requires-admin="true"
+                      aria-expanded="false"
+                    >
+                      Administración
+                    </button>
+                    <div class="menu-submenu" role="group" aria-label="Secciones de administración" hidden>
+                      <ul class="menu-submenu__list">
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-club"
+                            data-parent-target="section-admin"
+                            data-requires-admin="true"
+                          >
+                            Club
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-user-directory"
+                            data-parent-target="section-admin"
+                            data-requires-admin="true"
+                          >
+                            Usuarios
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </li>
+                  <li class="main-menu__item">
+                    <button type="button" class="menu-button" data-target="section-account">Mi cuenta</button>
+                  </li>
+                  <li class="main-menu__item">
+                    <button type="button" class="menu-button menu-button--logout" data-action="logout">
+                      Cerrar sesión
+                    </button>
+                  </li>
+                </ul>
+              </nav>
+              <div class="sidebar-account">
+                <div class="sidebar-user">
+                  <div class="profile-avatar" id="profile-avatar" aria-hidden="true"></div>
+                  <div class="sidebar-user__info">
+                    <h2 id="profile-name" class="profile-name"></h2>
+                  </div>
                 </div>
               </div>
             </div>
-          </aside>
+          </header>
 
           <div class="mobile-menu-backdrop" id="mobile-menu-backdrop" hidden></div>
 
