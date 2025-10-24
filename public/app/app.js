@@ -11573,21 +11573,69 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
   }
 }
 
-function createBracketMatchCard(match, seedByPlayer = new Map()) {
+function createBracketPlayerAvatar(player, placeholderLabel = '') {
+  const avatar = document.createElement('div');
+  avatar.className = 'player-avatar player-avatar--sm bracket-player__avatar';
+
+  const photo = typeof player?.photo === 'string' ? player.photo : '';
+
+  if (photo) {
+    const image = document.createElement('img');
+    image.src = photo;
+    image.alt = `Avatar de ${getPlayerDisplayName(player)}`;
+    avatar.appendChild(image);
+  } else {
+    avatar.classList.add('player-avatar--placeholder');
+    const textSource = placeholderLabel || getPlayerDisplayName(player);
+    const initial = textSource ? textSource.trim().charAt(0).toUpperCase() : '—';
+    avatar.textContent = initial || '—';
+  }
+
+  return avatar;
+}
+
+function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
+  const {
+    roundIndex = 0,
+    totalRounds = 1,
+    slotIndex = 0,
+    isPlaceholder = false,
+    matchNumber = '',
+    placeholderLabels = [],
+  } = options;
+
   const card = document.createElement('div');
   card.className = 'bracket-match';
+
+  if (roundIndex > 0) {
+    card.classList.add('bracket-match--has-prev');
+  }
+  if (roundIndex < totalRounds - 1) {
+    card.classList.add('bracket-match--has-next');
+    card.classList.add(slotIndex % 2 === 0 ? 'bracket-match--top' : 'bracket-match--bottom');
+  }
+  if (isPlaceholder) {
+    card.classList.add('bracket-match--placeholder');
+  }
 
   const header = document.createElement('div');
   header.className = 'bracket-match__header';
 
   const label = document.createElement('span');
-  label.textContent = `Partido ${match.matchNumber || '-'}`;
+  label.className = 'bracket-match__label';
+  const displayMatchNumber = match?.matchNumber || matchNumber;
+  label.textContent = displayMatchNumber ? `Partido ${displayMatchNumber}` : 'Partido';
   header.appendChild(label);
 
-  const statusValue = match.status || 'pendiente';
-  const statusLabel = formatTournamentMatchStatusLabel(statusValue) || statusValue;
+  const statusValue = match?.status || 'pendiente';
+  const pendingLabel = formatTournamentMatchStatusLabel('pendiente') || 'Pendiente';
+  const statusLabel =
+    !isPlaceholder && typeof statusValue === 'string'
+      ? formatTournamentMatchStatusLabel(statusValue) || statusValue
+      : pendingLabel;
   const statusSpan = document.createElement('span');
-  statusSpan.textContent = statusLabel;
+  statusSpan.className = 'bracket-match__status';
+  statusSpan.textContent = statusLabel || pendingLabel;
   header.appendChild(statusSpan);
 
   card.appendChild(header);
@@ -11595,7 +11643,7 @@ function createBracketMatchCard(match, seedByPlayer = new Map()) {
   const playersContainer = document.createElement('div');
   playersContainer.className = 'bracket-match__players';
 
-  const players = Array.isArray(match.players) ? match.players : [];
+  const players = Array.isArray(match?.players) ? match.players : [];
   const winnerId = resolveWinnerId(match);
 
   for (let index = 0; index < 2; index += 1) {
@@ -11605,6 +11653,11 @@ function createBracketMatchCard(match, seedByPlayer = new Map()) {
 
     const seedSpan = document.createElement('span');
     seedSpan.className = 'bracket-player__seed';
+
+    const rawPlaceholderLabel =
+      placeholderLabels[index] || (index === 0 ? match?.placeholderA : match?.placeholderB) || '';
+    const displayPlaceholder = rawPlaceholderLabel && rawPlaceholderLabel.trim() ? rawPlaceholderLabel : 'Pendiente';
+
     if (player) {
       const playerId = normalizeId(player);
       const seedNumber = seedByPlayer.get(playerId);
@@ -11614,16 +11667,15 @@ function createBracketMatchCard(match, seedByPlayer = new Map()) {
     }
     wrapper.appendChild(seedSpan);
 
+    wrapper.appendChild(createBracketPlayerAvatar(player, player ? '' : displayPlaceholder));
+
     const nameSpan = document.createElement('span');
     nameSpan.className = 'bracket-player__name';
     if (player) {
-      const playerName =
-        typeof player === 'object'
-          ? player.fullName || player.email || 'Jugador'
-          : 'Jugador';
-      nameSpan.textContent = playerName;
+      nameSpan.textContent = getPlayerDisplayName(player);
     } else {
-      nameSpan.textContent = 'Pendiente';
+      nameSpan.textContent = displayPlaceholder;
+      wrapper.classList.add('bracket-player--placeholder');
       nameSpan.classList.add('bracket-player__name--placeholder');
     }
     wrapper.appendChild(nameSpan);
@@ -11633,8 +11685,10 @@ function createBracketMatchCard(match, seedByPlayer = new Map()) {
     if (player) {
       const playerId = normalizeId(player);
       if (winnerId && playerId === winnerId) {
+        wrapper.classList.add('bracket-player--winner');
         statusSpan.textContent = 'Ganador';
       } else if (winnerId) {
+        wrapper.classList.add('bracket-player--eliminated');
         statusSpan.textContent = 'Eliminado';
       }
     }
@@ -11645,7 +11699,7 @@ function createBracketMatchCard(match, seedByPlayer = new Map()) {
 
   card.appendChild(playersContainer);
 
-  const scoreboard = createResultScoreboard(match);
+  const scoreboard = !isPlaceholder ? createResultScoreboard(match) : null;
   if (scoreboard) {
     card.appendChild(scoreboard);
   } else if (match?.result?.score) {
@@ -11657,17 +11711,17 @@ function createBracketMatchCard(match, seedByPlayer = new Map()) {
 
   const meta = document.createElement('div');
   meta.className = 'bracket-match__meta';
-  if (match.scheduledAt) {
+  if (match?.scheduledAt) {
     const dateSpan = document.createElement('span');
     dateSpan.textContent = formatDate(match.scheduledAt);
     meta.appendChild(dateSpan);
   }
-  if (match.court) {
+  if (match?.court) {
     const courtSpan = document.createElement('span');
     courtSpan.textContent = `Pista: ${match.court}`;
     meta.appendChild(courtSpan);
   }
-  if (match.result?.notes) {
+  if (match?.result?.notes) {
     const notesSpan = document.createElement('span');
     notesSpan.textContent = match.result.notes;
     meta.appendChild(notesSpan);
@@ -11723,43 +11777,128 @@ function renderTournamentBracket(matches = [], { loading = false, error = '' } =
   const seedLookup = buildSeedLookup(category);
   const seedByPlayer = seedLookup.byPlayer;
 
-  const grouped = new Map();
+  const matchesByRound = new Map();
+  const matchNumberStarts = new Map();
+
   mainMatches.forEach((match) => {
-    const order = Number(match.roundOrder) || 0;
-    if (!grouped.has(order)) {
-      grouped.set(order, []);
+    const order = Math.max(Number(match.roundOrder) || 1, 1);
+    if (!matchesByRound.has(order)) {
+      matchesByRound.set(order, []);
     }
-    grouped.get(order).push(match);
+    matchesByRound.get(order).push(match);
+
+    const numericMatchNumber = Number(match.matchNumber);
+    if (Number.isFinite(numericMatchNumber)) {
+      const current = matchNumberStarts.get(order);
+      if (typeof current !== 'number' || numericMatchNumber < current) {
+        matchNumberStarts.set(order, numericMatchNumber);
+      }
+    }
   });
 
-  const sortedRounds = Array.from(grouped.entries()).sort((a, b) => a[0] - b[0]);
+  matchesByRound.forEach((list) => {
+    list.sort((a, b) => (Number(a.matchNumber) || 0) - (Number(b.matchNumber) || 0));
+  });
+
+  const maxRoundOrder = matchesByRound.size
+    ? Math.max(...matchesByRound.keys())
+    : 1;
+
+  const drawSize = Number(category?.drawSize);
+  const inferredRoundsFromDraw = Number.isFinite(drawSize) && drawSize > 1 ? Math.ceil(Math.log2(drawSize)) : 0;
+  const firstRoundMatches = matchesByRound.get(1) || [];
+  const inferredRoundsFromMatches = firstRoundMatches.length
+    ? Math.ceil(Math.log2(Math.max(firstRoundMatches.length * 2, 2)))
+    : 0;
+
+  let totalRounds = Math.max(maxRoundOrder, inferredRoundsFromDraw, inferredRoundsFromMatches);
+  if (!Number.isFinite(totalRounds) || totalRounds < 1) {
+    totalRounds = 1;
+  }
+
+  const expectedMatchesPerRound = new Array(totalRounds).fill(0);
+  for (let roundIndex = totalRounds - 1; roundIndex >= 0; roundIndex -= 1) {
+    const roundOrder = roundIndex + 1;
+    const roundMatches = matchesByRound.get(roundOrder) || [];
+    if (roundIndex === totalRounds - 1) {
+      expectedMatchesPerRound[roundIndex] = Math.max(roundMatches.length || 1, 1);
+    } else {
+      const downstream = expectedMatchesPerRound[roundIndex + 1] * 2;
+      expectedMatchesPerRound[roundIndex] = Math.max(roundMatches.length, downstream || 1);
+      if (expectedMatchesPerRound[roundIndex] % 2 === 1) {
+        expectedMatchesPerRound[roundIndex] += 1;
+      }
+    }
+  }
+
+  const roundStartNumbers = [];
+  let runningMatchNumber = 1;
+  for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
+    const roundOrder = roundIndex + 1;
+    const expectedMatches = Math.max(1, expectedMatchesPerRound[roundIndex] || 1);
+    const explicitStart = matchNumberStarts.get(roundOrder);
+    const startNumber = Number.isFinite(explicitStart) ? explicitStart : runningMatchNumber;
+    roundStartNumbers.push(startNumber);
+    runningMatchNumber = startNumber + expectedMatches;
+  }
 
   const grid = document.createElement('div');
   grid.className = 'tournament-bracket-grid';
 
-  sortedRounds.forEach(([order, roundMatches]) => {
+  for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
+    const roundOrder = roundIndex + 1;
+    const expectedMatches = Math.max(1, expectedMatchesPerRound[roundIndex] || 1);
+    const roundMatches = matchesByRound.get(roundOrder) || [];
+
     const roundSection = document.createElement('section');
     roundSection.className = 'bracket-round';
 
     const roundTitle = document.createElement('h5');
     roundTitle.className = 'bracket-round__title';
-    const firstMatch = roundMatches[0];
-    roundTitle.textContent = firstMatch?.round || `Ronda ${order || 1}`;
+    const matchCountLabel = Math.max(expectedMatches, 1);
+    const fallbackTitleMap = new Map([
+      [1, 'Final'],
+      [2, 'Semifinales'],
+      [4, 'Cuartos de final'],
+      [8, 'Octavos de final'],
+      [16, 'Dieciseisavos de final'],
+      [32, 'Treintaidosavos de final'],
+    ]);
+    const titleFromMatch = roundMatches[0]?.round;
+    roundTitle.textContent =
+      typeof titleFromMatch === 'string' && titleFromMatch.trim()
+        ? titleFromMatch
+        : fallbackTitleMap.get(matchCountLabel) || `Ronda ${roundOrder}`;
     roundSection.appendChild(roundTitle);
 
     const matchList = document.createElement('div');
     matchList.className = 'bracket-round__matches';
 
-    roundMatches
-      .slice()
-      .sort((a, b) => (Number(a.matchNumber) || 0) - (Number(b.matchNumber) || 0))
-      .forEach((match) => {
-        matchList.appendChild(createBracketMatchCard(match, seedByPlayer));
+    for (let slotIndex = 0; slotIndex < expectedMatches; slotIndex += 1) {
+      const match = roundMatches[slotIndex] || null;
+      const placeholderLabels = [];
+      if (match) {
+        placeholderLabels[0] = match.placeholderA || '';
+        placeholderLabels[1] = match.placeholderB || '';
+      }
+
+      const baseNumber = roundStartNumbers[roundIndex];
+      const fallbackNumber = Number.isFinite(baseNumber) ? baseNumber + slotIndex : '';
+
+      const card = createBracketMatchCard(match, seedByPlayer, {
+        roundIndex,
+        totalRounds,
+        slotIndex,
+        isPlaceholder: !match,
+        matchNumber: fallbackNumber,
+        placeholderLabels,
       });
+      matchList.appendChild(card);
+    }
 
     roundSection.appendChild(matchList);
     grid.appendChild(roundSection);
-  });
+  }
 
   tournamentBracketView.appendChild(grid);
   tournamentBracketEmpty.hidden = true;
