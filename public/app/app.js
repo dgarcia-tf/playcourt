@@ -2726,8 +2726,12 @@ function updateTournamentBracketExportControls({
   tournamentBracketExportButton.disabled = disableControls;
 }
 
-function handleTournamentBracketExport() {
+async function handleTournamentBracketExport() {
   if (!tournamentBracketPdfTypeSelect || !tournamentBracketExportButton) {
+    return;
+  }
+
+  if (tournamentBracketExportButton.dataset.exporting === 'true') {
     return;
   }
 
@@ -2776,194 +2780,82 @@ function handleTournamentBracketExport() {
     element.removeAttribute('hidden');
   });
 
-  const bracketMarkup = clonedView.outerHTML;
   const titleParts = [bracketLabel, categoryName, tournamentName].filter(Boolean);
-  const safeTitle = escapeHtml(titleParts.join(' · ') || 'Cuadro de torneo');
   const safeBracketLabel = escapeHtml(bracketLabel);
   const safeCategory = escapeHtml(categoryName);
   const safeTournament = escapeHtml(tournamentName);
 
-  const existingPrintFrame = document.getElementById('tournament-bracket-print-frame');
-  if (existingPrintFrame) {
-    existingPrintFrame.remove();
+  const pdfGenerator = typeof window !== 'undefined' ? window.html2pdf : null;
+  if (typeof pdfGenerator !== 'function') {
+    showGlobalMessage('No fue posible generar el PDF del cuadro.', 'error');
+    return;
   }
 
-  const printFrame = document.createElement('iframe');
-  printFrame.id = 'tournament-bracket-print-frame';
-  printFrame.setAttribute(
-    'title',
-    `${safeBracketLabel} · ${safeCategory || safeTournament || 'Cuadro'}`
-  );
-  printFrame.setAttribute('aria-hidden', 'true');
-  const frameStyle = printFrame.style;
-  frameStyle.position = 'fixed';
-  frameStyle.right = '0';
-  frameStyle.bottom = '0';
-  frameStyle.width = '0';
-  frameStyle.height = '0';
-  frameStyle.border = '0';
-  frameStyle.opacity = '0';
-  frameStyle.pointerEvents = 'none';
-
-  let printTriggered = false;
-  let frameReadyTimerId = null;
-  let frameFailureTimerId = null;
-  let hasWrittenContent = false;
-
-  const cleanupPrintFrame = () => {
-    if (frameReadyTimerId) {
-      clearTimeout(frameReadyTimerId);
-      frameReadyTimerId = null;
-    }
-    if (frameFailureTimerId) {
-      clearTimeout(frameFailureTimerId);
-      frameFailureTimerId = null;
-    }
-    if (printFrame.parentNode) {
-      printFrame.parentNode.removeChild(printFrame);
-    }
-  };
-
-  const failToPreparePrint = () => {
-    cleanupPrintFrame();
-    showGlobalMessage('No fue posible preparar la vista de impresión.', 'error');
-  };
-
-  const triggerPrint = () => {
-    if (printTriggered) {
-      return;
-    }
-    const frameWindow = printFrame.contentWindow;
-    if (!frameWindow) {
-      failToPreparePrint();
-      return;
-    }
-
-    printTriggered = true;
-    printFrame.removeEventListener('load', handleFrameLoad);
-    if (frameFailureTimerId) {
-      clearTimeout(frameFailureTimerId);
-      frameFailureTimerId = null;
-    }
-
-    frameWindow.focus();
-    frameWindow.print();
-    const handleAfterPrint = () => {
-      frameWindow.removeEventListener('afterprint', handleAfterPrint);
-      cleanupPrintFrame();
-    };
-    frameWindow.addEventListener('afterprint', handleAfterPrint);
-
-    frameReadyTimerId = setTimeout(() => {
-      cleanupPrintFrame();
-    }, 750);
-  };
-
-  const customStyles = `
-    <style>
-      :root {
-        color-scheme: light;
-      }
-      body {
-        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        margin: 0;
-        padding: 2.5rem 2rem;
-        background: #ffffff;
-        color: #1f2933;
-      }
-      .print-bracket__header {
-        margin-bottom: 1.5rem;
-      }
-      .print-bracket__title {
-        margin: 0;
-        font-size: 1.75rem;
-        font-weight: 600;
-      }
-      .print-bracket__subtitle {
-        margin: 0.35rem 0 0;
-        font-size: 1rem;
-        color: #52606d;
-      }
-      .printable-bracket-view {
-        width: 100%;
-        overflow: visible;
-      }
-      .printable-bracket-view .tournament-bracket-section {
-        margin-bottom: 1.5rem;
-      }
-      .printable-bracket-view .bracket-round__matches {
-        overflow: visible;
-      }
-      @media print {
-        body {
-          padding: 2rem;
-        }
-      }
-    </style>
+  const exportContainer = document.createElement('div');
+  exportContainer.className = 'print-bracket print-bracket--export';
+  exportContainer.innerHTML = `
+    <header class="print-bracket__header">
+      <h1 class="print-bracket__title">${safeBracketLabel}</h1>
+      <p class="print-bracket__subtitle">
+        ${safeCategory}${safeCategory && safeTournament ? ' · ' : ''}${safeTournament}
+      </p>
+    </header>
   `;
+  exportContainer.appendChild(clonedView);
 
-  const printableHtml = `<!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>${safeTitle}</title>
-        <link rel="stylesheet" href="/app/styles.css" />
-        ${customStyles}
-      </head>
-      <body>
-        <main class="print-bracket">
-          <header class="print-bracket__header">
-            <h1 class="print-bracket__title">${safeBracketLabel}</h1>
-            <p class="print-bracket__subtitle">
-              ${safeCategory}${safeCategory && safeTournament ? ' · ' : ''}${safeTournament}
-            </p>
-          </header>
-          ${bracketMarkup}
-        </main>
-      </body>
-    </html>`;
+  const slugify = (value) =>
+    value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase();
 
-  const supportsSrcdoc = 'srcdoc' in printFrame;
+  const filenameParts = titleParts
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter(Boolean)
+    .map((part) => slugify(part))
+    .filter(Boolean);
+  const filenameBase = filenameParts.length ? filenameParts.join('_') : 'cuadro';
+  const filename = `${filenameBase}.pdf`;
 
-  const handleFrameLoad = () => {
-    const frameWindow = printFrame.contentWindow;
-    if (!frameWindow) {
-      failToPreparePrint();
-      return;
-    }
+  const previousLabel = tournamentBracketExportButton.textContent;
+  const wasDisabled = tournamentBracketExportButton.disabled;
+  tournamentBracketExportButton.dataset.exporting = 'true';
+  tournamentBracketExportButton.disabled = true;
+  tournamentBracketExportButton.setAttribute('aria-busy', 'true');
+  tournamentBracketExportButton.textContent = 'Generando…';
 
-    if (!supportsSrcdoc && !hasWrittenContent) {
-      const printDocument = frameWindow.document;
-      if (!printDocument) {
-        failToPreparePrint();
-        return;
-      }
+  document.body.appendChild(exportContainer);
 
-      hasWrittenContent = true;
-      printDocument.open();
-      printDocument.write(printableHtml);
-      printDocument.close();
-      return;
-    }
-
-    triggerPrint();
+  const pdfOptions = {
+    margin: [0.5, 0.75, 0.75, 0.75],
+    filename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+    },
+    jsPDF: {
+      unit: 'in',
+      format: 'a4',
+      orientation: 'landscape',
+    },
   };
 
-  printFrame.addEventListener('load', handleFrameLoad);
-  document.body.appendChild(printFrame);
-
-  if (supportsSrcdoc) {
-    printFrame.srcdoc = printableHtml;
-  } else {
-    hasWrittenContent = false;
-    printFrame.src = 'about:blank';
+  try {
+    await pdfGenerator().set(pdfOptions).from(exportContainer).save();
+  } catch (error) {
+    console.error('Error generating bracket PDF', error);
+    showGlobalMessage('No fue posible generar el PDF del cuadro.', 'error');
+  } finally {
+    exportContainer.remove();
+    tournamentBracketExportButton.textContent = previousLabel;
+    tournamentBracketExportButton.removeAttribute('aria-busy');
+    delete tournamentBracketExportButton.dataset.exporting;
+    tournamentBracketExportButton.disabled = wasDisabled;
+    updateTournamentActionAvailability();
   }
-
-  frameFailureTimerId = setTimeout(() => {
-    if (!printTriggered) {
-      failToPreparePrint();
-    }
-  }, 8000);
 }
 
 function updateMatchesMenuBadge(count = 0) {

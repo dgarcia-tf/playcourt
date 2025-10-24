@@ -1715,6 +1715,52 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   padding-bottom: 0.5rem;
 }
 
+.print-bracket {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #1f2933;
+}
+
+.print-bracket--export {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1120px;
+  padding: 2.5rem 2rem;
+  background: #ffffff;
+  pointer-events: none;
+  opacity: 0;
+  z-index: -1;
+}
+
+.print-bracket__header {
+  margin-bottom: 1.5rem;
+}
+
+.print-bracket__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+.print-bracket__subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 1rem;
+  color: #52606d;
+}
+
+.printable-bracket-view {
+  width: 100%;
+  overflow: visible;
+}
+
+.printable-bracket-view .tournament-bracket-section {
+  margin-bottom: 1.5rem;
+}
+
+.printable-bracket-view .bracket-round__matches {
+  overflow: visible;
+}
+
 .tournament-bracket-section {
   display: grid;
   gap: 1rem;
