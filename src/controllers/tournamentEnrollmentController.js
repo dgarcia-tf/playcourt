@@ -210,6 +210,7 @@ async function createTournamentEnrollment(req, res) {
   const { tournamentId, categoryId } = req.params;
   const requestedUserId = req.body?.userId;
   const requestedShirtSize = typeof req.body?.shirtSize === 'string' ? req.body.shirtSize.trim() : '';
+  let resolvedShirtSize = requestedShirtSize ? requestedShirtSize.toUpperCase() : '';
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
   const playerId = requestedUserId && (isAdmin || requestedUserId === req.user.id)
     ? requestedUserId
@@ -256,18 +257,34 @@ async function createTournamentEnrollment(req, res) {
     return res.status(400).json({ message: 'El género del jugador no coincide con la categoría' });
   }
 
-  if (tournament.hasShirt && !requestedShirtSize) {
-    return res.status(400).json({ message: 'Debe indicar la talla de camiseta para completar la inscripción' });
+  if (!resolvedShirtSize && tournament.hasShirt) {
+    const userShirtSize = typeof user.shirtSize === 'string' ? user.shirtSize.trim().toUpperCase() : '';
+    if (userShirtSize) {
+      resolvedShirtSize = userShirtSize;
+    }
+  }
+
+  if (tournament.hasShirt && !resolvedShirtSize) {
+    return res
+      .status(400)
+      .json({ message: 'Debe indicar la talla de camiseta para completar la inscripción' });
   }
 
   if (
-    requestedShirtSize &&
+    resolvedShirtSize &&
     tournament.hasShirt &&
     Array.isArray(tournament.shirtSizes) &&
-    tournament.shirtSizes.length &&
-    !tournament.shirtSizes.includes(requestedShirtSize)
+    tournament.shirtSizes.length
   ) {
-    return res.status(400).json({ message: 'La talla de camiseta seleccionada no es válida para este torneo' });
+    const allowedSizes = tournament.shirtSizes
+      .map((size) => (typeof size === 'string' ? size.trim().toUpperCase() : ''))
+      .filter((size, index, array) => size && array.indexOf(size) === index);
+
+    if (!allowedSizes.includes(resolvedShirtSize)) {
+      return res
+        .status(400)
+        .json({ message: 'La talla de camiseta seleccionada no es válida para este torneo' });
+    }
   }
 
   try {
@@ -276,7 +293,7 @@ async function createTournamentEnrollment(req, res) {
       category: category.id,
       user: user.id,
       status: TOURNAMENT_ENROLLMENT_STATUS.PENDING,
-      shirtSize: requestedShirtSize || undefined,
+      shirtSize: resolvedShirtSize || undefined,
     });
 
     await enrollment.populate('user', 'fullName email gender phone photo isMember');

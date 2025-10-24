@@ -21114,6 +21114,9 @@ async function openTournamentCategoryEnrollmentModal(tournamentId, categoryId) {
         <option value="">Selecciona un jugador</option>
       </select>
     </label>
+    <label data-shirt-size-wrapper hidden>
+      Talla de camiseta
+    </label>
     <div class="form-actions">
       <button type="submit" class="primary" disabled>Inscribir</button>
     </div>
@@ -21123,6 +21126,105 @@ async function openTournamentCategoryEnrollmentModal(tournamentId, categoryId) {
 
   const playerSelect = form.elements.playerId;
   const submitButton = form.querySelector('button[type="submit"]');
+  const shirtWrapper = form.querySelector('[data-shirt-size-wrapper]');
+
+  const tournamentDetail =
+    state.tournamentDetails.get(resolvedTournamentId) || getTournamentById(resolvedTournamentId);
+  const requiresShirtSize = Boolean(tournamentDetail?.hasShirt);
+  const rawShirtSizes = Array.isArray(tournamentDetail?.shirtSizes)
+    ? tournamentDetail.shirtSizes
+        .map((size) => (typeof size === 'string' ? size.trim() : ''))
+        .filter((size, index, array) => size && array.indexOf(size) === index)
+    : [];
+
+  const allowedShirtSizes = rawShirtSizes
+    .map((size) => size.toUpperCase())
+    .filter((size, index, array) => size && array.indexOf(size) === index);
+  let shirtField = null;
+  let shirtFieldTouched = false;
+
+  function applyDefaultShirtSize() {
+    if (!requiresShirtSize || !shirtField) {
+      return;
+    }
+
+    if (shirtFieldTouched) {
+      return;
+    }
+
+    const playerId = playerSelect.value;
+    const player = playerId
+      ? state.players.find((item) => normalizeId(item) === playerId)
+      : null;
+    const defaultSize = player?.shirtSize ? String(player.shirtSize).trim().toUpperCase() : '';
+
+    if (shirtField.tagName === 'SELECT') {
+      if (defaultSize && allowedShirtSizes.includes(defaultSize)) {
+        shirtField.value = defaultSize;
+      } else {
+        shirtField.value = '';
+      }
+    } else {
+      shirtField.value = defaultSize || '';
+    }
+  }
+
+  function renderShirtField() {
+    if (!shirtWrapper) {
+      return;
+    }
+
+    if (shirtField) {
+      shirtField.remove();
+      shirtField = null;
+    }
+
+    shirtFieldTouched = false;
+
+    if (!requiresShirtSize) {
+      shirtWrapper.hidden = true;
+      return;
+    }
+
+    shirtWrapper.hidden = false;
+
+    if (allowedShirtSizes.length) {
+      const select = document.createElement('select');
+      select.name = 'shirtSize';
+      select.required = true;
+
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Selecciona una talla';
+      select.appendChild(placeholder);
+
+      allowedShirtSizes.forEach((size) => {
+        const option = document.createElement('option');
+        option.value = size;
+        option.textContent = size;
+        select.appendChild(option);
+      });
+
+      shirtField = select;
+    } else {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = 'shirtSize';
+      input.required = true;
+      input.placeholder = 'Indica la talla';
+      input.maxLength = 20;
+      shirtField = input;
+    }
+
+    shirtField.addEventListener('input', () => {
+      shirtFieldTouched = true;
+    });
+
+    shirtWrapper.appendChild(shirtField);
+    applyDefaultShirtSize();
+  }
+
+  renderShirtField();
 
   function renderEnrollmentLists() {
     const pendingEntries = enrollments.filter((entry) => entry?.status === 'pendiente');
@@ -21309,6 +21411,8 @@ async function openTournamentCategoryEnrollmentModal(tournamentId, categoryId) {
       playerSelect.innerHTML = '<option value="">Sin jugadores disponibles</option>';
       playerSelect.disabled = true;
       submitButton.disabled = true;
+      shirtFieldTouched = false;
+      applyDefaultShirtSize();
       return;
     }
 
@@ -21326,6 +21430,7 @@ async function openTournamentCategoryEnrollmentModal(tournamentId, categoryId) {
 
     playerSelect.disabled = false;
     submitButton.disabled = !playerSelect.value;
+    applyDefaultShirtSize();
   }
 
   async function loadEnrollmentData({ force = false } = {}) {
@@ -21461,15 +21566,34 @@ async function openTournamentCategoryEnrollmentModal(tournamentId, categoryId) {
       return;
     }
 
+    let shirtSizeValue = '';
+    if (requiresShirtSize && shirtField) {
+      shirtSizeValue = (shirtField.value || '').trim().toUpperCase();
+      if (!shirtSizeValue) {
+        setStatusMessage(status, 'error', 'Indica la talla de camiseta.');
+        if (typeof shirtField.focus === 'function') {
+          shirtField.focus();
+        }
+        return;
+      }
+    }
+
     submitButton.disabled = true;
     setStatusMessage(status, 'info', 'Inscribiendo jugador...');
 
     try {
+      const payload = { userId: playerId };
+      if (shirtSizeValue) {
+        payload.shirtSize = shirtSizeValue;
+      }
+
       await request(`/tournaments/${resolvedTournamentId}/categories/${resolvedCategoryId}/enrollments`, {
         method: 'POST',
-        body: { userId: playerId },
+        body: payload,
       });
       playerSelect.value = '';
+      shirtFieldTouched = false;
+      applyDefaultShirtSize();
       state.tournamentEnrollments.delete(cacheKey);
       state.tournamentEnrollments.delete(
         getTournamentEnrollmentCacheKey(resolvedTournamentId, TOURNAMENT_ENROLLMENT_ALL_OPTION)
@@ -21497,6 +21621,8 @@ async function openTournamentCategoryEnrollmentModal(tournamentId, categoryId) {
 
   playerSelect.addEventListener('change', () => {
     submitButton.disabled = !playerSelect.value;
+    shirtFieldTouched = false;
+    applyDefaultShirtSize();
   });
 
   openModal({
@@ -21537,6 +21663,9 @@ async function openTournamentEnrollmentModal() {
         <option value="">Selecciona una categoría</option>
       </select>
     </label>
+    <label data-shirt-size-wrapper hidden>
+      Talla de camiseta
+    </label>
     <div class="form-actions">
       <button type="submit" class="primary" disabled>Inscribir jugador</button>
       <button type="button" class="ghost" data-action="cancel">Cancelar</button>
@@ -21550,7 +21679,114 @@ async function openTournamentEnrollmentModal() {
   const tournamentSelect = form.elements.tournamentId;
   const categorySelect = form.elements.categoryId;
   const playerSelect = form.elements.playerId;
+  const shirtWrapper = form.querySelector('[data-shirt-size-wrapper]');
   const submitButton = form.querySelector('button[type="submit"]');
+
+  let shirtField = null;
+  let shirtFieldTouched = false;
+  let requiresShirtSize = false;
+  let allowedShirtSizes = [];
+
+  function getSelectedTournamentDetail() {
+    const tournamentId = tournamentSelect.value;
+    if (!tournamentId) {
+      return null;
+    }
+    return state.tournamentDetails.get(tournamentId) || getTournamentById(tournamentId);
+  }
+
+  function applyDefaultShirtSize() {
+    if (!requiresShirtSize || !shirtField) {
+      return;
+    }
+
+    if (shirtFieldTouched) {
+      return;
+    }
+
+    const playerId = playerSelect.value;
+    const player = playerId
+      ? state.players.find((item) => normalizeId(item) === playerId)
+      : null;
+    const defaultSize = player?.shirtSize ? String(player.shirtSize).trim().toUpperCase() : '';
+
+    if (shirtField.tagName === 'SELECT') {
+      if (defaultSize && allowedShirtSizes.includes(defaultSize)) {
+        shirtField.value = defaultSize;
+      } else {
+        shirtField.value = '';
+      }
+    } else {
+      shirtField.value = defaultSize || '';
+    }
+  }
+
+  function renderShirtField() {
+    if (!shirtWrapper) {
+      return;
+    }
+
+    if (shirtField) {
+      shirtField.remove();
+      shirtField = null;
+    }
+
+    const detail = getSelectedTournamentDetail();
+    requiresShirtSize = Boolean(detail?.hasShirt);
+
+    const rawSizes = Array.isArray(detail?.shirtSizes)
+      ? detail.shirtSizes
+          .map((size) => (typeof size === 'string' ? size.trim() : ''))
+          .filter((size, index, array) => size && array.indexOf(size) === index)
+      : [];
+
+    allowedShirtSizes = rawSizes
+      .map((size) => size.toUpperCase())
+      .filter((size, index, array) => size && array.indexOf(size) === index);
+    shirtFieldTouched = false;
+
+    if (!requiresShirtSize) {
+      shirtWrapper.hidden = true;
+      return;
+    }
+
+    shirtWrapper.hidden = false;
+
+    if (allowedShirtSizes.length) {
+      const select = document.createElement('select');
+      select.name = 'shirtSize';
+      select.required = true;
+
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Selecciona una talla';
+      select.appendChild(placeholder);
+
+      allowedShirtSizes.forEach((size) => {
+        const option = document.createElement('option');
+        option.value = size;
+        option.textContent = size;
+        select.appendChild(option);
+      });
+
+      shirtField = select;
+    } else {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.name = 'shirtSize';
+      input.required = true;
+      input.placeholder = 'Indica la talla';
+      input.maxLength = 20;
+      shirtField = input;
+    }
+
+    shirtField.addEventListener('input', () => {
+      shirtFieldTouched = true;
+    });
+
+    shirtWrapper.appendChild(shirtField);
+    applyDefaultShirtSize();
+  }
 
   tournaments
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
@@ -21576,6 +21812,7 @@ async function openTournamentEnrollmentModal() {
     categorySelect.disabled = true;
 
     if (!tournamentId) {
+      renderShirtField();
       playerSelect.innerHTML = '<option value="">Selecciona una categoría</option>';
       playerSelect.disabled = true;
       submitButton.disabled = true;
@@ -21585,6 +21822,8 @@ async function openTournamentEnrollmentModal() {
     if (!state.tournamentDetails.has(tournamentId)) {
       await refreshTournamentDetail(tournamentId);
     }
+
+    renderShirtField();
 
     const categories = getTournamentCategories(tournamentId);
     categories
@@ -21622,6 +21861,8 @@ async function openTournamentEnrollmentModal() {
     submitButton.disabled = true;
 
     if (!tournamentId || !categoryId) {
+      shirtFieldTouched = false;
+      applyDefaultShirtSize();
       return;
     }
 
@@ -21636,6 +21877,8 @@ async function openTournamentEnrollmentModal() {
       enrollments = await fetchTournamentEnrollments(tournamentId, categoryId);
     } catch (error) {
       setStatusMessage(status, 'error', error.message);
+      shirtFieldTouched = false;
+      applyDefaultShirtSize();
       return;
     }
 
@@ -21652,6 +21895,8 @@ async function openTournamentEnrollmentModal() {
       playerSelect.innerHTML = '<option value="">Sin jugadores disponibles</option>';
       playerSelect.disabled = true;
       submitButton.disabled = true;
+      shirtFieldTouched = false;
+      applyDefaultShirtSize();
       return;
     }
 
@@ -21664,6 +21909,7 @@ async function openTournamentEnrollmentModal() {
 
     playerSelect.disabled = false;
     submitButton.disabled = !playerSelect.value;
+    applyDefaultShirtSize();
     setStatusMessage(status, '', '');
   }
 
@@ -21675,12 +21921,15 @@ async function openTournamentEnrollmentModal() {
 
   categorySelect.addEventListener('change', async () => {
     setStatusMessage(status, '', '');
+    shirtFieldTouched = false;
     await updatePlayerOptions();
     updateTournamentActionAvailability();
   });
 
   playerSelect.addEventListener('change', () => {
     submitButton.disabled = !playerSelect.value;
+    shirtFieldTouched = false;
+    applyDefaultShirtSize();
   });
 
   form.addEventListener('submit', async (event) => {
@@ -21693,13 +21942,30 @@ async function openTournamentEnrollmentModal() {
       return;
     }
 
+    let shirtSizeValue = '';
+    if (requiresShirtSize && shirtField) {
+      shirtSizeValue = (shirtField.value || '').trim().toUpperCase();
+      if (!shirtSizeValue) {
+        setStatusMessage(status, 'error', 'Indica la talla de camiseta.');
+        if (typeof shirtField.focus === 'function') {
+          shirtField.focus();
+        }
+        return;
+      }
+    }
+
     setStatusMessage(status, 'info', 'Inscribiendo jugador...');
     submitButton.disabled = true;
 
     try {
+      const payload = { userId: playerId };
+      if (shirtSizeValue) {
+        payload.shirtSize = shirtSizeValue;
+      }
+
       await request(`/tournaments/${tournamentId}/categories/${categoryId}/enrollments`, {
         method: 'POST',
-        body: { userId: playerId },
+        body: payload,
       });
       state.tournamentEnrollments.delete(`${tournamentId}:${categoryId}`);
       state.tournamentEnrollments.delete(
