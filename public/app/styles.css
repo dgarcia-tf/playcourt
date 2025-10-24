@@ -964,17 +964,111 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   position: absolute;
   top: calc(100% + 0.35rem);
   left: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  display: block;
   margin: 0;
-  padding: 0.6rem;
+  padding: 0;
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: var(--radius-sm);
   background: #ffffff;
   box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
   z-index: 30;
-  min-width: 220px;
+  min-width: 320px;
+}
+.menu-dropdown {
+  width: clamp(320px, 48vw, 680px);
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+  align-items: stretch;
+  gap: 1.5rem;
+  padding: 1.2rem 1.4rem;
+}
+.menu-dropdown--compact {
+  width: clamp(320px, 42vw, 540px);
+  grid-template-columns: minmax(220px, 1fr) minmax(200px, 0.85fr);
+}
+.menu-dropdown__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.menu-dropdown__links {
+  display: grid;
+  gap: 0.35rem;
+}
+.menu-dropdown__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+.menu-dropdown__heading,
+.menu-dropdown__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.menu-dropdown__title {
+  font-size: 1.05rem;
+}
+.menu-dropdown__description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.menu-dropdown__aside {
+  position: relative;
+  overflow: hidden;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: linear-gradient(140deg, rgba(37, 99, 235, 0.9), rgba(14, 165, 233, 0.85));
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.25rem 1.4rem;
+}
+.menu-dropdown__aside::before {
+  content: '';
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  top: -60px;
+  right: -70px;
+  filter: blur(0.5px);
+}
+.menu-dropdown__aside > * {
+  position: relative;
+  z-index: 1;
+}
+.menu-dropdown__aside .menu-dropdown__eyebrow {
+  color: rgba(255, 255, 255, 0.72);
+}
+.menu-dropdown__aside .menu-dropdown__title {
+  color: #ffffff;
+}
+.menu-dropdown__aside .menu-dropdown__description {
+  color: rgba(255, 255, 255, 0.85);
+}
+.menu-dropdown__cta.menu-button {
+  width: auto;
+  align-self: flex-start;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.15);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: none;
+}
+.menu-dropdown__cta.menu-button:hover,
+.menu-dropdown__cta.menu-button:focus-visible {
+  background: rgba(15, 23, 42, 0.25);
+  color: #ffffff;
 }
 .menu-button--nested {
   padding-left: 1rem;
@@ -4658,10 +4752,57 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     border: none;
     border-radius: 0;
     box-shadow: none;
-    margin-left: 0.5rem;
-    padding-left: 0.75rem;
-    border-left: 1px solid rgba(148, 163, 184, 0.24);
     min-width: 0;
+  }
+
+  .menu-dropdown {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+  }
+
+  .menu-dropdown__section {
+    gap: 0.6rem;
+  }
+
+  .menu-dropdown__links {
+    gap: 0.5rem;
+  }
+
+  .menu-dropdown__aside {
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--text-primary);
+    padding: 0.9rem 1rem;
+  }
+
+  .menu-dropdown__aside::before {
+    display: none;
+  }
+
+  .menu-dropdown__aside .menu-dropdown__eyebrow {
+    color: var(--text-secondary);
+  }
+
+  .menu-dropdown__aside .menu-dropdown__title {
+    color: var(--text-primary);
+  }
+
+  .menu-dropdown__aside .menu-dropdown__description {
+    color: var(--text-secondary);
+  }
+
+  .menu-dropdown__cta.menu-button {
+    width: 100%;
+    color: var(--accent-strong);
+    background: rgba(59, 130, 246, 0.15);
+  }
+
+  .menu-dropdown__cta.menu-button:hover,
+  .menu-dropdown__cta.menu-button:focus-visible {
+    background: rgba(59, 130, 246, 0.22);
+    color: var(--accent-strong);
   }
 
   .menu-button {

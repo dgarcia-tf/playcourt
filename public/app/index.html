@@ -222,80 +222,106 @@
                   </button>
                 </div>
                 <div class="menu-submenu" role="group" aria-label="Secciones de ligas" hidden>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-leagues"
-                    data-parent-target="section-leagues"
-                  >
-                    Resumen
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-league-dashboard"
-                    data-parent-target="section-leagues"
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-categories"
-                    data-parent-target="section-leagues"
-                  >
-                    Categorías
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-league-players"
-                    data-parent-target="section-leagues"
-                  >
-                    Jugadores
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-league-payments"
-                    data-parent-target="section-leagues"
-                    data-requires-admin="true"
-                  >
-                    Pagos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-matches"
-                    data-parent-target="section-leagues"
-                  >
-                    <span class="menu-label">Partidos</span>
-                    <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-calendar"
-                    data-parent-target="section-leagues"
-                  >
-                    Calendario
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-ranking"
-                    data-parent-target="section-leagues"
-                  >
-                    Ranking
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-rules"
-                    data-parent-target="section-leagues"
-                  >
-                    Reglamento
-                  </button>
+                  <div class="menu-dropdown">
+                    <div class="menu-dropdown__section">
+                      <p class="menu-dropdown__eyebrow">Explorar ligas</p>
+                      <h4 class="menu-dropdown__heading">Organiza la temporada</h4>
+                      <p class="menu-dropdown__description">
+                        Gestiona categorías, partidos y rankings desde un mismo panel.
+                      </p>
+                      <div class="menu-dropdown__links">
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-leagues"
+                          data-parent-target="section-leagues"
+                        >
+                          Resumen
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-league-dashboard"
+                          data-parent-target="section-leagues"
+                        >
+                          Dashboard
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-categories"
+                          data-parent-target="section-leagues"
+                        >
+                          Categorías
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-league-players"
+                          data-parent-target="section-leagues"
+                        >
+                          Jugadores
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-league-payments"
+                          data-parent-target="section-leagues"
+                          data-requires-admin="true"
+                        >
+                          Pagos
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-matches"
+                          data-parent-target="section-leagues"
+                        >
+                          <span class="menu-label">Partidos</span>
+                          <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-calendar"
+                          data-parent-target="section-leagues"
+                        >
+                          Calendario
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-ranking"
+                          data-parent-target="section-leagues"
+                        >
+                          Ranking
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-rules"
+                          data-parent-target="section-leagues"
+                        >
+                          Reglamento
+                        </button>
+                      </div>
+                    </div>
+                    <div class="menu-dropdown__aside">
+                      <p class="menu-dropdown__eyebrow">Consejo</p>
+                      <h5 class="menu-dropdown__title">Lanza la nueva liga social</h5>
+                      <p class="menu-dropdown__description">
+                        Define categorías mixtas, asigna cuadros y publica el reglamento en minutos.
+                      </p>
+                      <button
+                        type="button"
+                        class="menu-button menu-dropdown__cta"
+                        data-target="section-league-dashboard"
+                        data-parent-target="section-leagues"
+                      >
+                        Ir al dashboard de ligas
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="menu-group" data-collapsible="true">
@@ -310,79 +336,105 @@
                   </button>
                 </div>
                 <div class="menu-submenu" role="group" aria-label="Secciones de torneos" hidden>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-dashboard"
-                    data-parent-target="section-tournaments"
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournaments"
-                    data-parent-target="section-tournaments"
-                  >
-                    Resumen
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-categories"
-                    data-parent-target="section-tournaments"
-                  >
-                    Categorías
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-brackets"
-                    data-parent-target="section-tournaments"
-                  >
-                    Cuadros de juego
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-enrollments"
-                    data-parent-target="section-tournaments"
-                  >
-                    Jugadores
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-doubles"
-                    data-parent-target="section-tournaments"
-                  >
-                    Dobles
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-payments"
-                    data-parent-target="section-tournaments"
-                    data-requires-admin="true"
-                  >
-                    Pagos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-matches"
-                    data-parent-target="section-tournaments"
-                  >
-                    Partidos
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested menu-button--subnested"
-                    data-target="section-tournament-rules"
-                    data-parent-target="section-tournaments"
-                  >
-                    Reglamento
-                  </button>
+                  <div class="menu-dropdown">
+                    <div class="menu-dropdown__section">
+                      <p class="menu-dropdown__eyebrow">Agenda de torneos</p>
+                      <h4 class="menu-dropdown__heading">Todo el cuadro a la vista</h4>
+                      <p class="menu-dropdown__description">
+                        Configura cuadros, gestiona inscripciones y sigue los resultados en directo.
+                      </p>
+                      <div class="menu-dropdown__links">
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-dashboard"
+                          data-parent-target="section-tournaments"
+                        >
+                          Dashboard
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournaments"
+                          data-parent-target="section-tournaments"
+                        >
+                          Resumen
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-categories"
+                          data-parent-target="section-tournaments"
+                        >
+                          Categorías
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-brackets"
+                          data-parent-target="section-tournaments"
+                        >
+                          Cuadros de juego
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-enrollments"
+                          data-parent-target="section-tournaments"
+                        >
+                          Jugadores
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-doubles"
+                          data-parent-target="section-tournaments"
+                        >
+                          Dobles
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-payments"
+                          data-parent-target="section-tournaments"
+                          data-requires-admin="true"
+                        >
+                          Pagos
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-matches"
+                          data-parent-target="section-tournaments"
+                        >
+                          Partidos
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested menu-button--subnested"
+                          data-target="section-tournament-rules"
+                          data-parent-target="section-tournaments"
+                        >
+                          Reglamento
+                        </button>
+                      </div>
+                    </div>
+                    <div class="menu-dropdown__aside">
+                      <p class="menu-dropdown__eyebrow">Novedad</p>
+                      <h5 class="menu-dropdown__title">Torneo máster indoor</h5>
+                      <p class="menu-dropdown__description">
+                        Prepara el cuadro final, personaliza horarios y comunica la agenda a los clubes.
+                      </p>
+                      <button
+                        type="button"
+                        class="menu-button menu-dropdown__cta"
+                        data-target="section-tournament-brackets"
+                        data-parent-target="section-tournaments"
+                      >
+                        Gestionar cuadros
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div
@@ -404,24 +456,51 @@
                   </button>
                 </div>
                 <div class="menu-submenu" role="group" aria-label="Secciones de administración" hidden>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-club"
-                    data-parent-target="section-admin"
-                    data-requires-admin="true"
-                  >
-                    Club
-                  </button>
-                  <button
-                    type="button"
-                    class="menu-button menu-button--nested"
-                    data-target="section-user-directory"
-                    data-parent-target="section-admin"
-                    data-requires-admin="true"
-                  >
-                    Usuarios
-                  </button>
+                  <div class="menu-dropdown menu-dropdown--compact">
+                    <div class="menu-dropdown__section">
+                      <p class="menu-dropdown__eyebrow">Administración</p>
+                      <h4 class="menu-dropdown__heading">Configuración del club</h4>
+                      <p class="menu-dropdown__description">
+                        Centraliza la información del club y gestiona la comunidad de usuarios.
+                      </p>
+                      <div class="menu-dropdown__links">
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested"
+                          data-target="section-club"
+                          data-parent-target="section-admin"
+                          data-requires-admin="true"
+                        >
+                          Club
+                        </button>
+                        <button
+                          type="button"
+                          class="menu-button menu-button--nested"
+                          data-target="section-user-directory"
+                          data-parent-target="section-admin"
+                          data-requires-admin="true"
+                        >
+                          Usuarios
+                        </button>
+                      </div>
+                    </div>
+                    <div class="menu-dropdown__aside">
+                      <p class="menu-dropdown__eyebrow">Acción rápida</p>
+                      <h5 class="menu-dropdown__title">Invita a nuevos gestores</h5>
+                      <p class="menu-dropdown__description">
+                        Concede permisos de administrador para compartir la gestión del club.
+                      </p>
+                      <button
+                        type="button"
+                        class="menu-button menu-dropdown__cta"
+                        data-target="section-user-directory"
+                        data-parent-target="section-admin"
+                        data-requires-admin="true"
+                      >
+                        Abrir directorio
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <button type="button" class="menu-button" data-target="section-account">Mi cuenta</button>
