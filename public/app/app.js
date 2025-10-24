@@ -11472,13 +11472,34 @@ function createTournamentDoublesCategoryCard(group) {
 
       const pairInfo = document.createElement('div');
       pairInfo.className = 'collection-card__player';
-      const names = Array.isArray(pair.players)
-        ? pair.players.map((player) => player.fullName || player.email || 'Jugador')
-        : [];
-      const pairLabel = names.length ? names.join(' · ') : 'Pareja';
-      const pairName = document.createElement('strong');
-      pairName.textContent = pairLabel;
-      pairInfo.appendChild(pairName);
+      const members = Array.isArray(pair.players) ? pair.players : [];
+      const names = members.map((player) => player.fullName || player.email || 'Jugador');
+
+      if (members.length) {
+        const membersWrapper = document.createElement('div');
+        membersWrapper.className = 'doubles-pair-members';
+
+        members.forEach((player) => {
+          const member = document.createElement('div');
+          member.className = 'doubles-pair-member';
+
+          member.appendChild(createAvatarElement(player, { size: 'sm' }));
+
+          const memberName = document.createElement('strong');
+          memberName.className = 'doubles-pair-member__name';
+          memberName.textContent = player.fullName || player.email || 'Jugador';
+          member.appendChild(memberName);
+
+          membersWrapper.appendChild(member);
+        });
+
+        pairInfo.appendChild(membersWrapper);
+      } else {
+        const pairLabel = names.length ? names.join(' · ') : 'Pareja';
+        const pairName = document.createElement('strong');
+        pairName.textContent = pairLabel;
+        pairInfo.appendChild(pairName);
+      }
 
       if (pair.createdAt) {
         const created = document.createElement('span');
@@ -12668,6 +12689,23 @@ async function refreshTournamentMatches({ forceReload = false } = {}) {
 }
 
 function createBracketPlayerAvatar(player, placeholderLabel = '') {
+  const avatarGroup = document.createElement('div');
+  avatarGroup.className = 'bracket-player__avatars';
+
+  const members = Array.isArray(player?.players)
+    ? player.players.filter(Boolean)
+    : [];
+
+  if (members.length) {
+    avatarGroup.classList.add('bracket-player__avatars--pair');
+    members.forEach((member) => {
+      const avatar = createAvatarElement(member, { size: 'sm' });
+      avatar.classList.add('bracket-player__avatar');
+      avatarGroup.appendChild(avatar);
+    });
+    return avatarGroup;
+  }
+
   const avatar = document.createElement('div');
   avatar.className = 'player-avatar player-avatar--sm bracket-player__avatar';
 
@@ -12685,7 +12723,9 @@ function createBracketPlayerAvatar(player, placeholderLabel = '') {
     avatar.textContent = initial || '—';
   }
 
-  return avatar;
+  avatarGroup.appendChild(avatar);
+
+  return avatarGroup;
 }
 
 function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
