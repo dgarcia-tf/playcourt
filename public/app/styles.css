@@ -960,11 +960,6 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   background: rgba(59, 130, 246, 0.16);
   border-color: rgba(37, 99, 235, 0.25);
 }
-.menu-group--expanded > .menu-group__header > .menu-toggle {
-  color: var(--accent-strong);
-  border-color: rgba(37, 99, 235, 0.25);
-  background: rgba(59, 130, 246, 0.12);
-}
 .menu-submenu {
   position: absolute;
   top: calc(100% + 0.35rem);
@@ -1032,34 +1027,6 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   width: 100%;
   white-space: normal;
 }
-.menu-toggle {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.1rem;
-  padding: 0.45rem;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-}
-
-.menu-toggle:focus,
-.menu-toggle:hover {
-  background: rgba(59, 130, 246, 0.1);
-  color: var(--accent);
-  border-color: rgba(59, 130, 246, 0.2);
-}
-
-.menu-toggle__icon {
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
 .menu-button--logout {
   background: rgba(239, 68, 68, 0.08);
   color: var(--danger);

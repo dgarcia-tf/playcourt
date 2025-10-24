@@ -2065,21 +2065,9 @@ const adminToggleElements = document.querySelectorAll('[data-admin-visible="togg
 
 function setMenuGroupExpanded(menuGroup, expanded) {
   if (!menuGroup) return;
-  const { parentButton, submenu, group, toggleButton } = menuGroup;
+  const { parentButton, submenu, group } = menuGroup;
   if (parentButton) {
     parentButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-  }
-  if (toggleButton) {
-    toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    const toggleLabel = toggleButton.dataset.toggleLabel || parentButton?.textContent?.trim() || 'menú';
-    toggleButton.setAttribute(
-      'aria-label',
-      `${expanded ? 'Contraer' : 'Expandir'} ${toggleLabel}`
-    );
-    const icon = toggleButton.querySelector('.menu-toggle__icon');
-    if (icon) {
-      icon.textContent = expanded ? '−' : '+';
-    }
   }
   if (group) {
     group.classList.toggle('menu-group--expanded', expanded);
@@ -2121,7 +2109,6 @@ const collapsibleMenuGroups = appMenu
       .map((group) => {
         const parentButton = group.querySelector('.menu-button--parent');
         const submenu = group.querySelector('.menu-submenu');
-        const toggleButton = group.querySelector('[data-submenu-toggle="true"]');
         if (!parentButton || !submenu) {
           return null;
         }
@@ -2129,7 +2116,6 @@ const collapsibleMenuGroups = appMenu
           group,
           parentButton,
           submenu,
-          toggleButton,
           target: parentButton.dataset.target || null,
         };
         setMenuGroupExpanded(menuGroup, false);
@@ -5620,8 +5606,7 @@ function setActiveMenu(targetId = null) {
   if (targetId) {
     activeTargets.add(targetId);
     const matchingButtons = menuButtons.filter((button) => button.dataset.target === targetId);
-    const targetButton =
-      matchingButtons.find((button) => button.dataset.submenuToggle !== 'true') || matchingButtons[0];
+    const targetButton = matchingButtons[0];
     if (targetButton) {
       addParentTargets(targetButton, activeTargets);
     }
@@ -6284,44 +6269,27 @@ tabButtons.forEach((button) => {
 
 if (appMenu) {
   appMenu.addEventListener('click', (event) => {
-    const toggle = event.target.closest('[data-submenu-toggle="true"]');
-    if (toggle) {
-      event.preventDefault();
-      const toggleTargetId = toggle.dataset.target;
-      const menuGroup = collapsibleMenuGroupsByTarget.get(toggleTargetId || '');
-      const expanded = toggle.getAttribute('aria-expanded') === 'true';
-      setMenuGroupExpanded(menuGroup, !expanded);
-      return;
-    }
     const button = event.target.closest('.menu-button');
     if (!button || button.hidden || button.disabled) return;
     const targetId = button.dataset.target;
     const menuGroup = targetId ? collapsibleMenuGroupsByTarget.get(targetId) : null;
+    const hasSubmenu = Boolean(menuGroup?.submenu);
+    const submenuExpanded = hasSubmenu ? !menuGroup.submenu.hidden : false;
+    const focusFirstItem = shouldUseHoverNavigation();
+    const isParentButton = menuGroup?.parentButton === button;
 
-    if (
-      menuGroup &&
-      shouldUseHoverNavigation() &&
-      menuGroup.submenu &&
-      menuGroup.submenu.hidden
-    ) {
+    if (hasSubmenu && !submenuExpanded) {
       event.preventDefault();
-      expandMenuGroup(menuGroup, { focusFirstItem: true });
+      expandMenuGroup(menuGroup, { focusFirstItem });
       return;
     }
 
-    if (button.dataset.submenuToggle === 'true') {
-      const menuGroup = collapsibleMenuGroupsByTarget.get(targetId || '');
-      const expanded = button.getAttribute('aria-expanded') === 'true';
-      if (expanded) {
-        const isActiveTarget = state.activeSection === targetId;
-        const activeNestedButton = menuGroup?.submenu?.querySelector('.menu-button.active');
-        if (isActiveTarget || activeNestedButton) {
-          return;
-        }
-      }
-      setMenuGroupExpanded(menuGroup, !expanded);
+    if (hasSubmenu && !focusFirstItem && isParentButton) {
+      event.preventDefault();
+      setMenuGroupExpanded(menuGroup, false);
       return;
     }
+
     showSection(targetId);
   });
 }
