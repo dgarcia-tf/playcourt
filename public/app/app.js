@@ -1306,6 +1306,24 @@ function resetCourtReservationForm() {
 
 function getPlayerDisplayName(player) {
   if (!player) return 'Jugador';
+  if (Array.isArray(player.players) && player.players.length) {
+    const names = player.players
+      .map((member) => {
+        if (!member) return '';
+        if (typeof member === 'object') {
+          if (member.fullName) return member.fullName;
+          if (member.email) return member.email;
+        }
+        if (typeof member === 'string') {
+          return member;
+        }
+        return '';
+      })
+      .filter((name) => Boolean(name && name.trim()));
+    if (names.length) {
+      return names.join(' / ');
+    }
+  }
   if (player.fullName) return player.fullName;
   if (player.email) return player.email;
   return 'Jugador';

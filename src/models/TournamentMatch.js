@@ -69,7 +69,7 @@ const tournamentMatchSchema = new mongoose.Schema(
       type: [
         {
           type: mongoose.Schema.Types.ObjectId,
-          ref: 'User',
+          refPath: 'playerType',
         },
       ],
       validate: {
@@ -79,6 +79,11 @@ const tournamentMatchSchema = new mongoose.Schema(
         message: 'Un partido no puede tener más de dos jugadores',
       },
       default: [],
+    },
+    playerType: {
+      type: String,
+      enum: ['User', 'TournamentDoublesPair'],
+      default: 'User',
     },
     scheduledAt: {
       type: Date,

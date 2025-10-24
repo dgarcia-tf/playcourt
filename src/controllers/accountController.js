@@ -290,22 +290,30 @@ async function getAccountSummary(req, res) {
       players: userId,
       status: { $in: UPCOMING_TOURNAMENT_MATCH_STATUSES },
     })
-      .populate('players', 'fullName photo')
+      .populate({
+        path: 'players',
+        select: 'fullName photo email players',
+        populate: { path: 'players', select: 'fullName photo email' },
+      })
       .populate('category', 'name color tournament')
       .populate('tournament', 'name status')
       .sort({ scheduledAt: 1, createdAt: 1 })
       .limit(MAX_MATCHES_PER_SECTION)
-      .lean(),
+      .lean({ virtuals: true }),
     TournamentMatch.find({
       players: userId,
       status: { $in: COMPLETED_TOURNAMENT_MATCH_STATUSES },
     })
-      .populate('players', 'fullName photo')
+      .populate({
+        path: 'players',
+        select: 'fullName photo email players',
+        populate: { path: 'players', select: 'fullName photo email' },
+      })
       .populate('category', 'name color tournament')
       .populate('tournament', 'name status')
       .sort({ scheduledAt: -1, updatedAt: -1 })
       .limit(MAX_MATCHES_PER_SECTION)
-      .lean(),
+      .lean({ virtuals: true }),
     League.find({ 'payments.user': userId })
       .select('name year status payments')
       .populate({ path: 'payments.user', select: 'fullName' })
