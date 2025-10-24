@@ -12125,6 +12125,9 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
     placeholderLabels = [],
   } = options;
 
+  const matchId = match ? normalizeId(match) : '';
+  const editable = Boolean(matchId) && isAdmin();
+
   const card = document.createElement('div');
   card.className = 'bracket-match';
 
@@ -12250,6 +12253,24 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
 
   if (meta.childElementCount) {
     card.appendChild(meta);
+  }
+
+  if (editable) {
+    const actions = document.createElement('div');
+    actions.className = 'bracket-match__actions';
+
+    const scheduleButton = document.createElement('button');
+    scheduleButton.type = 'button';
+    const hasSchedule = Boolean(match?.scheduledAt);
+    scheduleButton.className = hasSchedule
+      ? 'secondary bracket-match__action'
+      : 'primary bracket-match__action';
+    scheduleButton.dataset.action = 'schedule-tournament-match';
+    scheduleButton.dataset.matchId = matchId;
+    scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
+
+    actions.appendChild(scheduleButton);
+    card.appendChild(actions);
   }
 
   return card;
@@ -27742,6 +27763,20 @@ matchCreateButton?.addEventListener('click', () => {
 });
 
 tournamentMatchesList?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action="schedule-tournament-match"]');
+  if (!button || !isAdmin()) {
+    return;
+  }
+
+  const { matchId } = button.dataset;
+  if (!matchId) {
+    return;
+  }
+
+  openMatchModal(matchId);
+});
+
+tournamentBracketView?.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action="schedule-tournament-match"]');
   if (!button || !isAdmin()) {
     return;

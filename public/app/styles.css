@@ -1894,6 +1894,17 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   color: var(--text-muted);
 }
 
+.bracket-match__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.bracket-match__action {
+  padding: 0.55rem 1rem;
+  font-size: 0.78rem;
+}
+
 .tournament-bracket-card .result-scoreboard {
   margin-top: 0.25rem;
 }
