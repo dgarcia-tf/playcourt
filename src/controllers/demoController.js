@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
+const { Types } = require('mongoose');
 const { Category } = require('../models/Category');
 const { Enrollment } = require('../models/Enrollment');
 const { Tournament, TOURNAMENT_STATUS } = require('../models/Tournament');
@@ -32,6 +33,8 @@ const TOURNAMENT_DOUBLES_PAIRS = 12;
 const MAX_AGE = 55;
 const MIN_AGE = 18;
 const DEMO_LEAGUE_ENROLLMENT_FEE = 18;
+const DEMO_SINGLES_SEED_COUNT = 8;
+const DEMO_DOUBLES_SEED_COUNT = 4;
 
 const PREFERRED_SCHEDULE_OPTIONS = Object.values(PREFERRED_SCHEDULES);
 const SHIRT_SIZE_OPTIONS = Object.values(SHIRT_SIZES);
@@ -204,6 +207,376 @@ async function ensurePlayersForGender({
   }
 
   return selected;
+}
+
+function toObjectIdString(value) {
+  if (!value) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (typeof value.toString === 'function') {
+    return value.toString();
+  }
+
+  return '';
+}
+
+function buildOrderedEntries({
+  entries,
+  existingSeeds,
+  limit,
+  getId,
+}) {
+  if (!Array.isArray(entries) || !entries.length || !limit) {
+    return [];
+  }
+
+  const entriesById = new Map();
+  entries.forEach((entry) => {
+    const id = getId(entry);
+    if (id) {
+      entriesById.set(id, entry);
+    }
+  });
+
+  const ordered = [];
+  const used = new Set();
+
+  const sortedSeeds = [...existingSeeds]
+    .filter((seed) => seed && seed.player)
+    .sort((a, b) => (a.seedNumber || 0) - (b.seedNumber || 0));
+
+  sortedSeeds.forEach((seed) => {
+    if (ordered.length >= limit) {
+      return;
+    }
+
+    const id = seed.player;
+    const entry = id ? entriesById.get(id) : undefined;
+    if (entry && !used.has(id)) {
+      ordered.push(entry);
+      used.add(id);
+    }
+  });
+
+  if (ordered.length < limit) {
+    for (const entry of entries) {
+      if (ordered.length >= limit) {
+        break;
+      }
+
+      const id = getId(entry);
+      if (!id || used.has(id)) {
+        continue;
+      }
+
+      ordered.push(entry);
+      used.add(id);
+    }
+  }
+
+  return ordered.slice(0, limit);
+}
+
+async function updateEnrollmentSeedNumbers({
+  tournamentId,
+  categoryId,
+  seeds,
+  isDoubles,
+}) {
+  const normalizedSeeds = Array.isArray(seeds)
+    ? seeds.filter((seed) => seed && seed.player && Number(seed.seedNumber) > 0)
+    : [];
+
+  if (!normalizedSeeds.length) {
+    await TournamentEnrollment.updateMany(
+      {
+        tournament: tournamentId,
+        category: categoryId,
+        seedNumber: { $exists: true },
+      },
+      { $unset: { seedNumber: '' } }
+    );
+    return;
+  }
+
+  if (isDoubles) {
+    const pairIds = normalizedSeeds.map((seed) =>
+      typeof seed.player === 'string' ? new Types.ObjectId(seed.player) : seed.player
+    );
+
+    const pairs = await TournamentDoublesPair.find({ _id: { $in: pairIds } })
+      .select('_id players')
+      .lean();
+
+    const pairMap = new Map(
+      pairs.map((pair) => [toObjectIdString(pair._id), pair]).filter(([id]) => Boolean(id))
+    );
+
+    const seededPlayersSet = new Set();
+    const updates = [];
+
+    normalizedSeeds.forEach((seed) => {
+      const id = toObjectIdString(seed.player);
+      const pair = pairMap.get(id);
+      if (!pair || !Array.isArray(pair.players)) {
+        return;
+      }
+
+      pair.players.forEach((playerId) => {
+        const normalizedId = toObjectIdString(playerId);
+        if (!normalizedId) {
+          return;
+        }
+        seededPlayersSet.add(normalizedId);
+        updates.push(
+          TournamentEnrollment.updateOne(
+            {
+              tournament: tournamentId,
+              category: categoryId,
+              user:
+                typeof playerId === 'string'
+                  ? new Types.ObjectId(playerId)
+                  : playerId,
+            },
+            { $set: { seedNumber: seed.seedNumber } }
+          )
+        );
+      });
+    });
+
+    if (updates.length) {
+      await Promise.all(updates);
+    }
+
+    const seededPlayers = Array.from(seededPlayersSet).map((id) => new Types.ObjectId(id));
+    const filter = {
+      tournament: tournamentId,
+      category: categoryId,
+      seedNumber: { $exists: true },
+    };
+
+    if (seededPlayers.length) {
+      filter.user = { $nin: seededPlayers };
+    }
+
+    await TournamentEnrollment.updateMany(filter, { $unset: { seedNumber: '' } });
+    return;
+  }
+
+  const seededPlayers = normalizedSeeds.map((seed) =>
+    typeof seed.player === 'string' ? new Types.ObjectId(seed.player) : seed.player
+  );
+
+  await Promise.all(
+    normalizedSeeds.map((seed) =>
+      TournamentEnrollment.updateOne(
+        {
+          tournament: tournamentId,
+          category: categoryId,
+          user:
+            typeof seed.player === 'string'
+              ? new Types.ObjectId(seed.player)
+              : seed.player,
+        },
+        { $set: { seedNumber: seed.seedNumber } }
+      )
+    )
+  );
+
+  const filter = {
+    tournament: tournamentId,
+    category: categoryId,
+    seedNumber: { $exists: true },
+  };
+
+  if (seededPlayers.length) {
+    filter.user = { $nin: seededPlayers };
+  }
+
+  await TournamentEnrollment.updateMany(filter, { $unset: { seedNumber: '' } });
+}
+
+async function assignDemoSeeds({
+  tournament,
+  tournamentCategory,
+  isDoubles,
+  totalParticipants,
+}) {
+  const maxSeeds = isDoubles ? DEMO_DOUBLES_SEED_COUNT : DEMO_SINGLES_SEED_COUNT;
+  const existingSeeds = Array.isArray(tournamentCategory.seeds)
+    ? tournamentCategory.seeds
+        .filter((seed) => seed && seed.player && Number(seed.seedNumber) > 0)
+        .map((seed) => ({
+          player: toObjectIdString(seed.player),
+          seedNumber: Number(seed.seedNumber),
+          playerType: seed.playerType || (isDoubles ? 'TournamentDoublesPair' : 'User'),
+        }))
+    : [];
+
+  if (!totalParticipants || maxSeeds <= 0) {
+    if (existingSeeds.length) {
+      tournamentCategory.seeds = [];
+      tournamentCategory.markModified('seeds');
+      await tournamentCategory.save();
+      await updateEnrollmentSeedNumbers({
+        tournamentId: tournament._id,
+        categoryId: tournamentCategory._id,
+        seeds: [],
+        isDoubles,
+      });
+      return { seedsAssigned: 0, seedsUpdated: true };
+    }
+
+    await updateEnrollmentSeedNumbers({
+      tournamentId: tournament._id,
+      categoryId: tournamentCategory._id,
+      seeds: [],
+      isDoubles,
+    });
+
+    return { seedsAssigned: 0, seedsUpdated: false };
+  }
+
+  const limit = Math.min(maxSeeds, totalParticipants);
+
+  let nextSeeds = [];
+
+  if (isDoubles) {
+    const pairs = await TournamentDoublesPair.find({
+      tournament: tournament._id,
+      category: tournamentCategory._id,
+    })
+      .sort({ createdAt: 1, _id: 1 })
+      .select('_id')
+      .lean();
+
+    if (!pairs.length) {
+      await updateEnrollmentSeedNumbers({
+        tournamentId: tournament._id,
+        categoryId: tournamentCategory._id,
+        seeds: [],
+        isDoubles,
+      });
+      if (existingSeeds.length) {
+        tournamentCategory.seeds = [];
+        tournamentCategory.markModified('seeds');
+        await tournamentCategory.save();
+        return { seedsAssigned: 0, seedsUpdated: true };
+      }
+
+      return { seedsAssigned: 0, seedsUpdated: false };
+    }
+
+    const orderedPairs = buildOrderedEntries({
+      entries: pairs,
+      existingSeeds,
+      limit,
+      getId: (pair) => toObjectIdString(pair._id),
+    });
+
+    nextSeeds = orderedPairs.map((pair, index) => ({
+      player: pair._id,
+      playerType: 'TournamentDoublesPair',
+      seedNumber: index + 1,
+    }));
+  } else {
+    const enrollments = await TournamentEnrollment.find({
+      tournament: tournament._id,
+      category: tournamentCategory._id,
+      status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+    })
+      .sort({ createdAt: 1, _id: 1 })
+      .select('user')
+      .lean();
+
+    if (!enrollments.length) {
+      await updateEnrollmentSeedNumbers({
+        tournamentId: tournament._id,
+        categoryId: tournamentCategory._id,
+        seeds: [],
+        isDoubles: false,
+      });
+
+      if (existingSeeds.length) {
+        tournamentCategory.seeds = [];
+        tournamentCategory.markModified('seeds');
+        await tournamentCategory.save();
+        return { seedsAssigned: 0, seedsUpdated: true };
+      }
+
+      return { seedsAssigned: 0, seedsUpdated: false };
+    }
+
+    const orderedEnrollments = buildOrderedEntries({
+      entries: enrollments,
+      existingSeeds,
+      limit,
+      getId: (enrollment) => toObjectIdString(enrollment.user),
+    });
+
+    nextSeeds = orderedEnrollments.map((enrollment, index) => ({
+      player: enrollment.user,
+      playerType: 'User',
+      seedNumber: index + 1,
+    }));
+  }
+
+  const normalizedNextSeeds = nextSeeds.map((seed) => ({
+    player: toObjectIdString(seed.player),
+    seedNumber: seed.seedNumber,
+    playerType: seed.playerType,
+  }));
+
+  const seedsChanged =
+    normalizedNextSeeds.length !== existingSeeds.length ||
+    normalizedNextSeeds.some((seed, index) => {
+      const existing = existingSeeds[index];
+      if (!existing) {
+        return true;
+      }
+
+      if (existing.player !== seed.player) {
+        return true;
+      }
+
+      if (existing.seedNumber !== seed.seedNumber) {
+        return true;
+      }
+
+      if ((existing.playerType || 'User') !== (seed.playerType || 'User')) {
+        return true;
+      }
+
+      return false;
+    });
+
+  if (seedsChanged) {
+    tournamentCategory.seeds = nextSeeds.map((seed) => ({
+      player: seed.player,
+      playerType: seed.playerType,
+      seedNumber: seed.seedNumber,
+    }));
+    tournamentCategory.markModified('seeds');
+    await tournamentCategory.save();
+  }
+
+  await updateEnrollmentSeedNumbers({
+    tournamentId: tournament._id,
+    categoryId: tournamentCategory._id,
+    seeds: nextSeeds,
+    isDoubles,
+  });
+
+  return { seedsAssigned: nextSeeds.length, seedsUpdated: seedsChanged };
 }
 
 function nextSequence(sequenceState) {
@@ -579,6 +952,13 @@ async function ensureDemoTournaments({ hashedPassword, sequenceState, createdPla
         });
       }
 
+      const seedSummary = await assignDemoSeeds({
+        tournament,
+        tournamentCategory,
+        isDoubles,
+        totalParticipants: isDoubles ? totalPairs : totalPlayers,
+      });
+
       categorySummaries.push({
         categoryId: tournamentCategory.id,
         categoryName: tournamentCategory.name,
@@ -589,6 +969,8 @@ async function ensureDemoTournaments({ hashedPassword, sequenceState, createdPla
         totalPlayers,
         pairsAdded: isDoubles ? pairsAdded : undefined,
         totalPairs: isDoubles ? totalPairs : undefined,
+        seedsAssigned: seedSummary.seedsAssigned,
+        seedsUpdated: seedSummary.seedsUpdated,
       });
     }
 
