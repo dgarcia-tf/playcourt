@@ -41,6 +41,50 @@ function buildRanking(enrollments = [], matches = []) {
     }));
 }
 
+function serializeMatchPlayers(players = []) {
+  if (!Array.isArray(players)) {
+    return [];
+  }
+
+  return players
+    .map((player) => {
+      if (!player) {
+        return null;
+      }
+
+      const serialized = {
+        id: normalizeId(player),
+        fullName: typeof player === 'object' ? player.fullName : undefined,
+        photo: typeof player === 'object' ? player.photo : undefined,
+      };
+
+      if (player && typeof player === 'object' && Array.isArray(player.players)) {
+        const nestedPlayers = player.players
+          .map((member) => {
+            if (!member) return null;
+            return {
+              id: normalizeId(member),
+              fullName: typeof member === 'object' ? member.fullName : undefined,
+              photo: typeof member === 'object' ? member.photo : undefined,
+              email: typeof member === 'object' ? member.email : undefined,
+            };
+          })
+          .filter((member) => member && (member.id || member.fullName || member.photo || member.email));
+
+        if (nestedPlayers.length) {
+          serialized.players = nestedPlayers;
+        }
+      }
+
+      if (serialized.id || serialized.fullName || serialized.photo || serialized.players) {
+        return serialized;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
 function serializeLeagueMatch(match) {
   const category = match.category || {};
   const league = category.league || match.league;
@@ -65,13 +109,7 @@ function serializeLeagueMatch(match) {
           name: league.name,
         }
       : undefined,
-    players: Array.isArray(match.players)
-      ? match.players.map((player) => ({
-          id: normalizeId(player),
-          fullName: typeof player === 'object' ? player.fullName : undefined,
-          photo: typeof player === 'object' ? player.photo : undefined,
-        }))
-      : [],
+    players: serializeMatchPlayers(match.players),
   };
 }
 
@@ -97,13 +135,7 @@ function serializeTournamentMatch(match) {
           name: match.tournament.name,
         }
       : undefined,
-    players: Array.isArray(match.players)
-      ? match.players.map((player) => ({
-          id: normalizeId(player),
-          fullName: typeof player === 'object' ? player.fullName : undefined,
-          photo: typeof player === 'object' ? player.photo : undefined,
-        }))
-      : [],
+    players: serializeMatchPlayers(match.players),
   };
 }
 
@@ -196,6 +228,7 @@ async function getGlobalOverview(req, res) {
     const activeCategories = categories.filter(
       (category) => category?.status === 'en_curso'
     ).length;
+    const poster = typeof league.poster === 'string' ? league.poster.trim() : '';
 
     return {
       id: normalizeId(league),
@@ -204,6 +237,7 @@ async function getGlobalOverview(req, res) {
       year: league.year,
       startDate: league.startDate,
       endDate: league.endDate,
+      poster: poster || undefined,
       categoryCount: categories.length,
       activeCategories,
     };
@@ -211,6 +245,7 @@ async function getGlobalOverview(req, res) {
 
   const formattedTournaments = visibleTournamentsRaw.map((tournament) => {
     const categories = Array.isArray(tournament.categories) ? tournament.categories : [];
+    const poster = typeof tournament.poster === 'string' ? tournament.poster.trim() : '';
     return {
       id: normalizeId(tournament),
       name: tournament.name,
@@ -218,19 +253,24 @@ async function getGlobalOverview(req, res) {
       startDate: tournament.startDate,
       endDate: tournament.endDate,
       registrationCloseDate: tournament.registrationCloseDate,
+      poster: poster || undefined,
       categoryCount: categories.length,
     };
   });
 
-  const filteredLeagueMatches = leagueMatchesRaw.filter((match) => {
-    const leagueId = normalizeId(match.category?.league || match.league);
-    return !leagueId || visibleLeagueIds.has(leagueId);
-  });
+  const filteredLeagueMatches = leagueMatchesRaw
+    .filter((match) => {
+      const leagueId = normalizeId(match.category?.league || match.league);
+      return !leagueId || visibleLeagueIds.has(leagueId);
+    })
+    .filter((match) => match.status === 'programado');
 
-  const filteredTournamentMatches = tournamentMatchesRaw.filter((match) => {
-    const tournamentId = normalizeId(match.tournament);
-    return !tournamentId || visibleTournamentIds.has(tournamentId);
-  });
+  const filteredTournamentMatches = tournamentMatchesRaw
+    .filter((match) => {
+      const tournamentId = normalizeId(match.tournament);
+      return !tournamentId || visibleTournamentIds.has(tournamentId);
+    })
+    .filter((match) => match.status === TOURNAMENT_MATCH_STATUS.SCHEDULED);
 
   const courtSet = new Set();
   [...filteredLeagueMatches, ...filteredTournamentMatches].forEach((match) => {
@@ -310,7 +350,7 @@ async function getLeagueDashboard(req, res) {
 
   const categoryIds = categories.map((category) => category._id.toString());
 
-  const [enrollments, completedMatches, upcomingMatches, activeLeagues] = await Promise.all([
+  const [enrollments, completedMatches, upcomingMatchesRaw, activeLeagues] = await Promise.all([
     Enrollment.find({ category: { $in: categoryIds } })
       .populate('user', 'fullName photo')
       .lean(),
@@ -346,6 +386,8 @@ async function getLeagueDashboard(req, res) {
       .lean(),
     activeLeaguesPromise,
   ]);
+
+  const upcomingMatches = upcomingMatchesRaw.filter((match) => match.status === 'programado');
 
   const enrollmentMap = new Map();
   const completedMap = new Map();
@@ -470,7 +512,7 @@ async function getTournamentDashboard(req, res) {
 
   const categoryIds = visibleCategories.map((category) => category._id.toString());
 
-  const [upcomingMatches, enrollments] = await Promise.all([
+  const [upcomingMatchesRaw, enrollments] = await Promise.all([
     TournamentMatch.find({
       category: { $in: categoryIds },
       status: { $in: UPCOMING_TOURNAMENT_STATUSES },
@@ -522,10 +564,12 @@ async function getTournamentDashboard(req, res) {
       .filter(Boolean)
   );
 
-  const filteredUpcomingMatches = upcomingMatches.filter((match) => {
-    const tournamentId = normalizeId(match.tournament);
-    return !tournamentId || visibleTournamentIds.has(tournamentId);
-  });
+  const filteredUpcomingMatches = upcomingMatchesRaw
+    .filter((match) => {
+      const tournamentId = normalizeId(match.tournament);
+      return !tournamentId || visibleTournamentIds.has(tournamentId);
+    })
+    .filter((match) => match.status === TOURNAMENT_MATCH_STATUS.SCHEDULED);
 
   const categoriesSummary = visibleCategories.map((category) => {
     const categoryId = category._id.toString();
