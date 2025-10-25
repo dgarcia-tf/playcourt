@@ -9,6 +9,11 @@ const {
   TOURNAMENT_CATEGORY_MATCH_FORMATS,
   TOURNAMENT_CATEGORY_STATUSES,
 } = require('../models/TournamentCategory');
+const {
+  TournamentEnrollment,
+  TOURNAMENT_ENROLLMENT_STATUS,
+} = require('../models/TournamentEnrollment');
+const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { League, LEAGUE_STATUS } = require('../models/League');
 const {
   User,
@@ -22,11 +27,33 @@ const { hashPassword } = require('../utils/password');
 const DEMO_PASSWORD = 'Demo1234!';
 const MAX_PLAYERS_PER_CATEGORY = 64;
 const LEAGUE_PLAYERS_PER_CATEGORY = 15;
+const TOURNAMENT_SINGLES_PLAYERS = 24;
+const TOURNAMENT_DOUBLES_PAIRS = 12;
 const MAX_AGE = 55;
 const MIN_AGE = 18;
+const DEMO_LEAGUE_ENROLLMENT_FEE = 18;
 
 const PREFERRED_SCHEDULE_OPTIONS = Object.values(PREFERRED_SCHEDULES);
 const SHIRT_SIZE_OPTIONS = Object.values(SHIRT_SIZES);
+
+const DEMO_TOURNAMENT_FEE_CONFIG = [
+  {
+    label: 'Inscripción individual',
+    amount: 25,
+    memberAmount: 20,
+    nonMemberAmount: 25,
+    currency: 'EUR',
+    description: 'Cuota estándar para categorías individuales del torneo demo.',
+  },
+  {
+    label: 'Inscripción dobles',
+    amount: 40,
+    memberAmount: 35,
+    nonMemberAmount: 40,
+    currency: 'EUR',
+    description: 'Tarifa de referencia para parejas de dobles en el torneo demo.',
+  },
+];
 
 const DEMO_TOURNAMENT_CATEGORIES = [
   {
@@ -116,6 +143,69 @@ function ensureGenderBucket(registry, gender) {
   return registry[gender];
 }
 
+function cloneDemoTournamentFees() {
+  return DEMO_TOURNAMENT_FEE_CONFIG.map((fee) => ({ ...fee }));
+}
+
+function sanitizeContextLabel(label) {
+  if (typeof label !== 'string') {
+    return 'demo';
+  }
+
+  const trimmed = label.trim();
+  return trimmed.length ? trimmed : 'demo';
+}
+
+async function ensurePlayersForGender({
+  gender,
+  count,
+  hashedPassword,
+  sequenceState,
+  createdPlayersByGender,
+  contextLabel,
+  additionalPlayersCounter,
+  forceCreateNew = false,
+}) {
+  if (!gender || count <= 0) {
+    return [];
+  }
+
+  const bucket = ensureGenderBucket(createdPlayersByGender, gender);
+  const selected = [];
+  const context = sanitizeContextLabel(contextLabel);
+  const pool = forceCreateNew ? [] : [...bucket];
+
+  const reusableCount = forceCreateNew ? 0 : Math.min(count, pool.length);
+
+  for (let i = 0; i < reusableCount; i += 1) {
+    const index = Math.floor(Math.random() * pool.length);
+    const [player] = pool.splice(index, 1);
+    if (player) {
+      selected.push(player);
+    }
+  }
+
+  while (selected.length < count) {
+    const { user, fullName } = await createDemoUser({
+      gender,
+      hashedPassword,
+      sequenceState,
+      emailContext: context,
+      notesContext: context,
+    });
+
+    const entry = { userId: user._id, fullName, gender };
+    bucket.push(entry);
+    selected.push(entry);
+
+    if (additionalPlayersCounter) {
+      additionalPlayersCounter.value += 1;
+    }
+  }
+
+  return selected;
+}
+
 function nextSequence(sequenceState) {
   const current = sequenceState.value;
   sequenceState.value += 1;
@@ -157,14 +247,17 @@ async function createDemoUser({
   return { user, fullName };
 }
 
-async function ensureDemoTournaments() {
+async function ensureDemoTournaments({ hashedPassword, sequenceState, createdPlayersByGender }) {
   const tournamentsSummary = [];
+  const additionalPlayersCounter = { value: 0 };
   const now = new Date();
 
   for (let index = 0; index < DEMO_TOURNAMENTS.length; index += 1) {
     const config = DEMO_TOURNAMENTS[index];
     let tournament = await Tournament.findOne({ name: config.name });
     let created = false;
+    let feesAdded = false;
+    let tournamentNeedsSave = false;
 
     if (!tournament) {
       const startDate = addDaysUtc(now, 14 + index * 10);
@@ -180,14 +273,19 @@ async function ensureDemoTournaments() {
         hasGiftBag: true,
         status: TOURNAMENT_STATUS.REGISTRATION,
         categories: [],
+        fees: cloneDemoTournamentFees(),
       });
       created = true;
+      feesAdded = true;
+    } else if (!Array.isArray(tournament.fees) || !tournament.fees.length) {
+      tournament.fees = cloneDemoTournamentFees();
+      feesAdded = true;
+      tournamentNeedsSave = true;
     }
 
     const categorySummaries = [];
     const updatedCategories = [...(tournament.categories || [])];
     const existingCategoryIds = new Set(updatedCategories.map((id) => id.toString()));
-    let categoriesChanged = false;
 
     for (const categoryConfig of DEMO_TOURNAMENT_CATEGORIES) {
       let tournamentCategory = await TournamentCategory.findOne({
@@ -214,7 +312,271 @@ async function ensureDemoTournaments() {
       if (!existingCategoryIds.has(categoryId)) {
         updatedCategories.push(tournamentCategory._id);
         existingCategoryIds.add(categoryId);
-        categoriesChanged = true;
+        tournamentNeedsSave = true;
+      }
+
+      let addedPlayers = 0;
+      let totalPlayers = 0;
+      let pairsAdded = 0;
+      let totalPairs = 0;
+      const isDoubles = categoryConfig.matchType === TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES;
+
+      if (isDoubles) {
+        const existingPairs = await TournamentDoublesPair.find({
+          tournament: tournament._id,
+          category: tournamentCategory._id,
+        })
+          .select('players')
+          .lean();
+
+        const pairKeys = new Set(
+          existingPairs
+            .map((pair) =>
+              Array.isArray(pair.players)
+                ? pair.players
+                    .map((player) => player && player.toString())
+                    .filter(Boolean)
+                    .sort()
+                    .join(':')
+                : ''
+            )
+            .filter(Boolean)
+        );
+
+        const remainingPairs = Math.max(0, TOURNAMENT_DOUBLES_PAIRS - existingPairs.length);
+
+        if (remainingPairs > 0) {
+          const malePlayers = await ensurePlayersForGender({
+            gender: GENDERS.MALE,
+            count: remainingPairs,
+            hashedPassword,
+            sequenceState,
+            createdPlayersByGender,
+            contextLabel: `${tournament.name} ${tournamentCategory.name} masculino`,
+            additionalPlayersCounter,
+            forceCreateNew: true,
+          });
+
+          const femalePlayers = await ensurePlayersForGender({
+            gender: GENDERS.FEMALE,
+            count: remainingPairs,
+            hashedPassword,
+            sequenceState,
+            createdPlayersByGender,
+            contextLabel: `${tournament.name} ${tournamentCategory.name} femenino`,
+            additionalPlayersCounter,
+            forceCreateNew: true,
+          });
+
+          let seedIndex = 0;
+          let attempts = 0;
+
+          while (pairsAdded < remainingPairs && attempts < remainingPairs * 5) {
+            attempts += 1;
+            let maleEntry =
+              malePlayers.length > 0 ? malePlayers[seedIndex % malePlayers.length] : undefined;
+            let femaleEntry =
+              femalePlayers.length > 0
+                ? femalePlayers[seedIndex % femalePlayers.length]
+                : undefined;
+            seedIndex += 1;
+
+            if (!maleEntry || !femaleEntry) {
+              [maleEntry] = await ensurePlayersForGender({
+                gender: GENDERS.MALE,
+                count: 1,
+                hashedPassword,
+                sequenceState,
+                createdPlayersByGender,
+                contextLabel: `${tournament.name} ${tournamentCategory.name} masculino extra ${attempts}`,
+                additionalPlayersCounter,
+                forceCreateNew: true,
+              });
+
+              if (maleEntry) {
+                malePlayers.push(maleEntry);
+              }
+
+              [femaleEntry] = await ensurePlayersForGender({
+                gender: GENDERS.FEMALE,
+                count: 1,
+                hashedPassword,
+                sequenceState,
+                createdPlayersByGender,
+                contextLabel: `${tournament.name} ${tournamentCategory.name} femenino extra ${attempts}`,
+                additionalPlayersCounter,
+                forceCreateNew: true,
+              });
+
+              if (femaleEntry) {
+                femalePlayers.push(femaleEntry);
+              }
+            }
+
+            if (!maleEntry || !femaleEntry) {
+              continue;
+            }
+
+            let pairKey = [maleEntry.userId.toString(), femaleEntry.userId.toString()]
+              .sort()
+              .join(':');
+
+            if (pairKeys.has(pairKey)) {
+              [maleEntry] = await ensurePlayersForGender({
+                gender: GENDERS.MALE,
+                count: 1,
+                hashedPassword,
+                sequenceState,
+                createdPlayersByGender,
+                contextLabel: `${tournament.name} ${tournamentCategory.name} masculino extra ${attempts + remainingPairs}`,
+                additionalPlayersCounter,
+                forceCreateNew: true,
+              });
+
+              if (maleEntry) {
+                malePlayers.push(maleEntry);
+              }
+
+              [femaleEntry] = await ensurePlayersForGender({
+                gender: GENDERS.FEMALE,
+                count: 1,
+                hashedPassword,
+                sequenceState,
+                createdPlayersByGender,
+                contextLabel: `${tournament.name} ${tournamentCategory.name} femenino extra ${attempts + remainingPairs}`,
+                additionalPlayersCounter,
+                forceCreateNew: true,
+              });
+
+              if (femaleEntry) {
+                femalePlayers.push(femaleEntry);
+              }
+
+              if (!maleEntry || !femaleEntry) {
+                continue;
+              }
+
+              pairKey = [maleEntry.userId.toString(), femaleEntry.userId.toString()]
+                .sort()
+                .join(':');
+
+              if (pairKeys.has(pairKey)) {
+                continue;
+              }
+            }
+
+            try {
+              await TournamentDoublesPair.create({
+                tournament: tournament._id,
+                category: tournamentCategory._id,
+                players: [maleEntry.userId, femaleEntry.userId],
+              });
+              pairKeys.add(pairKey);
+              pairsAdded += 1;
+
+              const pairPlayers = [maleEntry, femaleEntry];
+              for (const playerEntry of pairPlayers) {
+                const alreadyEnrolled = await TournamentEnrollment.exists({
+                  tournament: tournament._id,
+                  category: tournamentCategory._id,
+                  user: playerEntry.userId,
+                });
+
+                if (!alreadyEnrolled) {
+                  await TournamentEnrollment.create({
+                    tournament: tournament._id,
+                    category: tournamentCategory._id,
+                    user: playerEntry.userId,
+                    status: TOURNAMENT_ENROLLMENT_STATUS.CONFIRMED,
+                  });
+                  addedPlayers += 1;
+                }
+              }
+            } catch (error) {
+              if (error?.code !== 11000) {
+                throw error;
+              }
+            }
+          }
+        }
+
+        totalPairs = await TournamentDoublesPair.countDocuments({
+          tournament: tournament._id,
+          category: tournamentCategory._id,
+        });
+
+        totalPlayers = await TournamentEnrollment.countDocuments({
+          tournament: tournament._id,
+          category: tournamentCategory._id,
+          status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+        });
+      } else {
+        const activeEnrollments = await TournamentEnrollment.countDocuments({
+          tournament: tournament._id,
+          category: tournamentCategory._id,
+          status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+        });
+
+        const remainingSlots = Math.max(0, TOURNAMENT_SINGLES_PLAYERS - activeEnrollments);
+
+        if (remainingSlots > 0) {
+          const resolvedGender =
+            categoryConfig.gender === GENDERS.MIXED
+              ? pickRandom([GENDERS.MALE, GENDERS.FEMALE])
+              : categoryConfig.gender;
+
+          const players = await ensurePlayersForGender({
+            gender: resolvedGender,
+            count: remainingSlots,
+            hashedPassword,
+            sequenceState,
+            createdPlayersByGender,
+            contextLabel: `${tournament.name} ${tournamentCategory.name}`,
+            additionalPlayersCounter,
+          });
+
+          for (const player of players) {
+            let candidate = player;
+            let attempts = 0;
+
+            while (candidate && attempts < 3) {
+              const alreadyEnrolled = await TournamentEnrollment.exists({
+                tournament: tournament._id,
+                category: tournamentCategory._id,
+                user: candidate.userId,
+              });
+
+              if (!alreadyEnrolled) {
+                await TournamentEnrollment.create({
+                  tournament: tournament._id,
+                  category: tournamentCategory._id,
+                  user: candidate.userId,
+                  status: TOURNAMENT_ENROLLMENT_STATUS.CONFIRMED,
+                });
+                addedPlayers += 1;
+                break;
+              }
+
+              attempts += 1;
+              [candidate] = await ensurePlayersForGender({
+                gender: resolvedGender,
+                count: 1,
+                hashedPassword,
+                sequenceState,
+                createdPlayersByGender,
+                contextLabel: `${tournament.name} ${tournamentCategory.name} refuerzo ${attempts}`,
+                additionalPlayersCounter,
+                forceCreateNew: true,
+              });
+            }
+          }
+        }
+
+        totalPlayers = await TournamentEnrollment.countDocuments({
+          tournament: tournament._id,
+          category: tournamentCategory._id,
+          status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+        });
       }
 
       categorySummaries.push({
@@ -222,10 +584,15 @@ async function ensureDemoTournaments() {
         categoryName: tournamentCategory.name,
         gender: tournamentCategory.gender,
         created: categoryCreated,
+        matchType: tournamentCategory.matchType,
+        addedPlayers,
+        totalPlayers,
+        pairsAdded: isDoubles ? pairsAdded : undefined,
+        totalPairs: isDoubles ? totalPairs : undefined,
       });
     }
 
-    if (categoriesChanged) {
+    if (tournamentNeedsSave) {
       tournament.categories = updatedCategories;
       await tournament.save();
     }
@@ -234,51 +601,26 @@ async function ensureDemoTournaments() {
       tournamentId: tournament.id,
       name: tournament.name,
       created,
+      feesAdded,
+      feesConfigured: Array.isArray(tournament.fees) && tournament.fees.length > 0,
       categories: categorySummaries,
     });
   }
 
-  return tournamentsSummary;
+  return { tournamentsSummary, additionalPlayersCreated: additionalPlayersCounter.value };
 }
 
 async function ensureDemoLeagues({ hashedPassword, sequenceState, createdPlayersByGender }) {
   const leaguesSummary = [];
-  let additionalPlayersCreated = 0;
+  const additionalPlayersCounter = { value: 0 };
   const now = new Date();
   const currentYear = now.getUTCFullYear();
-
-  const getPlayersForCategory = async (gender, count, contextLabel) => {
-    const bucket = ensureGenderBucket(createdPlayersByGender, gender);
-    const pool = [...bucket];
-    const selected = [];
-
-    while (selected.length < Math.min(count, pool.length)) {
-      const index = Math.floor(Math.random() * pool.length);
-      const [player] = pool.splice(index, 1);
-      selected.push(player);
-    }
-
-    while (selected.length < count) {
-      const { user, fullName } = await createDemoUser({
-        gender,
-        hashedPassword,
-        sequenceState,
-        emailContext: `league-${contextLabel}`,
-        notesContext: contextLabel,
-      });
-
-      const entry = { userId: user._id, fullName, gender };
-      bucket.push(entry);
-      selected.push(entry);
-      additionalPlayersCreated += 1;
-    }
-
-    return selected;
-  };
 
   for (const leagueConfig of DEMO_LEAGUES) {
     let league = await League.findOne({ name: leagueConfig.name });
     let created = false;
+    let enrollmentFeeAdded = false;
+    let leagueNeedsSave = false;
 
     if (!league) {
       league = await League.create({
@@ -290,8 +632,14 @@ async function ensureDemoLeagues({ hashedPassword, sequenceState, createdPlayers
         status: LEAGUE_STATUS.ACTIVE,
         registrationCloseDate: addDaysUtc(now, 14),
         categories: [],
+        enrollmentFee: DEMO_LEAGUE_ENROLLMENT_FEE,
       });
       created = true;
+      enrollmentFeeAdded = true;
+    } else if (typeof league.enrollmentFee !== 'number' || league.enrollmentFee <= 0) {
+      league.enrollmentFee = DEMO_LEAGUE_ENROLLMENT_FEE;
+      enrollmentFeeAdded = true;
+      leagueNeedsSave = true;
     }
 
     const updatedCategories = [...(league.categories || [])];
@@ -323,6 +671,7 @@ async function ensureDemoLeagues({ hashedPassword, sequenceState, createdPlayers
       if (!existingCategoryIds.has(categoryId)) {
         updatedCategories.push(category._id);
         existingCategoryIds.add(categoryId);
+        leagueNeedsSave = true;
       }
 
       const currentCount = await Enrollment.countDocuments({ category: category._id });
@@ -331,24 +680,49 @@ async function ensureDemoLeagues({ hashedPassword, sequenceState, createdPlayers
       let totalPlayers = currentCount;
 
       if (remainingSlots > 0) {
-        const players = await getPlayersForCategory(
+        const resolvedGender =
           categoryConfig.gender === GENDERS.MIXED
             ? pickRandom([GENDERS.MALE, GENDERS.FEMALE])
-            : categoryConfig.gender,
-          remainingSlots,
-          `${league.name} ${category.name}`
-        );
+            : categoryConfig.gender;
+
+        const players = await ensurePlayersForGender({
+          gender: resolvedGender,
+          count: remainingSlots,
+          hashedPassword,
+          sequenceState,
+          createdPlayersByGender,
+          contextLabel: `${league.name} ${category.name}`,
+          additionalPlayersCounter,
+        });
 
         for (const player of players) {
-          const alreadyEnrolled = await Enrollment.exists({
-            user: player.userId,
-            category: category._id,
-          });
+          let candidate = player;
+          let attempts = 0;
 
-          if (!alreadyEnrolled) {
-            await Enrollment.create({ user: player.userId, category: category._id });
-            addedPlayers += 1;
-            totalPlayers += 1;
+          while (candidate && attempts < 3) {
+            const alreadyEnrolled = await Enrollment.exists({
+              user: candidate.userId,
+              category: category._id,
+            });
+
+            if (!alreadyEnrolled) {
+              await Enrollment.create({ user: candidate.userId, category: category._id });
+              addedPlayers += 1;
+              totalPlayers += 1;
+              break;
+            }
+
+            attempts += 1;
+            [candidate] = await ensurePlayersForGender({
+              gender: resolvedGender,
+              count: 1,
+              hashedPassword,
+              sequenceState,
+              createdPlayersByGender,
+              contextLabel: `${league.name} ${category.name} refuerzo ${attempts}`,
+              additionalPlayersCounter,
+              forceCreateNew: true,
+            });
           }
         }
       }
@@ -363,7 +737,7 @@ async function ensureDemoLeagues({ hashedPassword, sequenceState, createdPlayers
       });
     }
 
-    if (updatedCategories.length !== (league.categories || []).length) {
+    if (leagueNeedsSave) {
       league.categories = updatedCategories;
       await league.save();
     }
@@ -372,11 +746,13 @@ async function ensureDemoLeagues({ hashedPassword, sequenceState, createdPlayers
       leagueId: league.id,
       name: league.name,
       created,
+      enrollmentFee: typeof league.enrollmentFee === 'number' ? league.enrollmentFee : null,
+      enrollmentFeeAdded,
       categories: leagueCategoriesSummary,
     });
   }
 
-  return { leaguesSummary, additionalPlayersCreated };
+  return { leaguesSummary, additionalPlayersCreated: additionalPlayersCounter.value };
 }
 
 const FIRST_NAMES_MALE = [
@@ -560,14 +936,20 @@ async function activateDemoMode(req, res) {
     });
   }
 
-  const tournaments = await ensureDemoTournaments();
-  const { leaguesSummary, additionalPlayersCreated } = await ensureDemoLeagues({
+  const { tournamentsSummary, additionalPlayersCreated: tournamentPlayersCreated } =
+    await ensureDemoTournaments({
+      hashedPassword,
+      sequenceState,
+      createdPlayersByGender,
+    });
+
+  const { leaguesSummary, additionalPlayersCreated: leaguePlayersCreated } = await ensureDemoLeagues({
     hashedPassword,
     sequenceState,
     createdPlayersByGender,
   });
 
-  totalCreated += additionalPlayersCreated;
+  totalCreated += tournamentPlayersCreated + leaguePlayersCreated;
 
   return res.status(201).json({
     warning:
@@ -575,7 +957,7 @@ async function activateDemoMode(req, res) {
     message: 'Modo demo activado correctamente.',
     totalPlayersCreated: totalCreated,
     categories: summary,
-    tournaments,
+    tournaments: tournamentsSummary,
     leagues: leaguesSummary,
   });
 }
