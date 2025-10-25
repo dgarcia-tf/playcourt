@@ -9375,6 +9375,39 @@ function formatDateRangeLabel(startDate, endDate) {
   return start || end || '';
 }
 
+function normalizeMatchPlayer(player) {
+  if (!player) return null;
+  if (typeof player === 'object') return player;
+  if (typeof player === 'string') {
+    return { fullName: player };
+  }
+  return null;
+}
+
+function buildMatchTeams(players = []) {
+  if (!Array.isArray(players)) return [];
+
+  return players
+    .map((entry) => {
+      if (!entry) {
+        return [];
+      }
+
+      if (Array.isArray(entry.players) && entry.players.length) {
+        const members = entry.players
+          .map((member) => normalizeMatchPlayer(member))
+          .filter(Boolean);
+        if (members.length) {
+          return members;
+        }
+      }
+
+      const normalized = normalizeMatchPlayer(entry);
+      return normalized ? [normalized] : [];
+    })
+    .filter((team) => team.length);
+}
+
 function renderDashboardMatchList(
   matches = [],
   container,
@@ -9385,31 +9418,75 @@ function renderDashboardMatchList(
 
   container.innerHTML = '';
 
-  if (!Array.isArray(matches) || !matches.length) {
+  const scheduledMatches = Array.isArray(matches)
+    ? matches.filter((match) => (match?.status || '').toLowerCase() === 'programado')
+    : [];
+
+  if (!scheduledMatches.length) {
     container.innerHTML = `<li class="empty-state">${emptyMessage}</li>`;
     return;
   }
 
-  matches.forEach((match) => {
+  scheduledMatches.forEach((match) => {
     const item = document.createElement('li');
-    const title = document.createElement('strong');
-    const players = Array.isArray(match.players)
-      ? match.players.map((player) => player.fullName || 'Jugador').join(' vs ')
-      : 'Jugadores por definir';
-    title.textContent = players;
+    item.classList.add('match-list-item');
 
-    if (match.category?.color) {
-      const indicator = createCategoryColorIndicator(match.category.color, match.category?.name);
-      if (indicator) {
-        title.classList.add('with-category-color');
-        title.prepend(indicator);
-      }
+    const playerLabel = Array.isArray(match.players) && match.players.length
+      ? match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
+      : 'Jugadores por definir';
+
+    const accessibleTitle = document.createElement('strong');
+    accessibleTitle.className = 'sr-only';
+    accessibleTitle.textContent = playerLabel;
+    item.appendChild(accessibleTitle);
+
+    const teams = buildMatchTeams(match.players);
+
+    if (teams.length) {
+      const participants = document.createElement('div');
+      participants.className = 'match-list-item__participants';
+
+      teams.forEach((team, index) => {
+        if (index > 0) {
+          const separator = document.createElement('span');
+          separator.className = 'match-list-item__vs';
+          separator.textContent = 'vs';
+          participants.appendChild(separator);
+        }
+
+        const teamElement = document.createElement('div');
+        teamElement.className = 'match-list-item__team';
+
+        team.forEach((player) => {
+          const normalized = normalizeMatchPlayer(player);
+          if (!normalized) return;
+
+          const playerElement = document.createElement('div');
+          playerElement.className = 'match-list-item__player';
+          playerElement.title = getPlayerDisplayName(normalized);
+
+          playerElement.appendChild(createAvatarElement(normalized, { size: 'sm' }));
+
+          const name = document.createElement('span');
+          name.className = 'match-list-item__player-name';
+          name.textContent = getPlayerDisplayName(normalized);
+          playerElement.appendChild(name);
+
+          teamElement.appendChild(playerElement);
+        });
+
+        participants.appendChild(teamElement);
+      });
+
+      item.appendChild(participants);
+    } else {
+      const fallbackTitle = document.createElement('strong');
+      fallbackTitle.textContent = playerLabel;
+      item.appendChild(fallbackTitle);
     }
 
-    item.appendChild(title);
-
     const meta = document.createElement('div');
-    meta.className = 'meta';
+    meta.className = 'meta match-list-item__meta';
 
     const dateLabel = formatDate(match.scheduledAt);
     if (dateLabel) {
@@ -9473,16 +9550,39 @@ function renderGlobalLeagues(leagues = []) {
   if (!globalLeaguesList) return;
   globalLeaguesList.innerHTML = '';
 
-  if (!Array.isArray(leagues) || !leagues.length) {
+  const list = Array.isArray(leagues) ? leagues : [];
+
+  if (!list.length) {
     globalLeaguesList.innerHTML = '<li class="empty-state">No hay ligas registradas actualmente.</li>';
     return;
   }
 
-  leagues.forEach((league) => {
+  list.forEach((league) => {
+    const leagueId = normalizeId(league);
     const item = document.createElement('li');
+    item.classList.add('global-overview-item');
+
+    const content = document.createElement('div');
+    content.className = 'list-item__content';
+    item.appendChild(content);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'list-item-button';
+    if (leagueId) {
+      button.dataset.globalLeagueId = leagueId;
+      button.setAttribute(
+        'aria-label',
+        `Solicitar inscripción en la liga ${league.name || 'sin nombre'}`
+      );
+    } else {
+      button.disabled = true;
+    }
+    content.appendChild(button);
+
     const title = document.createElement('strong');
     title.textContent = league.name || 'Liga sin nombre';
-    item.appendChild(title);
+    button.appendChild(title);
 
     const meta = document.createElement('div');
     meta.className = 'meta';
@@ -9504,10 +9604,38 @@ function renderGlobalLeagues(leagues = []) {
     const categoriesCount = Number(league.categoryCount ?? 0);
     const activeCategories = Number(league.activeCategories ?? 0);
     if (categoriesCount) {
-      meta.appendChild(document.createElement('span')).textContent = `${categoriesCount} categorías (${activeCategories} activas)`;
+      const categoriesLabel =
+        activeCategories && activeCategories !== categoriesCount
+          ? `${categoriesCount} categorías (${activeCategories} activas)`
+          : `${categoriesCount} categorías`;
+      meta.appendChild(document.createElement('span')).textContent = categoriesLabel;
     }
 
-    item.appendChild(meta);
+    if (meta.childElementCount) {
+      button.appendChild(meta);
+    }
+
+    if (leagueId) {
+      const hint = document.createElement('span');
+      hint.className = 'note';
+      hint.textContent = 'Haz clic para inscribirte';
+      button.appendChild(hint);
+    }
+
+    const posterUrl = typeof league.poster === 'string' ? league.poster.trim() : '';
+    if (posterUrl) {
+      item.classList.add('list-item--with-poster');
+      const posterWrapper = document.createElement('div');
+      posterWrapper.className = 'list-item__poster';
+      const poster = document.createElement('img');
+      poster.className = 'list-item__poster-image';
+      poster.src = posterUrl;
+      poster.alt = league.name ? `Cartel de la liga ${league.name}` : 'Cartel de la liga';
+      poster.loading = 'lazy';
+      posterWrapper.appendChild(poster);
+      item.appendChild(posterWrapper);
+    }
+
     globalLeaguesList.appendChild(item);
   });
 }
@@ -9516,16 +9644,39 @@ function renderGlobalTournaments(tournaments = []) {
   if (!globalTournamentsList) return;
   globalTournamentsList.innerHTML = '';
 
-  if (!Array.isArray(tournaments) || !tournaments.length) {
+  const list = Array.isArray(tournaments) ? tournaments : [];
+
+  if (!list.length) {
     globalTournamentsList.innerHTML = '<li class="empty-state">No hay torneos programados.</li>';
     return;
   }
 
-  tournaments.forEach((tournament) => {
+  list.forEach((tournament) => {
+    const tournamentId = normalizeId(tournament);
     const item = document.createElement('li');
+    item.classList.add('global-overview-item');
+
+    const content = document.createElement('div');
+    content.className = 'list-item__content';
+    item.appendChild(content);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'list-item-button';
+    if (tournamentId) {
+      button.dataset.globalTournamentId = tournamentId;
+      button.setAttribute(
+        'aria-label',
+        `Inscribirse en el torneo ${tournament.name || 'sin nombre'}`
+      );
+    } else {
+      button.disabled = true;
+    }
+    content.appendChild(button);
+
     const title = document.createElement('strong');
     title.textContent = tournament.name || 'Torneo sin nombre';
-    item.appendChild(title);
+    button.appendChild(title);
 
     const meta = document.createElement('div');
     meta.className = 'meta';
@@ -9542,14 +9693,41 @@ function renderGlobalTournaments(tournaments = []) {
 
     const categoriesCount = Number(tournament.categoryCount ?? 0);
     if (categoriesCount) {
-      meta.appendChild(document.createElement('span')).textContent = `${categoriesCount} categorías`;
+      meta.appendChild(document.createElement('span')).textContent =
+        categoriesCount === 1 ? '1 categoría' : `${categoriesCount} categorías`;
     }
 
     if (tournament.registrationCloseDate) {
       meta.appendChild(document.createElement('span')).textContent = `Inscripciones hasta ${formatDateOnly(tournament.registrationCloseDate)}`;
     }
 
-    item.appendChild(meta);
+    if (meta.childElementCount) {
+      button.appendChild(meta);
+    }
+
+    if (tournamentId) {
+      const hint = document.createElement('span');
+      hint.className = 'note';
+      hint.textContent = 'Haz clic para inscribirte';
+      button.appendChild(hint);
+    }
+
+    const posterUrl = typeof tournament.poster === 'string' ? tournament.poster.trim() : '';
+    if (posterUrl) {
+      item.classList.add('list-item--with-poster');
+      const posterWrapper = document.createElement('div');
+      posterWrapper.className = 'list-item__poster';
+      const poster = document.createElement('img');
+      poster.className = 'list-item__poster-image';
+      poster.src = posterUrl;
+      poster.alt = tournament.name
+        ? `Cartel del torneo ${tournament.name}`
+        : 'Cartel del torneo';
+      poster.loading = 'lazy';
+      posterWrapper.appendChild(poster);
+      item.appendChild(posterWrapper);
+    }
+
     globalTournamentsList.appendChild(item);
   });
 }
@@ -29255,6 +29433,22 @@ completedMatchesList?.addEventListener('click', async (event) => {
 
   if (!isAdmin()) return;
   openMatchModal(matchId);
+});
+
+globalLeaguesList?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-global-league-id]');
+  if (!button) return;
+  const leagueId = normalizeId(button.dataset.globalLeagueId);
+  if (!leagueId) return;
+  openLeagueEnrollmentModal(leagueId);
+});
+
+globalTournamentsList?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-global-tournament-id]');
+  if (!button) return;
+  const tournamentId = normalizeId(button.dataset.globalTournamentId);
+  if (!tournamentId) return;
+  openTournamentSelfEnrollmentModal({ tournamentId });
 });
 
 leaguesList?.addEventListener('click', (event) => {
