@@ -432,7 +432,7 @@ async function getLeagueDashboard(req, res) {
     categoriesById.set(category._id.toString(), category);
   });
 
-  const enrolledPlayersByLeague = new Map();
+  const enrolledPlayers = [];
 
   categories.forEach((category) => {
     const categoryId = category._id.toString();
@@ -496,69 +496,43 @@ async function getLeagueDashboard(req, res) {
       return;
     }
 
-    if (!enrolledPlayersByLeague.has(leagueId)) {
-      enrolledPlayersByLeague.set(leagueId, {
-        league: {
-          id: leagueId,
-          name: league.name,
-        },
-        categories: new Map(),
-      });
-    }
-
-    const leagueEntry = enrolledPlayersByLeague.get(leagueId);
-
-    if (!leagueEntry.categories.has(categoryId)) {
-      leagueEntry.categories.set(categoryId, {
-        category: {
-          id: categoryId,
-          name: category.name,
-          color: resolveCategoryColor(category.color),
-        },
-        players: new Map(),
-      });
-    }
-
-    const categoryEntry = leagueEntry.categories.get(categoryId);
-    const playerId = normalizeId(user);
-    if (!playerId || categoryEntry.players.has(playerId)) {
-      return;
-    }
-
-    categoryEntry.players.set(playerId, {
-      id: playerId,
-      fullName: user.fullName,
-      photo: user.photo,
+    enrolledPlayers.push({
+      player: {
+        id: normalizeId(user),
+        fullName: user.fullName,
+        photo: user.photo,
+      },
+      category: {
+        id: categoryId,
+        name: category.name,
+        color: resolveCategoryColor(category.color),
+      },
+      league: {
+        id: leagueId,
+        name: league.name,
+      },
     });
   });
 
-  const enrolledPlayers = Array.from(enrolledPlayersByLeague.values())
-    .map((leagueEntry) => {
-      const categoriesList = Array.from(leagueEntry.categories.values())
-        .map((categoryEntry) => {
-          const players = Array.from(categoryEntry.players.values()).sort((a, b) =>
-            (a.fullName || '').localeCompare(b.fullName || '', 'es', { sensitivity: 'base' })
-          );
+  enrolledPlayers.sort((a, b) => {
+    const leagueCompare = (a.league?.name || '').localeCompare(b.league?.name || '', 'es', {
+      sensitivity: 'base',
+    });
+    if (leagueCompare !== 0) {
+      return leagueCompare;
+    }
 
-          return {
-            category: categoryEntry.category,
-            players,
-          };
-        })
-        .sort((a, b) =>
-          (a.category?.name || '').localeCompare(b.category?.name || '', 'es', {
-            sensitivity: 'base',
-          })
-        );
+    const categoryCompare = (a.category?.name || '').localeCompare(b.category?.name || '', 'es', {
+      sensitivity: 'base',
+    });
+    if (categoryCompare !== 0) {
+      return categoryCompare;
+    }
 
-      return {
-        league: leagueEntry.league,
-        categories: categoriesList,
-      };
-    })
-    .sort((a, b) =>
-      (a.league?.name || '').localeCompare(b.league?.name || '', 'es', { sensitivity: 'base' })
-    );
+    return (a.player?.fullName || '').localeCompare(b.player?.fullName || '', 'es', {
+      sensitivity: 'base',
+    });
+  });
 
   return res.json({
     metrics: {

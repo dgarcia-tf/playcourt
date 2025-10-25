@@ -64,6 +64,7 @@ const CALENDAR_MATCH_STATUSES = [
 
 const MATCH_EXPIRATION_DAYS = 15;
 const MATCHES_PER_PAGE = 10;
+const LEAGUE_ENROLLED_PAGE_SIZE = 10;
 const MATCH_CALENDAR_DEFAULT_DURATION_MINUTES = 90;
 const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
@@ -1737,6 +1738,7 @@ const state = {
   activeSection: 'section-dashboard',
   globalOverview: null,
   leagueDashboard: null,
+  leagueDashboardPlayersPage: 1,
   tournamentDashboard: null,
   calendarMatches: [],
   calendarDate: new Date(),
@@ -1890,6 +1892,7 @@ const leagueActiveList = document.getElementById('league-active-list');
 const leagueRankingCards = document.getElementById('league-ranking-cards');
 const leagueUpcomingMatchesList = document.getElementById('league-upcoming-matches');
 const leagueEnrolledPlayersList = document.getElementById('league-enrolled-players');
+const leagueEnrolledPagination = document.getElementById('league-enrolled-pagination');
 const tournamentMetricActive = document.getElementById('tournament-metric-active');
 const tournamentMetricCategories = document.getElementById('tournament-metric-categories');
 const tournamentMetricUpcoming = document.getElementById('tournament-metric-upcoming');
@@ -6739,6 +6742,7 @@ function resetData() {
   state.categoryFilters = { league: '' };
   state.globalOverview = null;
   state.leagueDashboard = null;
+  state.leagueDashboardPlayersPage = 1;
   if (state.leagueDetails instanceof Map) {
     state.leagueDetails.clear();
   } else {
@@ -9874,7 +9878,14 @@ function renderGlobalUpcomingMatches(matches = []) {
 }
 
 function renderLeagueDashboard(summary) {
-  state.leagueDashboard = summary || null;
+  const previousSummary = state.leagueDashboard;
+  const nextSummary = summary || null;
+  const isSameReference = previousSummary && nextSummary && previousSummary === nextSummary;
+
+  state.leagueDashboard = nextSummary;
+  if (!isSameReference) {
+    state.leagueDashboardPlayersPage = 1;
+  }
   const metrics = summary?.metrics || {};
 
   if (leagueMetricPlayers) {
@@ -9895,7 +9906,7 @@ function renderLeagueDashboard(summary) {
 
   renderLeagueActiveSummary(leagueGroups, activeLeaguesCount);
   renderLeagueRankingCards(leagueGroups);
-  renderLeagueEnrolledPlayers(state.leagueDashboard?.enrolledPlayers || []);
+  renderLeagueEnrolledPlayers(nextSummary?.enrolledPlayers || []);
   renderDashboardMatchList(
     summary?.upcomingMatches || [],
     leagueUpcomingMatchesList,
@@ -10106,119 +10117,85 @@ function renderLeagueRankingCards(groups = []) {
   }
 }
 
-function renderLeagueEnrolledPlayers(groups = []) {
-  if (!leagueEnrolledPlayersList) return;
+function renderLeagueEnrolledPagination(totalPages, currentPage) {
+  if (!leagueEnrolledPagination) return;
 
-  const leagues = Array.isArray(groups) ? groups : [];
-  leagueEnrolledPlayersList.innerHTML = '';
-
-  if (!leagues.length) {
-    leagueEnrolledPlayersList.innerHTML =
-      '<li class="empty-state">Aún no hay jugadores inscritos.</li>';
+  if (!Number.isFinite(totalPages) || totalPages <= 1) {
+    leagueEnrolledPagination.innerHTML = '';
+    leagueEnrolledPagination.hidden = true;
     return;
   }
 
-  leagues.forEach((group) => {
+  leagueEnrolledPagination.hidden = false;
+  leagueEnrolledPagination.innerHTML = '';
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'league-enrolled-pagination__button';
+    button.dataset.page = String(page);
+    button.textContent = String(page);
+    if (page === currentPage) {
+      button.classList.add('is-active');
+      button.setAttribute('aria-current', 'page');
+    }
+    leagueEnrolledPagination.appendChild(button);
+  }
+}
+
+function renderLeagueEnrolledPlayers(entries = []) {
+  if (!leagueEnrolledPlayersList) return;
+
+  const players = Array.isArray(entries) ? entries : [];
+  const pageSize = LEAGUE_ENROLLED_PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(players.length / pageSize));
+
+  const desiredPage = Number(state.leagueDashboardPlayersPage) || 1;
+  const currentPage = Math.min(Math.max(desiredPage, 1), totalPages);
+  state.leagueDashboardPlayersPage = currentPage;
+
+  leagueEnrolledPlayersList.innerHTML = '';
+
+  if (!players.length) {
+    leagueEnrolledPlayersList.innerHTML =
+      '<li class="empty-state">Aún no hay jugadores inscritos.</li>';
+    if (leagueEnrolledPagination) {
+      leagueEnrolledPagination.hidden = true;
+      leagueEnrolledPagination.innerHTML = '';
+    }
+    return;
+  }
+
+  const startIndex = (currentPage - 1) * pageSize;
+  const pagePlayers = players.slice(startIndex, startIndex + pageSize);
+
+  pagePlayers.forEach((entry) => {
     const item = document.createElement('li');
-    item.className = 'league-enrolled-group';
+    item.className = 'league-enrolled-item';
 
-    const header = document.createElement('div');
-    header.className = 'league-enrolled-group__header';
+    const playerInfo = document.createElement('div');
+    playerInfo.className = 'league-enrolled-player';
+    const player = entry?.player || {};
+    playerInfo.appendChild(createAvatarElement(player, { size: 'sm' }));
 
-    const title = document.createElement('h4');
-    title.className = 'league-enrolled-group__title';
-    title.textContent = group?.league?.name || 'Liga';
-    header.appendChild(title);
+    const name = document.createElement('strong');
+    name.textContent = getPlayerDisplayName(player);
+    playerInfo.appendChild(name);
 
-    const categories = Array.isArray(group?.categories) ? group.categories : [];
-    const totalPlayers = categories.reduce(
-      (count, category) => count + (Array.isArray(category?.players) ? category.players.length : 0),
-      0
-    );
+    item.appendChild(playerInfo);
 
-    if (totalPlayers > 0) {
-      const countTag = document.createElement('span');
-      countTag.className = 'league-enrolled-group__count';
-      countTag.textContent = `${totalPlayers} jugador${totalPlayers === 1 ? '' : 'es'}`;
-      header.appendChild(countTag);
+    if (entry?.category?.name) {
+      const categoryTag = document.createElement('span');
+      categoryTag.className = 'tag league-enrolled-category';
+      categoryTag.textContent = entry.category.name;
+      applyCategoryTagColor(categoryTag, entry.category.color, { backgroundAlpha: 0.22 });
+      item.appendChild(categoryTag);
     }
 
-    item.appendChild(header);
-
-    if (!categories.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-state';
-      empty.textContent = 'Aún no hay jugadores inscritos en esta liga.';
-      item.appendChild(empty);
-      leagueEnrolledPlayersList.appendChild(item);
-      return;
-    }
-
-    const categoriesList = document.createElement('ul');
-    categoriesList.className = 'league-enrolled-group__categories';
-
-    categories.forEach((category) => {
-      const categoryItem = document.createElement('li');
-      categoryItem.className = 'league-enrolled-category-group';
-
-      const categoryHeader = document.createElement('div');
-      categoryHeader.className = 'league-enrolled-category-header';
-
-      const categoryName = category?.category?.name || UNCATEGORIZED_CATEGORY_LABEL;
-
-      const categoryTitle = document.createElement('strong');
-      categoryTitle.className = 'league-enrolled-category-title';
-      categoryTitle.textContent = categoryName;
-      categoryHeader.appendChild(categoryTitle);
-
-      const categoryCount = Array.isArray(category?.players) ? category.players.length : 0;
-      const count = document.createElement('span');
-      count.className = 'league-enrolled-category-count';
-      count.textContent = `${categoryCount} jugador${categoryCount === 1 ? '' : 'es'}`;
-      categoryHeader.appendChild(count);
-
-      categoryItem.appendChild(categoryHeader);
-
-      const playersList = document.createElement('ul');
-      playersList.className = 'league-enrolled-player-list';
-
-      if (!categoryCount) {
-        const emptyPlayer = document.createElement('li');
-        emptyPlayer.className = 'empty-state';
-        emptyPlayer.textContent = 'Aún no hay jugadores inscritos en esta categoría.';
-        playersList.appendChild(emptyPlayer);
-      } else {
-        category.players.forEach((player) => {
-          const playerItem = document.createElement('li');
-          playerItem.className = 'league-enrolled-player-item';
-
-          const playerInfo = document.createElement('div');
-          playerInfo.className = 'league-enrolled-player';
-          playerInfo.appendChild(createAvatarElement(player, { size: 'sm' }));
-
-          const name = document.createElement('strong');
-          name.textContent = getPlayerDisplayName(player);
-          playerInfo.appendChild(name);
-
-          playerItem.appendChild(playerInfo);
-
-          const categoryTag = document.createElement('span');
-          categoryTag.className = 'tag league-enrolled-category league-enrolled-category--inline';
-          categoryTag.textContent = categoryName;
-          applyCategoryTagColor(categoryTag, category?.category?.color, { backgroundAlpha: 0.22 });
-          playerItem.appendChild(categoryTag);
-
-          playersList.appendChild(playerItem);
-        });
-      }
-
-      categoryItem.appendChild(playersList);
-      categoriesList.appendChild(categoryItem);
-    });
-
-    item.appendChild(categoriesList);
     leagueEnrolledPlayersList.appendChild(item);
   });
+
+  renderLeagueEnrolledPagination(totalPages, currentPage);
 }
 
 function renderTournamentDashboard(summary) {
@@ -29767,6 +29744,22 @@ leagueActiveList?.addEventListener('click', (event) => {
   }
 
   renderLeagues(state.leagues);
+});
+
+leagueEnrolledPagination?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-page]');
+  if (!button) return;
+
+  const page = Number(button.dataset.page);
+  if (!Number.isFinite(page) || page === state.leagueDashboardPlayersPage) {
+    return;
+  }
+
+  state.leagueDashboardPlayersPage = page;
+  const players = Array.isArray(state.leagueDashboard?.enrolledPlayers)
+    ? state.leagueDashboard.enrolledPlayers
+    : [];
+  renderLeagueEnrolledPlayers(players);
 });
 
 leaguesList?.addEventListener('click', (event) => {
