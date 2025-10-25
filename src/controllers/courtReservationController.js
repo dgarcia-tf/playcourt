@@ -12,6 +12,7 @@ const {
   normalizeParticipants,
   RESERVATION_DAY_START_MINUTE,
   RESERVATION_DAY_END_MINUTE,
+  MANUAL_RESERVATION_MAX_ADVANCE_HOURS,
 } = require('../services/courtReservationService');
 
 function sanitizeNotes(notes) {
@@ -206,7 +207,12 @@ async function createReservation(req, res) {
 
   const court = await ensureCourtExists(rawCourt);
 
-  await ensureReservationAvailability({ court, startsAt, endsAt });
+  await ensureReservationAvailability({
+    court,
+    startsAt,
+    endsAt,
+    bypassManualAdvanceLimit: hasCourtManagementAccess(req.user),
+  });
 
   const participantList = Array.isArray(req.body.participants) ? req.body.participants : [];
   const normalizedParticipants = normalizeParticipants(participantList);
@@ -405,6 +411,10 @@ async function getAvailability(req, res) {
   });
 
   const slots = buildDailySlots(range.start);
+  const manualReservationCutoff = new Date(
+    Date.now() + MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000
+  );
+  const canBypassManualLimit = hasCourtManagementAccess(req.user);
 
   const grouped = selectedCourts.map((courtName) => ({
     court: courtName,
@@ -438,6 +448,10 @@ async function getAvailability(req, res) {
     const courtBlocks = entry.blocks || [];
 
     entry.availableSlots = slots.filter((slot) => {
+      if (!canBypassManualLimit && slot.startsAt > manualReservationCutoff) {
+        return false;
+      }
+
       const blockedByReservation = courtReservations.some((reservation) =>
         hasOverlap(slot.startsAt, slot.endsAt, reservation.startsAt, reservation.endsAt)
       );
