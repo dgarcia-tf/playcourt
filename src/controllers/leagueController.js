@@ -692,7 +692,9 @@ async function listLeagueEnrollments(req, res) {
     return Number.isFinite(numeric) ? numeric : null;
   };
 
-  const canViewSensitivePlayerData = req.user && userHasRole(req.user, USER_ROLES.ADMIN);
+  const canViewSensitivePlayerData =
+    req.user &&
+    (userHasRole(req.user, USER_ROLES.ADMIN) || userHasRole(req.user, USER_ROLES.COURT_MANAGER));
 
   const buildCategoryPayload = (category) => ({
     id: category._id.toString(),
