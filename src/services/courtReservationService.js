@@ -4,6 +4,7 @@ const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const DEFAULT_RESERVATION_DURATION_MINUTES = 75;
 const RESERVATION_DAY_START_MINUTE = 8 * 60 + 30;
 const RESERVATION_DAY_END_MINUTE = 22 * 60 + 15;
+const MANUAL_RESERVATION_MAX_ADVANCE_HOURS = 48;
 const INVALID_RESERVATION_SLOT_MESSAGE =
   'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 22:15.';
 const ACTIVE_RESERVATION_STATUSES = [RESERVATION_STATUS.RESERVED, RESERVATION_STATUS.PRE_RESERVED];
@@ -72,6 +73,7 @@ async function ensureReservationAvailability({
   reservationType = RESERVATION_TYPES.MANUAL,
   contextType,
   contextId,
+  bypassManualAdvanceLimit = false,
 }) {
   if (!court || !startsAt || !endsAt) {
     const error = new Error('Los parámetros de la reserva son inválidos.');
@@ -86,6 +88,16 @@ async function ensureReservationAvailability({
     const error = new Error('Los parámetros de la reserva son inválidos.');
     error.statusCode = 400;
     throw error;
+  }
+
+  if (reservationType === RESERVATION_TYPES.MANUAL && !bypassManualAdvanceLimit) {
+    const now = new Date();
+    const maxAdvanceMs = MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000;
+    if (startDate.getTime() - now.getTime() > maxAdvanceMs) {
+      const error = new Error('Las reservas solo pueden realizarse con hasta 48 horas de antelación.');
+      error.statusCode = 400;
+      throw error;
+    }
   }
 
   if (endDate <= startDate) {
@@ -306,6 +318,7 @@ module.exports = {
   INVALID_RESERVATION_SLOT_MESSAGE,
   RESERVATION_DAY_START_MINUTE,
   RESERVATION_DAY_END_MINUTE,
+  MANUAL_RESERVATION_MAX_ADVANCE_HOURS,
   ensureReservationAvailability,
   upsertMatchReservation,
   cancelMatchReservation,
