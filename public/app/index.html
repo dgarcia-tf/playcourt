@@ -1696,6 +1696,14 @@
                           <button type="button" class="chat-toolbar-button" data-command="clear" aria-label="Limpiar formato">
                             ⌫
                           </button>
+                          <button
+                            type="button"
+                            class="chat-toolbar-button"
+                            data-command="image"
+                            aria-label="Insertar imagen desde un archivo"
+                          >
+                            🖼️
+                          </button>
                           <button type="button" class="chat-toolbar-button" data-command="attachment" aria-label="Adjuntar archivo">
                             📎
                           </button>
@@ -1719,6 +1727,12 @@
                           class="sr-only"
                           multiple
                           accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        />
+                        <input
+                          type="file"
+                          id="general-chat-image-input"
+                          class="sr-only"
+                          accept="image/*"
                         />
                       </div>
                       <button type="submit" class="primary">Publicar aviso</button>

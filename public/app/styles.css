@@ -3178,6 +3178,36 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
+#section-chat {
+  min-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+}
+
+#section-chat .chat-grid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+#section-chat .chat-card {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+#section-chat .chat-messages {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+}
+
+#section-chat .chat-form {
+  margin-top: auto;
+}
+
 .chat-card {
   display: flex;
   flex-direction: column;
@@ -3231,6 +3261,18 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .chat-message-rich {
   display: grid;
   gap: 0.6rem;
+}
+
+.chat-message-rich img,
+.chat-editor-content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.chat-message-rich img {
+  margin: 0.5rem 0;
 }
 
 .chat-message-rich h1,
