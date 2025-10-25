@@ -2,7 +2,17 @@ const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const { Types } = require('mongoose');
 const { Category } = require('../models/Category');
+const { ChatMessage } = require('../models/ChatMessage');
+const { Club } = require('../models/Club');
+const { CourtBlock } = require('../models/CourtBlock');
+const { CourtReservation } = require('../models/CourtReservation');
 const { Enrollment } = require('../models/Enrollment');
+const { EnrollmentRequest } = require('../models/EnrollmentRequest');
+const { League, LEAGUE_STATUS } = require('../models/League');
+const { Match } = require('../models/Match');
+const { Notification } = require('../models/Notification');
+const { PushSubscription } = require('../models/PushSubscription');
+const { Season } = require('../models/Season');
 const { Tournament, TOURNAMENT_STATUS } = require('../models/Tournament');
 const {
   TournamentCategory,
@@ -15,7 +25,7 @@ const {
   TOURNAMENT_ENROLLMENT_STATUS,
 } = require('../models/TournamentEnrollment');
 const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
-const { League, LEAGUE_STATUS } = require('../models/League');
+const { TournamentMatch } = require('../models/TournamentMatch');
 const {
   User,
   USER_ROLES,
@@ -132,6 +142,38 @@ const DEMO_LEAGUES = [
     ],
   },
 ];
+
+async function purgeExistingData() {
+  const adminUsers = await User.find({
+    $or: [{ role: USER_ROLES.ADMIN }, { roles: USER_ROLES.ADMIN }],
+  })
+    .select('_id')
+    .lean();
+
+  const adminIds = adminUsers.map((user) => user._id);
+  const userFilter = adminIds.length ? { _id: { $nin: adminIds } } : {};
+
+  await Promise.all([
+    ChatMessage.deleteMany({}),
+    Club.deleteMany({}),
+    CourtBlock.deleteMany({}),
+    CourtReservation.deleteMany({}),
+    Enrollment.deleteMany({}),
+    EnrollmentRequest.deleteMany({}),
+    League.deleteMany({}),
+    Match.deleteMany({}),
+    Notification.deleteMany({}),
+    PushSubscription.deleteMany({}),
+    Season.deleteMany({}),
+    TournamentEnrollment.deleteMany({}),
+    TournamentDoublesPair.deleteMany({}),
+    TournamentMatch.deleteMany({}),
+    TournamentCategory.deleteMany({}),
+    Tournament.deleteMany({}),
+  ]);
+
+  await User.deleteMany(userFilter);
+}
 
 function addDaysUtc(baseDate, days) {
   const result = new Date(baseDate.getTime());
@@ -1264,6 +1306,8 @@ async function activateDemoMode(req, res) {
         'No se ha creado ningún dato. Repite la solicitud con "confirm" en true para proceder con la generación del modo demo.',
     });
   }
+
+  await purgeExistingData();
 
   const categories = await Category.find({}).sort({ name: 1 });
   if (!categories.length) {
