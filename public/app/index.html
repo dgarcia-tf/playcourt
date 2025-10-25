@@ -192,9 +192,6 @@
               <nav id="app-menu" class="main-menu" aria-label="Menú principal" hidden>
                 <ul class="main-menu__list">
                   <li class="main-menu__item">
-                    <button type="button" class="menu-button" data-target="section-dashboard">Inicio</button>
-                  </li>
-                  <li class="main-menu__item">
                     <button type="button" class="menu-button" data-target="section-court-reservations">
                       Reservar pistas
                     </button>
@@ -215,7 +212,8 @@
                     <button
                       type="button"
                       class="menu-button menu-button--parent"
-                      data-target="section-leagues"
+                      data-target="section-league-dashboard"
+                      data-instant-navigate="true"
                       aria-expanded="false"
                     >
                       Ligas
@@ -227,7 +225,7 @@
                             type="button"
                             class="menu-button menu-button--nested"
                             data-target="section-leagues"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                           >
                             Inscribirse
                           </button>
@@ -236,18 +234,8 @@
                           <button
                             type="button"
                             class="menu-button menu-button--nested"
-                            data-target="section-league-dashboard"
-                            data-parent-target="section-leagues"
-                          >
-                            Dashboard
-                          </button>
-                        </li>
-                        <li>
-                          <button
-                            type="button"
-                            class="menu-button menu-button--nested"
                             data-target="section-categories"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                           >
                             Categorías
                           </button>
@@ -257,7 +245,7 @@
                             type="button"
                             class="menu-button menu-button--nested"
                             data-target="section-league-players"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                           >
                             Jugadores
                           </button>
@@ -267,7 +255,7 @@
                             type="button"
                             class="menu-button menu-button--nested"
                             data-target="section-league-payments"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                             data-requires-admin="true"
                           >
                             Pagos
@@ -278,7 +266,7 @@
                             type="button"
                             class="menu-button menu-button--nested"
                             data-target="section-matches"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                           >
                             <span class="menu-label">Partidos</span>
                             <span class="menu-badge" id="menu-matches-badge" hidden>0</span>
@@ -289,7 +277,7 @@
                             type="button"
                             class="menu-button menu-button--nested"
                             data-target="section-calendar"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                           >
                             Calendario
                           </button>
@@ -299,7 +287,7 @@
                             type="button"
                             class="menu-button menu-button--nested"
                             data-target="section-ranking"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                           >
                             Ranking
                           </button>
@@ -309,7 +297,7 @@
                             type="button"
                             class="menu-button menu-button--nested"
                             data-target="section-rules"
-                            data-parent-target="section-leagues"
+                            data-parent-target="section-league-dashboard"
                           >
                             Reglamento
                           </button>
@@ -619,6 +607,20 @@
                   <div id="league-ranking-cards" class="card-collection">
                     <p class="empty-state">Aún no hay categorías disponibles.</p>
                   </div>
+                </article>
+                <article class="card league-enrolled-card">
+                  <div class="card-header">
+                    <h3>Jugadores inscritos</h3>
+                    <nav
+                      id="league-enrolled-pagination"
+                      class="league-enrolled-pagination"
+                      aria-label="Paginación de jugadores inscritos"
+                      hidden
+                    ></nav>
+                  </div>
+                  <ul class="list league-enrolled-list" id="league-enrolled-players">
+                    <li class="empty-state">Aún no hay jugadores inscritos.</li>
+                  </ul>
                 </article>
                 <article class="card">
                   <div class="card-header">

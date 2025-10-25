@@ -426,6 +426,13 @@ async function getLeagueDashboard(req, res) {
   });
 
   const leagueRankingsMap = new Map();
+  const categoriesById = new Map();
+
+  categories.forEach((category) => {
+    categoriesById.set(category._id.toString(), category);
+  });
+
+  const enrolledPlayers = [];
 
   categories.forEach((category) => {
     const categoryId = category._id.toString();
@@ -469,6 +476,64 @@ async function getLeagueDashboard(req, res) {
     }
   });
 
+  enrollments.forEach((enrollment) => {
+    const categoryId = normalizeId(enrollment.category);
+    if (!categoryId) return;
+
+    const category = categoriesById.get(categoryId);
+    if (!category) return;
+
+    const leagueId = normalizeId(category.league);
+    if (!leagueId) return;
+
+    const league = category.league;
+    if (!league || league.status !== LEAGUE_STATUS.ACTIVE) {
+      return;
+    }
+
+    const user = enrollment.user;
+    if (!user) {
+      return;
+    }
+
+    enrolledPlayers.push({
+      player: {
+        id: normalizeId(user),
+        fullName: user.fullName,
+        photo: user.photo,
+      },
+      category: {
+        id: categoryId,
+        name: category.name,
+        color: resolveCategoryColor(category.color),
+      },
+      league: {
+        id: leagueId,
+        name: league.name,
+      },
+    });
+  });
+
+  enrolledPlayers.sort((a, b) => {
+    const leagueCompare = (a.league?.name || '').localeCompare(b.league?.name || '', 'es', {
+      sensitivity: 'base',
+    });
+    if (leagueCompare !== 0) {
+      return leagueCompare;
+    }
+
+    const categoryCompare = (a.category?.name || '').localeCompare(b.category?.name || '', 'es', {
+      sensitivity: 'base',
+    });
+    if (categoryCompare !== 0) {
+      return categoryCompare;
+    }
+
+    return (a.player?.fullName || '').localeCompare(b.player?.fullName || '', 'es', {
+      sensitivity: 'base',
+    });
+  });
+
   return res.json({
     metrics: {
       players: playerIds.size,
@@ -478,6 +543,7 @@ async function getLeagueDashboard(req, res) {
     },
     leagueRankings: Array.from(leagueRankingsMap.values()),
     upcomingMatches: upcomingMatches.map(serializeLeagueMatch),
+    enrolledPlayers,
   });
 }
 
