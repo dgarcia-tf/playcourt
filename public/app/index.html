@@ -200,19 +200,8 @@
                     </button>
                   </li>
                   <li class="main-menu__item">
-                    <button
-                      type="button"
-                      class="menu-button"
-                      data-target="section-court-admin"
-                      data-requires-court-manager="true"
-                      hidden
-                    >
-                      Gestión de pistas
-                    </button>
-                  </li>
-                  <li class="main-menu__item">
                     <button type="button" class="menu-button" data-target="section-chat">
-                      <span class="menu-label">Panel de avisos</span>
+                      <span class="menu-label">Noticias</span>
                       <span class="menu-badge" id="menu-notices-badge" hidden>0</span>
                     </button>
                   </li>
@@ -240,7 +229,7 @@
                             data-target="section-leagues"
                             data-parent-target="section-leagues"
                           >
-                            Resumen
+                            Inscribirse
                           </button>
                         </li>
                         <li>
@@ -356,7 +345,7 @@
                             data-target="section-tournaments"
                             data-parent-target="section-tournaments"
                           >
-                            Resumen
+                            Inscribirse
                           </button>
                         </li>
                         <li>
@@ -460,6 +449,17 @@
                             data-requires-admin="true"
                           >
                             Club
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="menu-button menu-button--nested"
+                            data-target="section-court-admin"
+                            data-parent-target="section-admin"
+                            data-requires-court-manager="true"
+                          >
+                            Gestión de pistas
                           </button>
                         </li>
                         <li>
@@ -1657,7 +1657,7 @@
                 <div class="chat-grid">
                   <article class="card chat-card">
                     <div class="card-header">
-                      <h3>Panel de avisos</h3>
+                      <h3>Noticias</h3>
                       <p class="card-subtitle">
                         Los administradores publican novedades y recordatorios para toda la liga.
                       </p>
