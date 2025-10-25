@@ -206,7 +206,7 @@ async function cleanupExpiredManualReservations({ now = new Date() } = {}) {
     status: { $in: ACTIVE_RESERVATION_STATUSES },
     endsAt: { $lte: referenceDate },
   })
-    .populate('participants', '_id fullName email')
+    .populate('participants', '_id fullName')
     .populate('createdBy', '_id fullName email');
 
   if (!expiredReservations.length) {

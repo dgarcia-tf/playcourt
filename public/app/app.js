@@ -1326,7 +1326,7 @@ function getPlayerDisplayName(player) {
         if (!member) return '';
         if (typeof member === 'object') {
           if (member.fullName) return member.fullName;
-          if (member.email) return member.email;
+          return '';
         }
         if (typeof member === 'string') {
           return member;
@@ -1339,7 +1339,6 @@ function getPlayerDisplayName(player) {
     }
   }
   if (player.fullName) return player.fullName;
-  if (player.email) return player.email;
   return 'Jugador';
 }
 

@@ -311,7 +311,7 @@ async function createReservation(req, res) {
     endsAt: { $gt: now },
     participants: { $in: participants },
   })
-    .populate('participants', 'fullName email')
+    .populate('participants', 'fullName')
     .lean();
 
   if (conflictingReservation) {
@@ -351,9 +351,8 @@ async function createReservation(req, res) {
     gameType,
   });
 
-  await reservation
-    .populate('createdBy', 'fullName email roles')
-    .populate('participants', 'fullName email roles');
+  await reservation.populate('createdBy', 'fullName email roles');
+  await reservation.populate('participants', 'fullName');
 
   return res.status(201).json(reservation);
 }
@@ -403,7 +402,7 @@ async function listReservations(req, res) {
   const reservations = await CourtReservation.find(filters)
     .sort({ startsAt: 1 })
     .populate('createdBy', 'fullName email roles')
-    .populate('participants', 'fullName email roles')
+    .populate('participants', 'fullName')
     .populate({
       path: 'match',
       select: 'players category league season status scheduledAt court',
@@ -491,7 +490,7 @@ async function getAvailability(req, res) {
   })
     .sort({ startsAt: 1 })
     .populate('createdBy', 'fullName email roles')
-    .populate('participants', 'fullName email roles')
+    .populate('participants', 'fullName')
     .populate({
       path: 'match',
       select: 'players category league season status scheduledAt court',
