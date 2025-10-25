@@ -1896,9 +1896,14 @@ const tournamentBracketCategorySelect = document.getElementById('tournament-brac
 const tournamentBracketSizeSelect = document.getElementById('tournament-bracket-size');
 const tournamentBracketSizeWrapper = document.getElementById('tournament-bracket-size-wrapper');
 const tournamentBracketSeedsContainer = document.getElementById('tournament-bracket-seeds');
+const tournamentBracketSeedsCard = document.getElementById('tournament-bracket-seeds-card');
+const tournamentBracketLayout = document.querySelector('.tournament-bracket-layout');
+const tournamentBracketViewCard = document.getElementById('tournament-bracket-view-card');
 const tournamentBracketView = document.getElementById('tournament-bracket-view');
 const tournamentBracketEmpty = document.getElementById('tournament-bracket-empty');
+const tournamentBracketFullscreenButton = document.getElementById('tournament-bracket-fullscreen');
 const tournamentConsolationViewCard = document.getElementById('tournament-consolation-view-card');
+const tournamentConsolationFullscreenButton = document.getElementById('tournament-consolation-fullscreen');
 const tournamentConsolationView = document.getElementById('tournament-consolation-view');
 const tournamentConsolationEmpty = document.getElementById('tournament-consolation-empty');
 const tournamentBracketStatus = document.getElementById('tournament-bracket-status');
@@ -2068,6 +2073,120 @@ const courtManagerSectionIds = new Set(
 );
 const menuButtonInitialHidden = new Map(menuButtons.map((button) => [button, button.hidden]));
 const adminToggleElements = document.querySelectorAll('[data-admin-visible="toggle"]');
+
+function refreshTournamentBracketLayoutColumns() {
+  if (!tournamentBracketLayout) {
+    return;
+  }
+  const seedsVisible = tournamentBracketSeedsCard && !tournamentBracketSeedsCard.hidden;
+  tournamentBracketLayout.classList.toggle('tournament-bracket-layout--single-column', !seedsVisible);
+}
+
+function setBracketFullscreenButtonState(button, active) {
+  if (!button) {
+    return;
+  }
+  button.dataset.fullscreen = active ? 'true' : 'false';
+  button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  button.textContent = active ? 'Salir de pantalla completa' : 'Ver a pantalla completa';
+}
+
+function isFallbackBracketFullscreen(card) {
+  return Boolean(card && card.classList.contains('tournament-bracket-card--fullscreen'));
+}
+
+function clearFallbackBracketFullscreen(card, button, { skipCard = null } = {}) {
+  if (!card || card === skipCard) {
+    return;
+  }
+  if (isFallbackBracketFullscreen(card)) {
+    card.classList.remove('tournament-bracket-card--fullscreen');
+    if (button) {
+      setBracketFullscreenButtonState(button, false);
+    }
+  }
+}
+
+function updateBracketFallbackFullscreenLock() {
+  const fallbackActive =
+    isFallbackBracketFullscreen(tournamentBracketViewCard) ||
+    isFallbackBracketFullscreen(tournamentConsolationViewCard);
+  document.body.classList.toggle('tournament-fullscreen-active', fallbackActive);
+}
+
+function isCardInFullscreen(card) {
+  if (!card) {
+    return false;
+  }
+  return document.fullscreenElement === card || isFallbackBracketFullscreen(card);
+}
+
+async function toggleBracketCardFullscreen(card, button) {
+  if (!card || !button) {
+    return;
+  }
+
+  if (isCardInFullscreen(card)) {
+    if (document.fullscreenElement === card && document.exitFullscreen) {
+      try {
+        await document.exitFullscreen();
+      } catch (error) {
+        // Ignorar fallos al salir de pantalla completa nativa.
+      }
+    }
+    card.classList.remove('tournament-bracket-card--fullscreen');
+    syncBracketFullscreenState();
+    return;
+  }
+
+  clearFallbackBracketFullscreen(tournamentBracketViewCard, tournamentBracketFullscreenButton, {
+    skipCard: card,
+  });
+  clearFallbackBracketFullscreen(
+    tournamentConsolationViewCard,
+    tournamentConsolationFullscreenButton,
+    {
+      skipCard: card,
+    }
+  );
+  updateBracketFallbackFullscreenLock();
+
+  if (document.fullscreenElement && document.fullscreenElement !== card && document.exitFullscreen) {
+    try {
+      await document.exitFullscreen();
+    } catch (error) {
+      // Ignorar fallos al salir de pantalla completa nativa.
+    }
+  }
+
+  if (card.requestFullscreen) {
+    try {
+      await card.requestFullscreen();
+      syncBracketFullscreenState();
+      return;
+    } catch (error) {
+      // Si la API nativa falla, usar la alternativa basada en estilos.
+    }
+  }
+
+  card.classList.add('tournament-bracket-card--fullscreen');
+  syncBracketFullscreenState();
+}
+
+function syncBracketFullscreenState() {
+  setBracketFullscreenButtonState(
+    tournamentBracketFullscreenButton,
+    isCardInFullscreen(tournamentBracketViewCard)
+  );
+  setBracketFullscreenButtonState(
+    tournamentConsolationFullscreenButton,
+    isCardInFullscreen(tournamentConsolationViewCard)
+  );
+  updateBracketFallbackFullscreenLock();
+}
+
+refreshTournamentBracketLayoutColumns();
+syncBracketFullscreenState();
 
 function setMenuGroupExpanded(menuGroup, expanded) {
   if (!menuGroup) return;
@@ -5696,6 +5815,7 @@ function updateAdminMenuVisibility() {
       if (!element) return;
       element.hidden = !shouldShow;
     });
+    refreshTournamentBracketLayoutColumns();
   }
 
   if (generalChatForm) {
@@ -28742,6 +28862,43 @@ tournamentBracketTournamentSelect?.addEventListener('change', async (event) => {
   }
   updateBracketCategoryOptions();
   updateTournamentActionAvailability();
+});
+
+tournamentBracketFullscreenButton?.addEventListener('click', () => {
+  toggleBracketCardFullscreen(tournamentBracketViewCard, tournamentBracketFullscreenButton);
+});
+
+tournamentConsolationFullscreenButton?.addEventListener('click', () => {
+  toggleBracketCardFullscreen(
+    tournamentConsolationViewCard,
+    tournamentConsolationFullscreenButton
+  );
+});
+
+document.addEventListener('fullscreenchange', () => {
+  syncBracketFullscreenState();
+});
+
+document.addEventListener('fullscreenerror', () => {
+  syncBracketFullscreenState();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') {
+    return;
+  }
+  if (
+    !isFallbackBracketFullscreen(tournamentBracketViewCard) &&
+    !isFallbackBracketFullscreen(tournamentConsolationViewCard)
+  ) {
+    return;
+  }
+  clearFallbackBracketFullscreen(tournamentBracketViewCard, tournamentBracketFullscreenButton);
+  clearFallbackBracketFullscreen(
+    tournamentConsolationViewCard,
+    tournamentConsolationFullscreenButton
+  );
+  syncBracketFullscreenState();
 });
 
 tournamentBracketCategorySelect?.addEventListener('change', async (event) => {
