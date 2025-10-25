@@ -5,6 +5,7 @@
   --bg-secondary: #edf1f7;
   --card-bg: #ffffff;
   --card-border: rgba(148, 163, 184, 0.25);
+  --card-shadow: none;
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
@@ -4465,6 +4466,10 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 }
 
 @media (max-width: 1024px) {
+  :root {
+    --card-shadow: 0 20px 46px rgba(15, 23, 42, 0.08);
+  }
+
   .topbar {
     grid-template-columns: 1fr;
     grid-template-areas:
@@ -4539,16 +4544,17 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     max-width: 360px;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
-    border-right: 1px solid var(--card-border);
+    border-right: none;
     border-bottom: none;
-    padding: 1.4rem 1.35rem 2.25rem;
-    box-shadow: none;
+    padding: 1.5rem 1.5rem 2.25rem;
+    box-shadow: var(--card-shadow);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
     min-height: 100vh;
     background: var(--card-bg);
+    border-radius: 0 24px 24px 0;
   }
 
   .app-header.sidebar--mobile-open {
@@ -4644,33 +4650,194 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --bg-primary: #f6f7fb;
+    --bg-secondary: #eef2ff;
+    --card-bg: #ffffff;
+    --card-border: rgba(148, 163, 184, 0.16);
+    --card-shadow: 0 20px 46px rgba(15, 23, 42, 0.08);
+    --radius-lg: 22px;
+    --radius-md: 18px;
+    --radius-sm: 12px;
+  }
+
+  body {
+    background: var(--bg-primary);
+    min-height: 100dvh;
+  }
+
+  .layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    gap: 1.75rem;
+  }
+
+  .auth-view {
+    padding: 1.5rem 1.25rem 0;
+  }
+
   .auth-card {
-    padding: 2rem 1.5rem;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .auth-header {
+    text-align: center;
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .auth-header h1 {
+    font-size: 1.85rem;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .auth-header p {
+    margin: 0 auto;
+    max-width: 32ch;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
   }
 
   .tabs {
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.35rem;
+    background: var(--card-bg);
+    border-radius: 18px;
+    box-shadow: var(--card-shadow);
+  }
+
+  .tab-button {
+    flex: 1;
+    border-radius: 12px;
+    padding: 0.85rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+
+  .tab-button.active {
+    background: var(--accent);
+    color: #ffffff;
+  }
+
+  .form {
+    background: var(--card-bg);
+    border-radius: 18px;
+    padding: 1.4rem;
+    box-shadow: var(--card-shadow);
+    gap: 1rem;
+  }
+
+  label {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+  }
+
+  input,
+  select,
+  textarea {
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    background: #f8fafc;
+  }
+
+  .checkbox-option {
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: #f8fafc;
+    padding: 0.85rem;
+  }
+
+  .checkbox-option.remember-option {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .form-grid {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-metrics {
-    grid-template-columns: 1fr;
+  .primary,
+  .secondary,
+  .ghost {
+    width: 100%;
+    border-radius: 12px;
   }
 
+  .primary {
+    padding: 0.95rem;
+  }
+
+  .status-message {
+    border-radius: 12px;
+  }
+
+  .dashboard-metrics,
   .calendar-week,
-  .calendar-day-list {
-    grid-template-columns: 1fr;
-  }
-
+  .calendar-day-list,
   .player-directory-controls {
     grid-template-columns: 1fr;
   }
 
   .mobile-topbar {
-    padding: 1rem 1rem 0.35rem;
+    padding: 1.1rem 1.25rem 0.75rem;
+    background: transparent;
+  }
+
+  .mobile-topbar__brand {
+    gap: 0.75rem;
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex;
+    border: none;
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 0.6rem 0.95rem;
+    box-shadow: var(--card-shadow);
+    color: var(--text-primary);
+  }
+
+  .mobile-menu-close {
+    border-radius: 12px;
+  }
+
+  .mobile-menu-backdrop {
+    background: rgba(15, 23, 42, 0.28);
+  }
+
+  .app-header {
+    width: min(340px, 86vw);
+    max-width: 360px;
+    border-radius: 0 24px 24px 0;
   }
 
   .app-main {
-    padding: 0 1rem 2.5rem;
+    padding: 0 1.25rem 2.5rem;
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .app-section {
+    background: var(--card-bg);
+    border-radius: 18px;
+    padding: 1.4rem;
+    box-shadow: var(--card-shadow);
+  }
+
+  .card {
+    margin-bottom: 1.5rem;
+    border-radius: 18px;
   }
 
   .inline-controls,
@@ -4680,6 +4847,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   .tournament-bracket-admin-actions {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
   }
 
   .inline-controls > *,
@@ -4690,12 +4858,10 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     width: 100%;
   }
 
-  .club-summary {
-    padding: 1.1rem;
-  }
-
+  .club-summary,
   .club-details section {
-    padding: 0.9rem;
+    padding: 1.1rem;
+    border-radius: 16px;
   }
 
   .table-scroll {
