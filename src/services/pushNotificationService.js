@@ -1,5 +1,6 @@
 const webpush = require('web-push');
 const { PushSubscription } = require('../models/PushSubscription');
+const { BRAND_GENERIC_NOTIFICATION, BRAND_NAME } = require('../config/branding');
 
 let isConfigured = false;
 let cachedPublicKey = null;
@@ -132,8 +133,8 @@ function buildPushPayload(notification) {
   }
 
   const payload = {
-    title: notification.title || 'Liga Tennis',
-    body: notification.message || metadata.preview || '',
+    title: notification.title || BRAND_NAME,
+    body: notification.message || metadata.preview || BRAND_GENERIC_NOTIFICATION,
     data,
   };
 

@@ -6,11 +6,14 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+const APP_BRAND_NAME = 'C.N. Playa San Marcos';
+const GENERIC_NOTIFICATION_MESSAGE = `Tienes una nueva notificación en ${APP_BRAND_NAME}.`;
+
 function getNotificationPayload(event) {
   if (!event.data) {
     return {
-      title: 'Liga Tennis',
-      body: 'Tienes una nueva notificación del club.',
+      title: APP_BRAND_NAME,
+      body: GENERIC_NOTIFICATION_MESSAGE,
       data: {},
     };
   }
@@ -20,7 +23,7 @@ function getNotificationPayload(event) {
     return parsed;
   } catch (error) {
     return {
-      title: 'Liga Tennis',
+      title: APP_BRAND_NAME,
       body: event.data.text(),
       data: {},
     };
@@ -29,13 +32,13 @@ function getNotificationPayload(event) {
 
 self.addEventListener('push', (event) => {
   const payload = getNotificationPayload(event);
-  const title = payload.title || 'Liga Tennis';
+  const title = payload.title || APP_BRAND_NAME;
   const options = {
-    body: payload.body || '',
+    body: payload.body || GENERIC_NOTIFICATION_MESSAGE,
     icon: payload.icon || './assets/club-logo.png',
     badge: payload.badge || './assets/club-logo.png',
     data: payload.data || {},
-    tag: payload.tag || 'cn-sanmarcos-notification',
+    tag: payload.tag || 'cn-playa-san-marcos-notification',
     renotify: Boolean(payload.renotify),
   };
 

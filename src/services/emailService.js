@@ -7,8 +7,13 @@ const {
   getDefaultSender,
   getDefaultReplyTo,
 } = require('../config/mail');
+const {
+  BRAND_GENERIC_NOTIFICATION,
+  BRAND_NOTIFICATION_SUBJECT,
+} = require('../config/branding');
 
-const FALLBACK_SUBJECT = 'Notificación Liga Tennis';
+const FALLBACK_SUBJECT = BRAND_NOTIFICATION_SUBJECT;
+const GENERIC_NOTIFICATION_MESSAGE = BRAND_GENERIC_NOTIFICATION;
 
 function ensureTransport() {
   if (mailTransportEnabled()) {
@@ -100,7 +105,7 @@ function buildHtmlBody({ message, richMessage, metadata, attachments }) {
     const escaped = escapeHtml(message).replace(/\n/g, '<br />');
     htmlChunks.push(`<p>${escaped}</p>`);
   } else {
-    htmlChunks.push('<p>Tienes una nueva notificación en Liga Tennis.</p>');
+    htmlChunks.push(`<p>${GENERIC_NOTIFICATION_MESSAGE}</p>`);
   }
 
   if (metadata.url) {
@@ -131,7 +136,7 @@ function buildTextBody({ message, metadata, attachments }) {
   if (message) {
     parts.push(String(message));
   } else {
-    parts.push('Tienes una nueva notificación en Liga Tennis.');
+    parts.push(GENERIC_NOTIFICATION_MESSAGE);
   }
 
   if (metadata.url) {

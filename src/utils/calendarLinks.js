@@ -1,4 +1,5 @@
 const { URLSearchParams } = require('url');
+const { BRAND_CALENDAR_PRODID, BRAND_CALENDAR_UID_DOMAIN } = require('../config/branding');
 
 function toDate(value) {
   if (!value) {
@@ -82,10 +83,10 @@ function buildICSContent({ title, description, location, startsAt, endsAt }) {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//CN San Marcos//Liga Social//ES',
+    BRAND_CALENDAR_PRODID,
     'CALSCALE:GREGORIAN',
     'BEGIN:VEVENT',
-    `UID:${formatDateForICS(startsAt)}-match@cnsanmarcos`,
+    `UID:${formatDateForICS(startsAt)}-match@${BRAND_CALENDAR_UID_DOMAIN}`,
     `DTSTAMP:${formatDateForICS(new Date())}`,
     `DTSTART:${formatDateForICS(startsAt)}`,
     `DTEND:${formatDateForICS(endsAt)}`,
