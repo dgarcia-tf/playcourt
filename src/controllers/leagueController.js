@@ -11,7 +11,7 @@ const {
   MATCH_FORMATS,
   DEFAULT_CATEGORY_MATCH_FORMAT,
 } = require('../models/Category');
-const { GENDERS } = require('../models/User');
+const { GENDERS, USER_ROLES, userHasRole } = require('../models/User');
 const { Enrollment } = require('../models/Enrollment');
 const { EnrollmentRequest } = require('../models/EnrollmentRequest');
 const { Match } = require('../models/Match');
@@ -692,20 +692,29 @@ async function listLeagueEnrollments(req, res) {
     return Number.isFinite(numeric) ? numeric : null;
   };
 
+  const canViewSensitivePlayerData =
+    req.user &&
+    (userHasRole(req.user, USER_ROLES.ADMIN) || userHasRole(req.user, USER_ROLES.COURT_MANAGER));
+
+  const buildCategoryPayload = (category) => ({
+    id: category._id.toString(),
+    name: category.name,
+    label: category.name,
+    gender: category.gender,
+    skillLevel: category.skillLevel,
+    matchFormat: category.matchFormat,
+    color: resolveCategoryColor(category.color),
+    status: category.status,
+    minimumAge: normalizeMinimumAge(category.minimumAge),
+  });
+
   if (!categories.length) {
     return res.json({
       league: leagueSummary,
       totalPlayers: 0,
       players: [],
       categories: categories.map((category) => ({
-        id: category._id.toString(),
-        name: category.name,
-        gender: category.gender,
-        skillLevel: category.skillLevel,
-        matchFormat: category.matchFormat,
-        color: resolveCategoryColor(category.color),
-        status: category.status,
-        minimumAge: normalizeMinimumAge(category.minimumAge),
+        ...buildCategoryPayload(category),
         enrollmentCount: 0,
         players: [],
       })),
@@ -732,27 +741,21 @@ async function listLeagueEnrollments(req, res) {
     const categoryId = category._id ? category._id.toString() : String(category);
     const userId = user._id ? user._id.toString() : String(user);
 
-    const categoryPayload = {
-      id: categoryId,
-      name: category.name,
-      gender: category.gender,
-      skillLevel: category.skillLevel,
-      matchFormat: category.matchFormat,
-      color: resolveCategoryColor(category.color),
-      status: category.status,
-      minimumAge: normalizeMinimumAge(category.minimumAge),
-    };
+    const categoryPayload = buildCategoryPayload(category);
 
     const userPayload = {
       id: userId,
       fullName: user.fullName,
-      email: user.email,
-      gender: user.gender,
-      phone: user.phone,
       photo: user.photo || null,
       preferredSchedule: user.preferredSchedule || null,
       birthDate: user.birthDate || null,
     };
+
+    if (canViewSensitivePlayerData) {
+      userPayload.email = user.email;
+      userPayload.gender = user.gender;
+      userPayload.phone = user.phone;
+    }
 
     if (!playerMap.has(userId)) {
       playerMap.set(userId, { ...userPayload, categories: [] });
@@ -795,14 +798,7 @@ async function listLeagueEnrollments(req, res) {
     playersInCategory.sort(sortByName);
 
     return {
-      id: categoryId,
-      name: category.name,
-      gender: category.gender,
-      skillLevel: category.skillLevel,
-      matchFormat: category.matchFormat,
-      color: resolveCategoryColor(category.color),
-      status: category.status,
-      minimumAge: normalizeMinimumAge(category.minimumAge),
+      ...buildCategoryPayload(category),
       enrollmentCount: playersInCategory.length,
       players: playersInCategory,
     };
