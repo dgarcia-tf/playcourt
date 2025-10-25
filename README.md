@@ -8,7 +8,7 @@ Aplicación completa para gestionar la liga social de tenis del Club Náutico Sa
 - **Primer inicio guiado**: la aplicación obliga a crear un administrador inicial y, a partir de entonces, todo nuevo registro se limita al rol de jugador hasta que un administrador le otorgue permisos adicionales.
 - **Perfiles completos**: nombre, fotografía (almacenada en la base de datos con un límite de 2&nbsp;MB), teléfono, notas, horario preferido y preferencias de notificación editables desde la sección **Mi cuenta**.
 - **Roles combinados bajo control**: un mismo usuario puede ejercer como jugador y administrador, pero solo los administradores existentes pueden conceder o revocar el rol; el registro automático siempre crea jugadores.
-- **Panel unificado con menú lateral**: el panel izquierdo agrupa Dashboard, Club, Categorías, Partidos, Ranking, Panel de avisos, Reglamento, Notificaciones, Directorio de jugadores y Mi cuenta. Las opciones administrativas se ocultan cuando el usuario no tiene permisos.
+- **Panel unificado con menú lateral**: el panel izquierdo agrupa Dashboard, Club, Categorías, Partidos, Ranking, Noticias, Reglamento, Notificaciones, Directorio de jugadores y Mi cuenta. Las opciones administrativas se ocultan cuando el usuario no tiene permisos.
 - **Identidad del club integrada**: la cabecera muestra el logotipo proporcionado y la sección **Club** permite editar nombre, lema, descripción, direcciones, contacto, horarios de apertura, pistas y servicios desde un único formulario modal.
 - **Dashboard filtrable por categoría**: métricas, ranking destacado, próximos partidos y notificaciones personales se recalculan al cambiar la categoría seleccionada. El calendario mensual refleja los partidos confirmados y pendientes del contexto activo.
 - **Calendario mensual interactivo**: la vista fija del mes permite navegar con controles anteriores/siguientes y cada evento abre el diálogo correspondiente (edición o resultado) sin abandonar la página; los partidos sin fecha quedan agrupados en un bloque específico.
@@ -17,7 +17,7 @@ Aplicación completa para gestionar la liga social de tenis del Club Náutico Sa
 - **Partidos filtrables y generación automática**: el selector de categorías organiza los partidos programados, pendientes por aprobar y completados. El botón **Generar pendientes** crea todos los enfrentamientos posibles entre los inscritos restantes.
 - **Propuestas, confirmaciones y notificaciones**: las propuestas de fecha notifican automáticamente a oponentes y administradores suscritos. Al confirmarse un resultado se recalcula el ranking y se avisa tanto a los jugadores implicados como a los administradores que solicitan avisos de cierre de partidos.
 - **Ranking imprimible con movimiento visual**: los rankings otorgan 10 puntos por victoria más un punto por cada juego ganado, muestran iconos de movimiento (ascenso, descenso o mantenimiento) y permiten generar un informe listo para imprimir con avatar y métricas clave.
-- **Panel de avisos con notificaciones personales**: solo los administradores publican en el tablón y cada aviso genera una notificación que los jugadores pueden marcar como leída desde la sección Notificaciones.
+- **Noticias con notificaciones personales**: solo los administradores publican en el tablón y cada aviso genera una notificación que los jugadores pueden marcar como leída desde la sección Notificaciones.
 - **Reglamento accesible**: la sección dedicada resume filosofía del club, disponibilidad de pistas y normas de juego para mantener a todos informados desde la misma aplicación.
 
 ## Puesta en marcha
@@ -109,7 +109,7 @@ un JSON de estado simple para comprobaciones automatizadas.
 - Registrar jugadores o promover perfiles existentes desde el directorio, actualizando roles, datos de contacto y preferencias de notificación en los formularios modales.
 - Revisar las inscripciones de cada categoría con la acción **Gestionar inscripciones** y, si es necesario, añadir participantes manualmente o darlos de baja.
 - Generar enfrentamientos pendientes mediante el botón **Generar pendientes** en la pestaña Partidos y editar cualquier partido, categoría o jugador con los botones **Editar** disponibles en cada lista.
-- Publicar avisos oficiales desde el **Panel de avisos**; cada mensaje enviará notificaciones a los jugadores que podrán marcarlas como leídas.
+- Publicar avisos oficiales desde la sección **Noticias**; cada mensaje enviará notificaciones a los jugadores que podrán marcarlas como leídas.
 - Supervisar resultados, aprobar los que queden en revisión y descargar el informe imprimible del ranking cuando sea necesario.
 
 ### Participación de los jugadores
@@ -118,7 +118,7 @@ un JSON de estado simple para comprobaciones automatizadas.
 - Inscribirse en categorías compatibles con su género cuando el estado sea **Inscripción abierta** mediante el botón **Inscribirme** visible en la pestaña Categorías.
 - Consultar la pestaña **Partidos**, que separa los enfrentamientos programados, los resultados pendientes por aprobar y los partidos ya disputados, además de la lista **Mis partidos** con accesos rápidos para proponer fecha.
 - Confirmar o rechazar propuestas recibidas. Al aceptar, el partido queda programado, aparece en el calendario y se notifica al rival y a los administradores suscritos.
-- Revisar el **Panel de avisos** y la sección **Notificaciones** para seguir las comunicaciones oficiales y marcar como leídas las alertas pendientes.
+- Revisar las secciones **Noticias** y **Notificaciones** para seguir las comunicaciones oficiales y marcar como leídas las alertas pendientes.
 - Consultar rankings, temporadas vinculadas y el reglamento del club sin salir de la aplicación.
 
 ## Generación y validación de partidos
@@ -137,9 +137,9 @@ un JSON de estado simple para comprobaciones automatizadas.
 - **Dashboard independiente**: tras iniciar sesión se muestra un panel inicial con tarjetas resumen de jugadores activos, partidos próximos y notificaciones pendientes. El selector de categoría filtra todas las métricas y el calendario para centrarse en la competición deseada.
 - **Calendario mensual interactivo**: la vista fija del mes reúne partidos confirmados, pendientes y sin fecha en un mismo bloque. Cada elemento es accesible y abre el diálogo correspondiente (edición o resultado) con un clic.
 - **Vista de Partidos enriquecida**: la pestaña Partidos divide los encuentros en programados, pendientes por aprobación y disputados, mientras que "Mis partidos" mantiene accesos rápidos para proponer fechas o registrar resultados.
-- **Menú lateral fijo**: la columna izquierda alberga accesos directos a Dashboard, Categorías, Partidos, Ranking, Panel de avisos, Reglamento, Notificaciones, el directorio de jugadores y Mi cuenta; las opciones reservadas a administradores solo aparecen cuando el usuario tiene ese rol.
+- **Menú lateral fijo**: la columna izquierda alberga accesos directos a Dashboard, Categorías, Partidos, Ranking, Noticias, Reglamento, Notificaciones, el directorio de jugadores y Mi cuenta; las opciones reservadas a administradores solo aparecen cuando el usuario tiene ese rol.
 - **Área "Mi cuenta"**: concentra la edición del perfil personal (foto, teléfono, horario preferido, notas y contraseña) sin mezclar los datos con las herramientas administrativas o la vista de dashboard.
-- **Panel de avisos**: un tablón único recoge los comunicados oficiales; solo los administradores publican y cada aviso genera una notificación que los jugadores pueden marcar como leída desde la sección correspondiente.
+- **Noticias**: un tablón único recoge los comunicados oficiales; solo los administradores publican y cada aviso genera una notificación que los jugadores pueden marcar como leída desde la sección correspondiente.
 - **Impresión moderna del ranking**: el botón **Imprimir ranking** abre un informe estilizado con datos de partidos y movimiento en la clasificación listo para enviar o archivar en PDF.
 - **Reglamento visible**: la sección Reglamento resume horarios, estado de las pistas y normas de fair play para que nuevos miembros se familiaricen con el club desde la misma aplicación.
 
