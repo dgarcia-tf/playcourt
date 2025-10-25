@@ -6392,9 +6392,13 @@ document.addEventListener('click', handleOutsideMenuClick);
 function updateProfileCard() {
   if (!state.user) return;
 
-  profileName.textContent = state.user.fullName || '';
+  if (profileName) {
+    profileName.textContent = state.user.fullName || '';
+  }
   const photo = state.user.photo;
-  profileAvatar.style.backgroundImage = photo ? `url('${photo}')` : '';
+  if (profileAvatar) {
+    profileAvatar.style.backgroundImage = photo ? `url('${photo}')` : '';
+  }
   if (accountPhoto) {
     accountPhoto.style.backgroundImage = photo ? `url('${photo}')` : '';
   }
