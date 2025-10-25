@@ -585,11 +585,8 @@ button:disabled {
 }
 
 .mobile-topbar__logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: rgba(37, 99, 235, 0.08);
-  padding: 0.3rem;
+  width: 42px;
+  height: 42px;
 }
 
 .mobile-topbar__title {
@@ -767,15 +764,13 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  background: var(--accent-soft);
-  padding: 0.35rem;
+  width: 60px;
+  height: 60px;
+  padding: 0;
 }
 
 .app-header__logo-image {
-  width: 32px;
+  width: 60px;
   height: auto;
 }
 
@@ -4516,8 +4511,8 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   }
 
   .mobile-topbar__logo {
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
   }
 
   .mobile-topbar__title {
