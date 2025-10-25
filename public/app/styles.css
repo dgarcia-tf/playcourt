@@ -3538,6 +3538,8 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 
 .table-scroll {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .ranking-category-list {
@@ -4651,6 +4653,10 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     padding: 2rem 1.5rem;
   }
 
+  .tabs {
+    grid-template-columns: 1fr;
+  }
+
   .dashboard-metrics {
     grid-template-columns: 1fr;
   }
@@ -4672,12 +4678,38 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     padding: 0 1rem 2.5rem;
   }
 
+  .inline-controls,
+  .form-actions,
+  .match-actions,
+  .tournament-bracket-actions,
+  .tournament-bracket-admin-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inline-controls > *,
+  .form-actions > *,
+  .match-actions > *,
+  .tournament-bracket-actions > *,
+  .tournament-bracket-admin-actions > * {
+    width: 100%;
+  }
+
   .club-summary {
     padding: 1.1rem;
   }
 
   .club-details section {
     padding: 0.9rem;
+  }
+
+  .table-scroll {
+    padding-bottom: 0.5rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.75rem 0.65rem;
   }
 
   .admin-grid {
