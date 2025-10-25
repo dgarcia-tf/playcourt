@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Liga Tennis · Panel web</title>
+    <title>C.N. Playa San Marcos · Panel web</title>
     <link rel="icon" type="image/png" href="assets/club-logo.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -12,7 +12,7 @@
       <section id="auth-view" class="auth-view">
         <div class="auth-card">
           <div class="auth-header">
-            <h1>Liga Tennis</h1>
+            <h1>C.N. Playa San Marcos</h1>
             <p id="auth-description">
               Inicia sesión o crea la cuenta inicial de administrador para empezar a gestionar la liga.
             </p>
@@ -480,8 +480,14 @@
                     <button type="button" class="menu-button" data-target="section-account">Mi cuenta</button>
                   </li>
                   <li class="main-menu__item">
-                    <button type="button" class="menu-button menu-button--logout" data-action="logout">
-                      Cerrar sesión
+                    <button
+                      type="button"
+                      class="menu-button menu-button--logout"
+                      data-action="logout"
+                      aria-label="Cerrar sesión"
+                      title="Cerrar sesión"
+                    >
+                      <span class="menu-button__icon" aria-hidden="true" role="img">🚪</span>
                     </button>
                   </li>
                 </ul>
@@ -500,7 +506,7 @@
                   src="assets/club-logo.svg"
                   alt="Logotipo del club"
                 />
-                <span id="mobile-topbar-title" class="mobile-topbar__title">Liga Tennis</span>
+                <span id="mobile-topbar-title" class="mobile-topbar__title">C.N. Playa San Marcos</span>
               </div>
               <button
                 type="button"
@@ -647,7 +653,7 @@
                     <div class="club-identity">
                       <div class="club-logo" id="club-logo-display" aria-hidden="true"></div>
                       <div>
-                        <h4 id="club-name-display">Liga Tennis</h4>
+                        <h4 id="club-name-display">C.N. Playa San Marcos</h4>
                         <p id="club-slogan-display" class="club-slogan-text">Liga social de tenis</p>
                       </div>
                     </div>

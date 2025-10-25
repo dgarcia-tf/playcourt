@@ -1,11 +1,10 @@
-.# Liga Tennis · Aplicación web
+# C.N. Playa San Marcos · Aplicación web
 
-Aplicación completa para gestionar la liga social de tenis del Club Náutico San Marcos. El servidor Node.js expone una única experiencia web en `http://localhost:3000`, desde la que jugadores y administradores realizan todas las acciones necesarias: alta de usuarios, gestión de categorías, inscripciones, calendario, rankings y temporadas. Los datos se almacenan en MongoDB y la capa de API queda oculta tras la propia aplicación para simplificar la instalación.
+Aplicación completa para gestionar la liga social de tenis del C.N. Playa San Marcos. El servidor Node.js expone una única experiencia web en `http://localhost:3000`, desde la que jugadores y administradores realizan todas las acciones necesarias: alta de usuarios, gestión de categorías, inscripciones, calendario, rankings y temporadas. Los datos se almacenan en MongoDB y la capa de API queda oculta tras la propia aplicación para simplificar la instalación.
 
 ## Características principales
 
-- **Primer inicio guiado**: si la base de datos no tiene administradores registrados la aplicación solicita crear el usuario inicial antes de mostrar contenido.
-- **Primer inicio guiado**: la aplicación obliga a crear un administrador inicial y, a partir de entonces, todo nuevo registro se limita al rol de jugador hasta que un administrador le otorgue permisos adicionales.
+- **Primer inicio guiado**: la aplicación detecta si no hay administradores registrados y obliga a crear el usuario inicial antes de mostrar contenido; a partir de entonces, cada nuevo registro queda en rol de jugador hasta que un gestor le otorgue permisos adicionales.
 - **Perfiles completos**: nombre, fotografía (almacenada en la base de datos con un límite de 2&nbsp;MB), teléfono, notas, horario preferido y preferencias de notificación editables desde la sección **Mi cuenta**.
 - **Roles combinados bajo control**: un mismo usuario puede ejercer como jugador y administrador, pero solo los administradores existentes pueden conceder o revocar el rol; el registro automático siempre crea jugadores.
 - **Panel unificado con menú lateral**: el panel izquierdo agrupa Dashboard, Club, Categorías, Partidos, Ranking, Noticias, Reglamento, Notificaciones, Directorio de jugadores y Mi cuenta. Las opciones administrativas se ocultan cuando el usuario no tiene permisos.
@@ -28,7 +27,7 @@ Aplicación completa para gestionar la liga social de tenis del Club Náutico Sa
    cp .env.example .env
    ```
 
-   Si no defines `MONGODB_URI` se usará automáticamente `mongodb://127.0.0.1:27017/cn-sanmarcos`.
+   Si no defines `MONGODB_URI` se usará automáticamente `mongodb://127.0.0.1:27017/cn-playa-san-marcos`.
 
    Si quieres habilitar las notificaciones push del navegador, añade también las claves VAPID y el correo de contacto que se
    usará como subject del servicio web push:
@@ -51,7 +50,7 @@ Aplicación completa para gestionar la liga social de tenis del Club Náutico Sa
    SMTP_SECURE=false
    SMTP_USER=usuario
    SMTP_PASS=contraseña
-   MAIL_FROM="Liga Tennis <notificaciones@example.com>"
+   MAIL_FROM="C.N. Playa San Marcos <notificaciones@example.com>"
    MAIL_REPLY_TO=soporte@example.com
    ```
 
@@ -79,7 +78,7 @@ Aplicación completa para gestionar la liga social de tenis del Club Náutico Sa
    - Alternativamente puedes lanzar MongoDB con Docker:
 
      ```bash
-     docker run --name cn-sanmarcos-mongo -p 27017:27017 -d mongo:6
+     docker run --name cn-playa-san-marcos-mongo -p 27017:27017 -d mongo:6
      ```
 
    - También es posible utilizar una instancia de Atlas configurando `MONGODB_URI` con la cadena de conexión correspondiente.

@@ -1,7 +1,10 @@
 const API_BASE = '/app/api';
-const STORAGE_KEY = 'cn-sanmarcos-app-session';
-const REMEMBER_CREDENTIALS_KEY = 'cn-sanmarcos-remember-credentials';
-const NOTICE_LAST_SEEN_PREFIX = 'cn-sanmarcos-notices-last-seen:';
+const APP_BRAND_NAME = 'C.N. Playa San Marcos';
+const APP_BRAND_SLOGAN = 'Liga social de tenis';
+const STORAGE_PREFIX = 'cn-playa-san-marcos';
+const STORAGE_KEY = `${STORAGE_PREFIX}-app-session`;
+const REMEMBER_CREDENTIALS_KEY = `${STORAGE_PREFIX}-remember-credentials`;
+const NOTICE_LAST_SEEN_PREFIX = `${STORAGE_PREFIX}-notices-last-seen:`;
 const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
 const MAX_POSTER_SIZE = 5 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENT_SIZE = 3 * 1024 * 1024;
@@ -6862,10 +6865,10 @@ function resetData() {
   populateAdminMatchCourtOptions('');
   renderRules();
   if (clubNameDisplay) {
-    clubNameDisplay.textContent = 'Liga Tennis';
+    clubNameDisplay.textContent = APP_BRAND_NAME;
   }
   if (clubSloganDisplay) {
-    clubSloganDisplay.textContent = 'Liga social de tenis';
+    clubSloganDisplay.textContent = APP_BRAND_SLOGAN;
   }
   if (clubDescription) {
     clubDescription.textContent = '';
@@ -6904,13 +6907,13 @@ function resetData() {
     topbarLogo.src = 'assets/club-logo.png';
   }
   if (clubNameHeading) {
-    clubNameHeading.textContent = 'Liga Tennis';
+    clubNameHeading.textContent = APP_BRAND_NAME;
   }
   if (clubSloganHeading) {
-    clubSloganHeading.textContent = 'Liga social de tenis';
+    clubSloganHeading.textContent = APP_BRAND_SLOGAN;
   }
   if (mobileTopbarTitle) {
-    mobileTopbarTitle.textContent = 'Liga Tennis';
+    mobileTopbarTitle.textContent = APP_BRAND_NAME;
   }
   if (clubLogoDisplay) {
     clubLogoDisplay.style.backgroundImage = '';
@@ -15815,7 +15818,7 @@ function buildAppleCalendarDataUrl(match, summary, description, location, startD
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'CALSCALE:GREGORIAN',
-    'PRODID:-//Club CN San Marcos//Matches//ES',
+    'PRODID:-//C.N. Playa San Marcos//Matches//ES',
     'BEGIN:VEVENT',
   ];
 
@@ -15825,7 +15828,7 @@ function buildAppleCalendarDataUrl(match, summary, description, location, startD
   if (!dtStart || !dtEnd) {
     return null;
   }
-  lines.push(`UID:match-${uidSource}@cnsanmarcos`);
+  lines.push(`UID:match-${uidSource}@cnplayasanmarcos`);
   lines.push(`DTSTAMP:${formatCalendarDateTimeUTC(new Date())}`);
   lines.push(`DTSTART:${dtStart}`);
   lines.push(`DTEND:${dtEnd}`);
@@ -18853,9 +18856,9 @@ function parseFacilitiesInput(rawValue) {
 
 function renderClubProfile(club = {}) {
   state.club = club || {};
-  const name = typeof club.name === 'string' && club.name.trim() ? club.name.trim() : 'Liga Tennis';
+  const name = typeof club.name === 'string' && club.name.trim() ? club.name.trim() : APP_BRAND_NAME;
   const slogan =
-    typeof club.slogan === 'string' && club.slogan.trim() ? club.slogan.trim() : 'Liga social de tenis';
+    typeof club.slogan === 'string' && club.slogan.trim() ? club.slogan.trim() : APP_BRAND_SLOGAN;
 
   if (clubNameHeading) {
     clubNameHeading.textContent = name;

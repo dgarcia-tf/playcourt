@@ -1,7 +1,7 @@
 {
-  "name": "cn-sanmarcos",
+  "name": "cn-playa-san-marcos",
   "version": "1.0.0",
-  "description": "Liga Social Club Náutico San Marcos",
+  "description": "Liga social C.N. Playa San Marcos",
   "type": "commonjs",
   "main": "src/server.js",
   "scripts": {

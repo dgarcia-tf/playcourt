@@ -961,6 +961,18 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   font-weight: 700;
 }
 
+.menu-button__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.menu-button--logout .menu-button__icon {
+  min-width: 1.5rem;
+}
+
 .menu-button--logout:hover,
 .menu-button--logout:focus-visible {
   background: rgba(239, 68, 68, 0.15);

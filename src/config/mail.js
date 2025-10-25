@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { BRAND_NAME, BRAND_EMAIL_DOMAIN } = require('./branding');
 
 let transporter = null;
 let configured = false;
@@ -21,8 +22,8 @@ function parseBoolean(value, defaultValue = false) {
 }
 
 function getDefaultSender() {
-  const fallbackName = 'Liga Tennis';
-  const fallbackEmail = 'no-reply@cn-sanmarcos.local';
+  const fallbackName = BRAND_NAME;
+  const fallbackEmail = `no-reply@${BRAND_EMAIL_DOMAIN}`;
   const fromEnv = process.env.MAIL_FROM || process.env.SMTP_FROM;
 
   if (fromEnv && fromEnv.trim()) {
