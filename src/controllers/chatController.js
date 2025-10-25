@@ -4,11 +4,16 @@ const sanitizeHtml = require('sanitize-html');
 const { ChatMessage } = require('../models/ChatMessage');
 const { Notification } = require('../models/Notification');
 const { USER_ROLES, userHasRole, User } = require('../models/User');
-const { normalizeAttachments } = require('../utils/attachments');
+const { MAX_ATTACHMENT_SIZE, normalizeAttachments } = require('../utils/attachments');
 
 const GENERAL_ROOM = 'general';
 const MAX_MESSAGES = 100;
 const MAX_ATTACHMENTS = 5;
+const MAX_RICH_CONTENT_LENGTH = 12000;
+const MAX_RICH_CONTENT_WITH_INLINE_IMAGES = 600000;
+const MAX_INLINE_IMAGE_TOTAL_SIZE = MAX_ATTACHMENT_SIZE * 2;
+const DATA_IMAGE_REGEX = /^data:image\/[a-z0-9.+-]+;base64,/i;
+const INLINE_IMAGE_SRC_REGEX = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
 
 const RICH_TEXT_OPTIONS = {
   allowedTags: [
@@ -26,18 +31,23 @@ const RICH_TEXT_OPTIONS = {
     'h2',
     'h3',
     'span',
+    'img',
   ],
   allowedAttributes: {
     a: ['href', 'title', 'target', 'rel'],
     span: ['style'],
+    img: ['src', 'alt'],
   },
   allowedStyles: {
     span: {
       'text-decoration': [/^underline$/i],
     },
   },
-  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
-  allowedSchemesAppliedToAttributes: ['href'],
+  allowedSchemes: ['http', 'https', 'mailto', 'tel', 'data'],
+  allowedSchemesAppliedToAttributes: ['href', 'src'],
+  allowedSchemesByTag: {
+    img: ['http', 'https', 'data'],
+  },
   transformTags: {
     a: (tagName, attribs) => ({
       tagName,
@@ -47,9 +57,69 @@ const RICH_TEXT_OPTIONS = {
         target: attribs.target || '_blank',
       },
     }),
+    img: (tagName, attribs) => {
+      const src = typeof attribs.src === 'string' ? attribs.src.trim() : '';
+      if (!src) {
+        return { text: '' };
+      }
+      const alt = typeof attribs.alt === 'string' ? attribs.alt.trim().slice(0, 240) : '';
+      return {
+        tagName,
+        attribs: {
+          src,
+          alt,
+        },
+      };
+    },
   },
   nonTextTags: ['style', 'script', 'textarea', 'option'],
 };
+
+function estimateDataUrlSize(dataUrl) {
+  if (typeof dataUrl !== 'string') {
+    return 0;
+  }
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex === -1) {
+    return 0;
+  }
+  const base64 = dataUrl.slice(commaIndex + 1).replace(/\s+/g, '');
+  if (!base64) {
+    return 0;
+  }
+  return Math.floor((base64.length * 3) / 4);
+}
+
+function extractInlineImageSources(html = '') {
+  if (!html) {
+    return [];
+  }
+  const sources = [];
+  INLINE_IMAGE_SRC_REGEX.lastIndex = 0;
+  let match;
+  while ((match = INLINE_IMAGE_SRC_REGEX.exec(html))) {
+    if (match[1]) {
+      sources.push(match[1]);
+    }
+  }
+  INLINE_IMAGE_SRC_REGEX.lastIndex = 0;
+  return sources;
+}
+
+function formatSizeLabel(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 B';
+  }
+  if (bytes >= 1024 * 1024) {
+    const value = (bytes / (1024 * 1024)).toFixed(1);
+    const normalized = value.endsWith('.0') ? value.slice(0, -2) : value;
+    return `${normalized} MB`;
+  }
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+  return `${bytes} B`;
+}
 
 function sanitizeRichContent(input) {
   if (typeof input !== 'string') {
@@ -99,6 +169,29 @@ async function postGeneralMessage(req, res) {
   }
 
   const sanitizedRichContent = sanitizeRichContent(richContent);
+  const inlineImageSources = extractInlineImageSources(sanitizedRichContent);
+  let inlineImagesTotalSize = 0;
+  for (const source of inlineImageSources) {
+    if (!source || !DATA_IMAGE_REGEX.test(source)) {
+      continue;
+    }
+    const estimatedSize = estimateDataUrlSize(source);
+    if (estimatedSize > MAX_ATTACHMENT_SIZE) {
+      return res.status(400).json({
+        message: `Cada imagen insertada debe pesar menos de ${formatSizeLabel(MAX_ATTACHMENT_SIZE)}.`,
+      });
+    }
+    inlineImagesTotalSize += estimatedSize;
+  }
+
+  if (inlineImagesTotalSize > MAX_INLINE_IMAGE_TOTAL_SIZE) {
+    return res.status(400).json({
+      message: `Las imágenes insertadas superan el tamaño máximo total permitido (${formatSizeLabel(
+        MAX_INLINE_IMAGE_TOTAL_SIZE
+      )}).`,
+    });
+  }
+
   const fallbackText = extractPlainTextFromRichContent(sanitizedRichContent);
   const normalizedContent = (rawContent || '').toString().trim();
   const effectiveContent = normalizedContent || fallbackText;
@@ -110,7 +203,20 @@ async function postGeneralMessage(req, res) {
   }
 
   const content = effectiveContent.slice(0, 2000);
-  const richPayload = sanitizedRichContent ? sanitizedRichContent.slice(0, 12000) : undefined;
+  let richPayload;
+  if (sanitizedRichContent) {
+    if (inlineImageSources.length) {
+      if (sanitizedRichContent.length > MAX_RICH_CONTENT_WITH_INLINE_IMAGES) {
+        return res.status(400).json({
+          message:
+            'El aviso supera el tamaño máximo permitido para contenido con imágenes. Reduce el peso de las imágenes e inténtalo de nuevo.',
+        });
+      }
+      richPayload = sanitizedRichContent;
+    } else {
+      richPayload = sanitizedRichContent.slice(0, MAX_RICH_CONTENT_LENGTH);
+    }
+  }
 
   const message = await ChatMessage.create({
     roomType: GENERAL_ROOM,

@@ -33,7 +33,7 @@ const chatMessageSchema = new mongoose.Schema(
     richContent: {
       type: String,
       trim: true,
-      maxlength: 12000,
+      maxlength: 600000,
     },
     attachments: {
       type: [

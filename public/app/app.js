@@ -6,6 +6,12 @@ const MAX_PHOTO_SIZE = 2 * 1024 * 1024;
 const MAX_POSTER_SIZE = 5 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENT_SIZE = 3 * 1024 * 1024;
 const MAX_NOTICE_ATTACHMENTS = 5;
+const MAX_INLINE_NOTICE_IMAGE_SIZE = MAX_NOTICE_ATTACHMENT_SIZE;
+const MAX_TOTAL_INLINE_NOTICE_IMAGE_SIZE = MAX_INLINE_NOTICE_IMAGE_SIZE * 2;
+const MAX_NOTICE_RICH_CONTENT_LENGTH = 12000;
+const MAX_NOTICE_RICH_CONTENT_WITH_IMAGES = 600000;
+const NOTICE_INLINE_IMAGE_DATA_URL_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,/i;
+const NOTICE_INLINE_IMAGE_SRC_REGEX = /<img[^>]+src\s*=\s*["']([^"']+)["'][^>]*>/gi;
 const COURT_RESERVATION_DEFAULT_DURATION = 75;
 const CALENDAR_TIME_SLOT_MINUTES = COURT_RESERVATION_DEFAULT_DURATION;
 const CALENDAR_TIME_SLOT_STEP_SECONDS = CALENDAR_TIME_SLOT_MINUTES * 60;
@@ -2031,6 +2037,7 @@ const generalChatInput = document.getElementById('general-chat-input');
 const generalChatToolbar = document.getElementById('general-chat-toolbar');
 const generalChatEditor = document.getElementById('general-chat-editor');
 const generalChatAttachmentInput = document.getElementById('general-chat-attachment-input');
+const generalChatImageInput = document.getElementById('general-chat-image-input');
 const generalChatAttachments = document.getElementById('general-chat-attachments');
 const generalChatAttachmentsList = generalChatAttachments
   ? generalChatAttachments.querySelector('.chat-attachments-list')
@@ -19016,6 +19023,7 @@ function formatChatTimestamp(value) {
 }
 
 const NOTICE_ALLOWED_SCHEMES = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+const NOTICE_ALLOWED_IMAGE_SCHEMES = new Set(['http:', 'https:']);
 const NOTICE_ALLOWED_TAGS = new Set([
   'P',
   'BR',
@@ -19033,6 +19041,7 @@ const NOTICE_ALLOWED_TAGS = new Set([
   'H2',
   'H3',
   'H4',
+  'IMG',
 ]);
 
 function sanitizeNoticeHtml(html) {
@@ -19045,7 +19054,7 @@ function sanitizeNoticeHtml(html) {
 
   const cleanNode = (node) => {
     const children = Array.from(node.childNodes);
-    children.forEach((child) => {
+    for (const child of children) {
       if (child.nodeType === Node.ELEMENT_NODE) {
         if (child.tagName === 'SPAN') {
           const style = child.getAttribute('style') || '';
@@ -19056,7 +19065,7 @@ function sanitizeNoticeHtml(html) {
             }
             child.replaceWith(underline);
             cleanNode(underline);
-            return;
+            continue;
           }
         }
 
@@ -19067,11 +19076,55 @@ function sanitizeNoticeHtml(html) {
           }
           child.replaceWith(fragment);
           cleanNode(fragment);
-          return;
+          continue;
+        }
+
+        if (child.tagName === 'IMG') {
+          const attributes = Array.from(child.attributes);
+          let hasValidSource = false;
+          for (const attribute of attributes) {
+            const name = attribute.name.toLowerCase();
+            if (name === 'src') {
+              const value = attribute.value.trim();
+              if (NOTICE_INLINE_IMAGE_DATA_URL_PATTERN.test(value)) {
+                child.setAttribute('src', value);
+                hasValidSource = true;
+              } else if (value) {
+                try {
+                  const url = new URL(value, window.location.origin);
+                  if (NOTICE_ALLOWED_IMAGE_SCHEMES.has(url.protocol)) {
+                    child.setAttribute('src', url.toString());
+                    hasValidSource = true;
+                  } else {
+                    child.removeAttribute(attribute.name);
+                  }
+                } catch (error) {
+                  child.removeAttribute(attribute.name);
+                }
+              } else {
+                child.removeAttribute(attribute.name);
+              }
+              continue;
+            }
+            if (name === 'alt') {
+              const altText = attribute.value.trim().slice(0, 240);
+              child.setAttribute('alt', altText);
+              continue;
+            }
+            child.removeAttribute(attribute.name);
+          }
+          if (!hasValidSource) {
+            child.remove();
+            continue;
+          }
+          if (!child.hasAttribute('alt')) {
+            child.setAttribute('alt', '');
+          }
+          continue;
         }
 
         const attributes = Array.from(child.attributes);
-        attributes.forEach((attribute) => {
+        for (const attribute of attributes) {
           const name = attribute.name.toLowerCase();
           if (child.tagName === 'A') {
             if (name === 'href') {
@@ -19083,7 +19136,7 @@ function sanitizeNoticeHtml(html) {
                 const url = new URL(href);
                 if (!NOTICE_ALLOWED_SCHEMES.has(url.protocol)) {
                   child.removeAttribute(attribute.name);
-                  return;
+                  continue;
                 }
                 child.setAttribute('href', url.toString());
                 child.setAttribute('rel', 'noopener noreferrer');
@@ -19091,22 +19144,22 @@ function sanitizeNoticeHtml(html) {
               } catch (error) {
                 child.removeAttribute(attribute.name);
               }
-              return;
+              continue;
             }
             if (name === 'title') {
-              return;
+              continue;
             }
             if (name === 'rel') {
               child.setAttribute('rel', 'noopener noreferrer');
-              return;
+              continue;
             }
             if (name === 'target') {
               child.setAttribute('target', '_blank');
-              return;
+              continue;
             }
           }
           child.removeAttribute(attribute.name);
-        });
+        }
 
         cleanNode(child);
       } else if (child.nodeType === Node.COMMENT_NODE) {
@@ -19114,7 +19167,7 @@ function sanitizeNoticeHtml(html) {
       } else if (child.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
         cleanNode(child);
       }
-    });
+    }
   };
 
   cleanNode(template.content);
@@ -19136,12 +19189,85 @@ function formatFileSize(bytes) {
     return '';
   }
   if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    const value = (bytes / (1024 * 1024)).toFixed(1);
+    const normalized = value.endsWith('.0') ? value.slice(0, -2) : value;
+    return `${normalized} MB`;
   }
   if (bytes >= 1024) {
     return `${Math.round(bytes / 1024)} KB`;
   }
   return `${bytes} B`;
+}
+
+function estimateDataUrlPayloadSize(dataUrl) {
+  if (typeof dataUrl !== 'string') {
+    return 0;
+  }
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex === -1) {
+    return 0;
+  }
+  const base64 = dataUrl.slice(commaIndex + 1).replace(/\s+/g, '');
+  if (!base64) {
+    return 0;
+  }
+  return Math.floor((base64.length * 3) / 4);
+}
+
+function extractInlineImageSources(html) {
+  if (typeof html !== 'string' || !html) {
+    return [];
+  }
+  const sources = [];
+  NOTICE_INLINE_IMAGE_SRC_REGEX.lastIndex = 0;
+  let match;
+  while ((match = NOTICE_INLINE_IMAGE_SRC_REGEX.exec(html))) {
+    if (match[1]) {
+      sources.push(match[1]);
+    }
+  }
+  NOTICE_INLINE_IMAGE_SRC_REGEX.lastIndex = 0;
+  return sources;
+}
+
+function deriveAltTextFromFilename(filename) {
+  if (typeof filename !== 'string') {
+    return '';
+  }
+  const withoutExtension = filename.replace(/\.[^/.]+$/, '');
+  return withoutExtension.replace(/[-_]+/g, ' ').trim();
+}
+
+function insertImageIntoNoticeEditor(source, { alt } = {}) {
+  if (!generalChatEditor || !source) {
+    return;
+  }
+
+  generalChatEditor.focus();
+  const selection = window.getSelection();
+  const image = document.createElement('img');
+  image.src = source;
+  image.alt = alt || '';
+
+  let range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+  if (!range || !generalChatEditor.contains(range.commonAncestorContainer)) {
+    generalChatEditor.appendChild(image);
+  } else {
+    range.deleteContents();
+    range.insertNode(image);
+  }
+
+  const spacer = document.createElement('p');
+  spacer.appendChild(document.createElement('br'));
+  image.insertAdjacentElement('afterend', spacer);
+
+  if (selection) {
+    selection.removeAllRanges();
+    range = document.createRange();
+    range.setStart(spacer, 0);
+    range.collapse(true);
+    selection.addRange(range);
+  }
 }
 
 function renderNoticeAttachmentsDraft() {
@@ -19214,6 +19340,9 @@ function setNoticeFormBusy(isBusy) {
   if (generalChatAttachmentInput) {
     generalChatAttachmentInput.disabled = isBusy;
   }
+  if (generalChatImageInput) {
+    generalChatImageInput.disabled = isBusy;
+  }
   const submitButton = generalChatForm?.querySelector('button[type="submit"]');
   if (submitButton) {
     submitButton.disabled = isBusy;
@@ -19230,11 +19359,14 @@ function resetNoticeComposer() {
   if (generalChatAttachmentInput) {
     generalChatAttachmentInput.value = '';
   }
+  if (generalChatImageInput) {
+    generalChatImageInput.value = '';
+  }
   noticeDraftAttachments = [];
   renderNoticeAttachmentsDraft();
 }
 
-function applyRichTextCommand(editor, command, { level, list, onAttachment } = {}) {
+function applyRichTextCommand(editor, command, { level, list, onAttachment, onImage } = {}) {
   if (!editor || !command) {
     return;
   }
@@ -19295,6 +19427,11 @@ function applyRichTextCommand(editor, command, { level, list, onAttachment } = {
         onAttachment();
       }
       break;
+    case 'image':
+      if (typeof onImage === 'function') {
+        onImage();
+      }
+      break;
     default:
       break;
   }
@@ -19318,6 +19455,7 @@ function handleNoticeToolbarClick(event) {
     level: button.dataset.level,
     list: button.dataset.list,
     onAttachment: () => generalChatAttachmentInput?.click(),
+    onImage: () => generalChatImageInput?.click(),
   });
 }
 
@@ -19375,6 +19513,38 @@ async function handleNoticeAttachmentChange(event) {
   }
 
   event.target.value = '';
+}
+
+async function handleNoticeImageSelection(event) {
+  const input = event.target;
+  const [file] = Array.from(input.files || []);
+  input.value = '';
+
+  if (!file) {
+    return;
+  }
+
+  const mime = (file.type || '').toLowerCase();
+  const isImageFile = mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(file.name || '');
+  if (!isImageFile) {
+    showGlobalMessage('Selecciona un archivo de imagen válido.', 'error');
+    return;
+  }
+
+  if (file.size > MAX_INLINE_NOTICE_IMAGE_SIZE) {
+    showGlobalMessage(
+      `La imagen supera el tamaño máximo permitido (${formatFileSize(MAX_INLINE_NOTICE_IMAGE_SIZE)}).`,
+      'error'
+    );
+    return;
+  }
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    insertImageIntoNoticeEditor(dataUrl, { alt: deriveAltTextFromFilename(file.name) });
+  } catch (error) {
+    showGlobalMessage(error.message, 'error');
+  }
 }
 
 function renderChatMessages(messages = [], container, emptyMessage) {
@@ -27857,6 +28027,8 @@ generalChatToolbar?.addEventListener('click', handleNoticeToolbarClick);
 
 generalChatAttachmentInput?.addEventListener('change', handleNoticeAttachmentChange);
 
+generalChatImageInput?.addEventListener('change', handleNoticeImageSelection);
+
 generalChatAttachmentsList?.addEventListener('click', (event) => {
   const button = event.target.closest('[data-attachment-remove]');
   if (!button) return;
@@ -27870,6 +28042,33 @@ generalChatForm?.addEventListener('submit', async (event) => {
   const rawHtml = generalChatEditor ? generalChatEditor.innerHTML : '';
   const sanitizedRich = sanitizeNoticeHtml(rawHtml);
   const plainText = extractPlainTextFromHtml(sanitizedRich);
+  const inlineImageSources = extractInlineImageSources(sanitizedRich);
+
+  let inlineImagesTotalSize = 0;
+  for (const source of inlineImageSources) {
+    if (!NOTICE_INLINE_IMAGE_DATA_URL_PATTERN.test(source)) {
+      continue;
+    }
+    const estimatedSize = estimateDataUrlPayloadSize(source);
+    if (estimatedSize > MAX_INLINE_NOTICE_IMAGE_SIZE) {
+      showGlobalMessage(
+        `Cada imagen insertada debe pesar menos de ${formatFileSize(MAX_INLINE_NOTICE_IMAGE_SIZE)}.`,
+        'error'
+      );
+      return;
+    }
+    inlineImagesTotalSize += estimatedSize;
+  }
+
+  if (inlineImagesTotalSize > MAX_TOTAL_INLINE_NOTICE_IMAGE_SIZE) {
+    showGlobalMessage(
+      `Las imágenes insertadas superan el peso máximo total permitido (${formatFileSize(
+        MAX_TOTAL_INLINE_NOTICE_IMAGE_SIZE
+      )}).`,
+      'error'
+    );
+    return;
+  }
 
   if (!plainText && !sanitizedRich && !noticeDraftAttachments.length) {
     showGlobalMessage('Escribe un mensaje o añade un adjunto antes de publicar.', 'error');
@@ -27882,8 +28081,19 @@ generalChatForm?.addEventListener('submit', async (event) => {
     return;
   }
 
-  if (sanitizedRich.length > 12000) {
-    showGlobalMessage('El contenido enriquecido es demasiado largo (máximo 12000 caracteres).', 'error');
+  if (!inlineImageSources.length && sanitizedRich.length > MAX_NOTICE_RICH_CONTENT_LENGTH) {
+    showGlobalMessage(
+      `El contenido enriquecido es demasiado largo (máximo ${MAX_NOTICE_RICH_CONTENT_LENGTH.toLocaleString('es-ES')} caracteres).`,
+      'error'
+    );
+    return;
+  }
+
+  if (inlineImageSources.length && sanitizedRich.length > MAX_NOTICE_RICH_CONTENT_WITH_IMAGES) {
+    showGlobalMessage(
+      'El aviso supera el tamaño máximo permitido para contenido con imágenes. Reduce el peso de las imágenes e inténtalo de nuevo.',
+      'error'
+    );
     return;
   }
 
