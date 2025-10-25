@@ -1663,6 +1663,14 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
     grid-template-columns: minmax(260px, 320px) 1fr;
     align-items: flex-start;
   }
+
+  .tournament-bracket-layout--single-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tournament-bracket-layout--single-column {
+  grid-template-columns: 1fr;
 }
 
 .tournament-seed-list {
@@ -1700,6 +1708,43 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 .tournament-bracket-view {
   overflow-x: auto;
   padding-bottom: 0.5rem;
+}
+
+body.tournament-fullscreen-active {
+  overflow: hidden;
+}
+
+.tournament-bracket-card--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1.25rem, 2.5vw, 2rem);
+  background: var(--card-bg);
+}
+
+.tournament-bracket-card--fullscreen .card-header {
+  position: sticky;
+  top: 0;
+  background: inherit;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  z-index: 1;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.tournament-bracket-card--fullscreen .tournament-bracket-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 1.5rem;
 }
 
 .tournament-bracket-section {
