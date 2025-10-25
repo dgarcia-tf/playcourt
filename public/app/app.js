@@ -1987,6 +1987,7 @@ const notificationsList = document.getElementById('notifications-list');
 const matchesMenuBadge = document.getElementById('menu-matches-badge');
 const notificationsMenuBadge = document.getElementById('menu-notifications-badge');
 const noticesMenuBadge = document.getElementById('menu-notices-badge');
+const demoModeButton = document.getElementById('demo-mode-button');
 const metricNotifications = document.getElementById('metric-notifications');
 const tournamentsList = document.getElementById('tournaments-list');
 const tournamentDetailCard = document.getElementById('tournament-detail-card');
@@ -5847,6 +5848,59 @@ function updateAdminMenuVisibility() {
 
   if (!shouldShow && adminSectionIds.has(state.activeSection)) {
     showSection('section-dashboard');
+  }
+}
+
+async function activateDemoModeFromUI() {
+  if (!demoModeButton) {
+    return;
+  }
+
+  const confirmed = await openConfirmationDialog({
+    title: 'Activar modo demo',
+    message:
+      'Vas a cargar un entorno demo con jugadores ficticios y datos aleatorios para las categorías disponibles. Esta acción es solo para pruebas y puede mezclar datos reales con datos de demostración. ¿Deseas continuar?',
+    confirmLabel: 'Sí, activar demo',
+    cancelLabel: 'Cancelar',
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  const previousLabel = demoModeButton.textContent;
+  demoModeButton.disabled = true;
+  demoModeButton.setAttribute('aria-busy', 'true');
+  demoModeButton.textContent = 'Activando…';
+
+  try {
+    const response = await request('/demo', { method: 'POST', body: { confirm: true } });
+    const warningMessage = typeof response?.warning === 'string' ? response.warning.trim() : '';
+    const statusMessage = typeof response?.message === 'string' ? response.message.trim() : '';
+    const createdCountRaw = Number(response?.totalPlayersCreated);
+    const messageParts = [];
+
+    if (warningMessage) {
+      messageParts.push(warningMessage);
+    }
+
+    if (statusMessage) {
+      messageParts.push(statusMessage);
+    }
+
+    if (Number.isFinite(createdCountRaw)) {
+      messageParts.push(`Jugadores demo creados: ${createdCountRaw}.`);
+    }
+
+    const combinedMessage = messageParts.filter(Boolean).join(' ');
+    showGlobalMessage(combinedMessage || 'Modo demo activado correctamente.');
+  } catch (error) {
+    showGlobalMessage(error.message, 'error');
+  } finally {
+    demoModeButton.disabled = false;
+    demoModeButton.removeAttribute('aria-busy');
+    demoModeButton.textContent = previousLabel;
+    demoModeButton.blur();
   }
 }
 
@@ -28552,6 +28606,16 @@ pushEnableButton?.addEventListener('click', () => {
 
 pushDisableButton?.addEventListener('click', () => {
   disablePushNotifications();
+});
+
+demoModeButton?.addEventListener('click', async () => {
+  if (!isAdmin()) {
+    showGlobalMessage('Necesitas permisos de administrador para activar el modo demo.', 'error');
+    return;
+  }
+
+  closeMobileMenu();
+  await activateDemoModeFromUI();
 });
 
 logoutButtons.forEach((button) => {
