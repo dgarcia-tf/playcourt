@@ -11,6 +11,11 @@ const RESERVATION_TYPES = {
   MATCH: 'partido',
 };
 
+const RESERVATION_GAME_TYPES = {
+  SINGLES: 'individual',
+  DOUBLES: 'dobles',
+};
+
 const courtReservationSchema = new mongoose.Schema(
   {
     court: {
@@ -72,6 +77,11 @@ const courtReservationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    gameType: {
+      type: String,
+      enum: Object.values(RESERVATION_GAME_TYPES),
+      default: RESERVATION_GAME_TYPES.SINGLES,
+    },
   },
   {
     timestamps: true,
@@ -86,4 +96,5 @@ module.exports = {
   CourtReservation: mongoose.model('CourtReservation', courtReservationSchema),
   RESERVATION_STATUS,
   RESERVATION_TYPES,
+  RESERVATION_GAME_TYPES,
 };
