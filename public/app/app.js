@@ -112,6 +112,7 @@ const SECTION_ROUTE_ENTRIES = [
   ['administracion/club', 'section-club'],
   ['administracion/pistas', 'section-court-admin'],
   ['administracion/usuarios', 'section-user-directory'],
+  ['administracion/modo-demo', 'section-demo-mode'],
   ['mi-cuenta', 'section-account'],
 ];
 
@@ -3463,6 +3464,12 @@ const playerDirectoryGender = document.getElementById('user-directory-gender');
 const playerDirectoryRole = document.getElementById('user-directory-role');
 const playerDirectoryCategory = document.getElementById('user-directory-category');
 const playerDirectoryEmpty = document.getElementById('user-directory-empty');
+const demoModeGenerateButton = document.getElementById('demo-mode-generate-button');
+const demoModeStatus = document.getElementById('demo-mode-status');
+const demoModeResults = document.getElementById('demo-mode-results');
+const demoModeCreated = document.getElementById('demo-mode-created');
+const demoModeSkipped = document.getElementById('demo-mode-skipped');
+const demoModePassword = document.getElementById('demo-mode-password');
 const categoryCreateButton = document.getElementById('category-create-button');
 const leagueCreateButton = document.getElementById('league-create-button');
 const leagueDetailCard = document.getElementById('league-detail-card');
@@ -6864,6 +6871,68 @@ async function request(path, { method = 'GET', body, requireAuth = true } = {}) 
   return data;
 }
 
+function resetDemoModeResults() {
+  if (demoModeResults) {
+    demoModeResults.hidden = true;
+  }
+  if (demoModeCreated) {
+    demoModeCreated.textContent = '';
+    demoModeCreated.removeAttribute('title');
+  }
+  if (demoModeSkipped) {
+    demoModeSkipped.textContent = '';
+    demoModeSkipped.removeAttribute('title');
+  }
+  if (demoModePassword) {
+    demoModePassword.textContent = '';
+    demoModePassword.hidden = true;
+  }
+}
+
+function renderDemoModeResults(result) {
+  if (!demoModeResults || !result) {
+    return;
+  }
+
+  const {
+    totalCreated = 0,
+    totalSkipped = 0,
+    created = [],
+    skipped = [],
+    password = '',
+  } = result;
+
+  if (demoModeCreated) {
+    demoModeCreated.textContent = `Jugadores creados: ${totalCreated}`;
+    if (Array.isArray(created) && created.length) {
+      demoModeCreated.title = created.join(', ');
+    } else {
+      demoModeCreated.removeAttribute('title');
+    }
+  }
+
+  if (demoModeSkipped) {
+    demoModeSkipped.textContent = `Jugadores ya existentes: ${totalSkipped}`;
+    if (Array.isArray(skipped) && skipped.length) {
+      demoModeSkipped.title = skipped.join(', ');
+    } else {
+      demoModeSkipped.removeAttribute('title');
+    }
+  }
+
+  if (demoModePassword) {
+    if (password) {
+      demoModePassword.textContent = `Contraseña de las cuentas demo: ${password}`;
+      demoModePassword.hidden = false;
+    } else {
+      demoModePassword.textContent = '';
+      demoModePassword.hidden = true;
+    }
+  }
+
+  demoModeResults.hidden = false;
+}
+
 function persistRememberedCredentials(email, password, remember) {
   if (!remember) {
     clearRememberedCredentials();
@@ -8145,6 +8214,8 @@ function resetData() {
       '<li class="empty-state">Inicia sesión para gestionar las inscripciones.</li>';
   }
   setStatusMessage(adminEnrollmentStatus, '', '');
+  setStatusMessage(demoModeStatus, '', '');
+  resetDemoModeResults();
   state.push.enabled = false;
   state.push.subscriptionEndpoint = null;
   state.push.publicKey = null;
@@ -31434,6 +31505,44 @@ tournamentEnrollmentAddButton?.addEventListener('click', () => {
 tournamentDrawGenerateButton?.addEventListener('click', () => {
   if (!isAdmin()) return;
   openTournamentDrawModal();
+});
+
+demoModeGenerateButton?.addEventListener('click', async () => {
+  if (!isAdmin()) {
+    return;
+  }
+
+  const confirmed = await openConfirmationDialog({
+    title: 'Generar jugadores demo',
+    message:
+      'Se crearán cuentas de demostración con nombres de jugadores profesionales. Las cuentas existentes se mantendrán. ¿Deseas continuar?',
+    confirmLabel: 'Generar',
+    cancelLabel: 'Cancelar',
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  resetDemoModeResults();
+  setStatusMessage(demoModeStatus, 'info', 'Generando jugadores demo...');
+  demoModeGenerateButton.disabled = true;
+
+  try {
+    const result = await request('/players/demo', { method: 'POST' });
+    renderDemoModeResults(result);
+    const hasNewPlayers = Number(result?.totalCreated) > 0;
+    const message = hasNewPlayers
+      ? 'Se generaron los jugadores demo correctamente.'
+      : 'Las cuentas demo ya estaban creadas.';
+    setStatusMessage(demoModeStatus, 'success', message);
+  } catch (error) {
+    console.warn('No se pudo generar el modo demo', error);
+    const message = error?.message || 'No se pudo generar el modo demo.';
+    setStatusMessage(demoModeStatus, 'error', message);
+  } finally {
+    demoModeGenerateButton.disabled = false;
+  }
 });
 
 playerCreateButton?.addEventListener('click', () => {
