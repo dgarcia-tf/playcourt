@@ -23,7 +23,7 @@ const {
   upsertMatchReservation,
   cancelMatchReservation,
   resolveEndsAt,
-  autoAssignCourt: assignMatchCourt,
+  autoAssignCourt,
 } = require('../services/courtReservationService');
 const { generateCalendarMetadata } = require('../utils/calendarLinks');
 
@@ -548,7 +548,7 @@ async function createMatch(req, res) {
   if (scheduledDate) {
     if (!resolvedCourt && !matchPayload.court) {
       try {
-        const assignedCourt = await assignMatchCourt({ scheduledDate });
+        const assignedCourt = await autoAssignCourt({ scheduledDate });
         matchPayload.court = assignedCourt;
       } catch (error) {
         return res.status(error.statusCode || 400).json({ message: error.message });
@@ -896,7 +896,7 @@ async function updateMatch(req, res) {
   if (match.scheduledAt instanceof Date && !Number.isNaN(match.scheduledAt.getTime())) {
     if (!match.court) {
       try {
-        match.court = await assignMatchCourt({
+        match.court = await autoAssignCourt({
           scheduledDate: match.scheduledAt,
           excludeReservationId: existingReservation?._id,
           preferredCourt: previousCourtValue,
@@ -1673,7 +1673,7 @@ async function proposeMatch(req, res) {
 
   const { startsAt: reservationStart, endsAt: reservationEnd } = resolveEndsAt(proposedDate);
   try {
-    const assignedCourt = await assignMatchCourt({
+    const assignedCourt = await autoAssignCourt({
       scheduledDate: proposedDate,
       excludeReservationId: existingReservation?._id,
       preferredCourt: previousCourtValue,
@@ -1821,7 +1821,7 @@ async function respondToProposal(req, res) {
     match.expiresAt = undefined;
     if (!match.court) {
       try {
-        match.court = await assignMatchCourt({
+        match.court = await autoAssignCourt({
           scheduledDate: proposedDate,
           excludeReservationId: existingReservation?._id,
         });
