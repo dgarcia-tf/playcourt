@@ -1558,6 +1558,14 @@ async function recalculateTournamentBracket(req, res) {
 
   await Promise.all(matches.map((match) => match.save()));
 
+  await autoAdvanceByes(tournamentId, categoryId, req.user.id);
+
+  const refreshedMatches = await TournamentMatch.find({
+    tournament: tournamentId,
+    category: categoryId,
+    bracketType: { $in: [TOURNAMENT_BRACKETS.MAIN, TOURNAMENT_BRACKETS.CONSOLATION] },
+  }).sort({ roundOrder: 1, matchNumber: 1, createdAt: 1 });
+
   const { category } = context;
   const drawRounds = Array.isArray(category.draw) ? category.draw : [];
   const consolationRounds = Array.isArray(category.consolationDraw) ? category.consolationDraw : [];
@@ -1582,7 +1590,7 @@ async function recalculateTournamentBracket(req, res) {
     });
   });
 
-  matches.forEach((match) => {
+  refreshedMatches.forEach((match) => {
     const key = `${Number(match.roundOrder) || 0}:${Number(match.matchNumber) || 0}`;
     const targetMap =
       match.bracketType === TOURNAMENT_BRACKETS.MAIN ? mainLookup : consolationLookup;
