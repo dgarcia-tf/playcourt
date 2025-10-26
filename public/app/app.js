@@ -8190,7 +8190,15 @@ function getReservationSlotStartsForDate(baseDate = new Date()) {
   ) {
     slots.push(addMinutes(dayStart, minute));
   }
-  return slots;
+
+  const now = new Date();
+  const isToday = startOfDay(now).getTime() === dayStart.getTime();
+
+  if (!isToday) {
+    return slots;
+  }
+
+  return slots.filter((slot) => slot.getTime() >= now.getTime());
 }
 
 function getReservationSlotEnd(start) {
@@ -15892,7 +15900,7 @@ function createCalendarDaySchedule(date, events = []) {
   slots.forEach((slotStart, slotIndex) => {
     const slotEnd = getReservationSlotEnd(slotStart);
     const row = document.createElement('div');
-    row.className = 'calendar-day-schedule__row';
+    row.className = 'calendar-day-schedule__row calendar-day-schedule__row--body';
     row.style.setProperty('--calendar-schedule-court-count', courts.length);
 
     const timeCell = document.createElement('div');
@@ -17722,7 +17730,7 @@ function createCourtCalendarDaySchedule(date, events = []) {
     const slotEndDate = getReservationSlotEnd(slotStartDate);
 
     const row = document.createElement('div');
-    row.className = 'calendar-day-schedule__row';
+    row.className = 'calendar-day-schedule__row calendar-day-schedule__row--body';
     row.style.setProperty('--calendar-schedule-court-count', courts.length);
 
     const timeCell = document.createElement('div');
