@@ -10741,13 +10741,47 @@ function applyTournamentBracketRoundOffsets(grid) {
     return;
   }
 
+  const matchElementById = new Map();
+  const matchElementByNumber = new Map();
+
   roundLists.forEach((roundList) => {
-    if (roundList instanceof HTMLElement) {
+    if (!(roundList instanceof HTMLElement)) {
+      return;
+    }
+
+    const baseGapRem = Number.parseFloat(roundList.dataset.baseMatchGapRem);
+    if (Number.isFinite(baseGapRem)) {
+      roundList.style.setProperty('--bracket-match-gap', `${baseGapRem}rem`);
+    } else {
+      roundList.style.removeProperty('--bracket-match-gap');
+    }
+
+    const baseOffsetRem = Number.parseFloat(roundList.dataset.baseRoundOffsetRem);
+    if (Number.isFinite(baseOffsetRem)) {
+      if (baseOffsetRem !== 0) {
+        roundList.style.setProperty('--bracket-round-offset', `${baseOffsetRem}rem`);
+      } else {
+        roundList.style.removeProperty('--bracket-round-offset');
+      }
+    } else {
       roundList.style.removeProperty('--bracket-round-offset');
     }
-  });
 
-  let accumulatedOffsetPx = 0;
+    const matches = Array.from(roundList.querySelectorAll('.bracket-match'));
+    matches.forEach((matchElement) => {
+      if (!(matchElement instanceof HTMLElement)) {
+        return;
+      }
+      const matchId = matchElement.dataset.matchId;
+      if (matchId && !matchElementById.has(matchId)) {
+        matchElementById.set(matchId, matchElement);
+      }
+      const matchNumber = matchElement.dataset.matchNumber;
+      if (matchNumber && !matchElementByNumber.has(matchNumber)) {
+        matchElementByNumber.set(matchNumber, matchElement);
+      }
+    });
+  });
 
   for (let index = 1; index < roundLists.length; index += 1) {
     const previousRound = roundLists[index - 1];
@@ -10757,25 +10791,129 @@ function applyTournamentBracketRoundOffsets(grid) {
       continue;
     }
 
-    const previousMatches = Array.from(previousRound.querySelectorAll('.bracket-match'));
-    if (!previousMatches.length) {
+    const previousMatches = Array.from(previousRound.querySelectorAll('.bracket-match')).filter(
+      (match) => match instanceof HTMLElement
+    );
+    const currentMatches = Array.from(currentRound.querySelectorAll('.bracket-match')).filter(
+      (match) => match instanceof HTMLElement
+    );
+
+    if (!previousMatches.length || !currentMatches.length) {
       continue;
     }
 
-    const firstPreviousMatch = previousMatches[0];
-    const firstPreviousRect = firstPreviousMatch.getBoundingClientRect();
-    const secondPreviousMatch = previousMatches[1] || null;
+    const previousCount = previousMatches.length;
+    const currentCount = currentMatches.length;
+    const expectedPreviousMatches = Number.parseInt(
+      currentRound.dataset.expectedPreviousMatches || '',
+      10
+    );
+    const expectedCurrentMatches = Number.parseInt(currentRound.dataset.expectedMatches || '', 10);
 
-    const previousMatchHeightPx = firstPreviousRect.height;
-    let previousGapPx = previousMatchHeightPx;
-
-    if (secondPreviousMatch) {
-      const secondPreviousRect = secondPreviousMatch.getBoundingClientRect();
-      previousGapPx = Math.max(0, secondPreviousRect.top - firstPreviousRect.bottom);
+    let baseGroupSize = Math.floor(previousCount / Math.max(currentCount, 1));
+    if (!Number.isFinite(baseGroupSize) || baseGroupSize < 1) {
+      baseGroupSize = 1;
     }
 
-    accumulatedOffsetPx += (previousMatchHeightPx + previousGapPx) / 2;
-    currentRound.style.setProperty('--bracket-round-offset', `${accumulatedOffsetPx}px`);
+    if (
+      Number.isFinite(expectedPreviousMatches) &&
+      Number.isFinite(expectedCurrentMatches) &&
+      expectedCurrentMatches > 0
+    ) {
+      const expectedRatio = expectedPreviousMatches / expectedCurrentMatches;
+      if (Number.isFinite(expectedRatio) && expectedRatio > 0) {
+        const normalizedExpected = Math.max(1, Math.round(expectedRatio));
+        if (normalizedExpected > baseGroupSize) {
+          baseGroupSize = normalizedExpected;
+        }
+      }
+    }
+
+    let remainder = previousCount - baseGroupSize * currentCount;
+    if (!Number.isFinite(remainder) || remainder < 0) {
+      remainder = 0;
+    }
+
+    const getGroupCenter = (elements) => {
+      if (!Array.isArray(elements) || elements.length === 0) {
+        return null;
+      }
+
+      const firstElement = elements[0];
+      const lastElement = elements[elements.length - 1];
+      if (!(firstElement instanceof HTMLElement) || !(lastElement instanceof HTMLElement)) {
+        return null;
+      }
+
+      const firstRect = firstElement.getBoundingClientRect();
+      const lastRect = lastElement.getBoundingClientRect();
+      return (firstRect.top + lastRect.bottom) / 2;
+    };
+
+    const getFallbackGroup = (matchIndex) => {
+      if (matchIndex < 0) {
+        return [];
+      }
+      const adjustedIndex = Math.min(matchIndex, currentCount - 1);
+      const extra = adjustedIndex < remainder ? 1 : 0;
+      const start = adjustedIndex * baseGroupSize + Math.min(adjustedIndex, remainder);
+      const size = baseGroupSize + extra;
+      return previousMatches.slice(start, start + size).filter((match) => match instanceof HTMLElement);
+    };
+
+    const resolveFeederGroup = (matchElement, matchIndex) => {
+      if (!(matchElement instanceof HTMLElement)) {
+        return [];
+      }
+
+      const previousIds = (matchElement.dataset.previousMatchIds || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const byId = previousIds
+        .map((id) => matchElementById.get(id))
+        .filter((element) => element instanceof HTMLElement);
+      if (byId.length) {
+        return byId;
+      }
+
+      const previousNumbers = (matchElement.dataset.previousMatchNumbers || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const byNumber = previousNumbers
+        .map((numberValue) => matchElementByNumber.get(numberValue))
+        .filter((element) => element instanceof HTMLElement);
+      if (byNumber.length) {
+        return byNumber;
+      }
+
+      return getFallbackGroup(matchIndex);
+    };
+
+    const currentFirstMatch = currentMatches[0];
+    const currentFirstRect = currentFirstMatch.getBoundingClientRect();
+    const currentFirstCenter = currentFirstRect.top + currentFirstRect.height / 2;
+
+    const firstGroup = resolveFeederGroup(currentFirstMatch, 0);
+    const firstGroupCenter = getGroupCenter(firstGroup);
+
+    if (Number.isFinite(firstGroupCenter)) {
+      const offsetPx = Math.max(0, firstGroupCenter - currentFirstCenter);
+      currentRound.style.setProperty('--bracket-round-offset', `${offsetPx}px`);
+    }
+
+    if (currentMatches.length > 1) {
+      const secondMatch = currentMatches[1];
+      const secondGroup = resolveFeederGroup(secondMatch, 1);
+      const secondGroupCenter = getGroupCenter(secondGroup);
+
+      if (Number.isFinite(firstGroupCenter) && Number.isFinite(secondGroupCenter)) {
+        const desiredCenterDistance = Math.max(0, secondGroupCenter - firstGroupCenter);
+        const desiredGap = Math.max(0, desiredCenterDistance - currentFirstRect.height);
+        currentRound.style.setProperty('--bracket-match-gap', `${desiredGap}px`);
+      }
+    }
   }
 }
 
@@ -13883,6 +14021,54 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
   const card = document.createElement('div');
   card.className = 'bracket-match';
 
+  if (matchId) {
+    card.dataset.matchId = matchId;
+  }
+
+  const displayMatchNumber = match?.matchNumber || matchNumber;
+  if (displayMatchNumber) {
+    card.dataset.matchNumber = `${displayMatchNumber}`;
+  }
+
+  const previousMatchIds = Array.isArray(match?.previousMatches)
+    ? match.previousMatches
+        .map((previous) => normalizeId(previous))
+        .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
+    : [];
+  if (previousMatchIds.length) {
+    card.dataset.previousMatchIds = previousMatchIds.join(',');
+  }
+
+  const placeholderSources = [];
+  if (Array.isArray(placeholderLabels)) {
+    placeholderSources.push(...placeholderLabels);
+  }
+  if (typeof match?.placeholderA === 'string') {
+    placeholderSources.push(match.placeholderA);
+  }
+  if (typeof match?.placeholderB === 'string') {
+    placeholderSources.push(match.placeholderB);
+  }
+
+  const placeholderMatchNumbers = new Set();
+  placeholderSources.forEach((text) => {
+    if (typeof text !== 'string' || !/partido/i.test(text)) {
+      return;
+    }
+    const numberRegex = /\d+/g;
+    numberRegex.lastIndex = 0;
+    let matchResult = null;
+    while ((matchResult = numberRegex.exec(text))) {
+      const [numberValue] = matchResult;
+      if (numberValue) {
+        placeholderMatchNumbers.add(numberValue);
+      }
+    }
+  });
+  if (placeholderMatchNumbers.size) {
+    card.dataset.previousMatchNumbers = Array.from(placeholderMatchNumbers).join(',');
+  }
+
   if (roundIndex > 0) {
     card.classList.add('bracket-match--has-prev');
   }
@@ -13899,7 +14085,6 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
 
   const label = document.createElement('span');
   label.className = 'bracket-match__label';
-  const displayMatchNumber = match?.matchNumber || matchNumber;
   label.textContent = displayMatchNumber ? `Partido ${displayMatchNumber}` : 'Partido';
   header.appendChild(label);
 
@@ -14222,15 +14407,26 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map(), dr
 
     const matchList = document.createElement('div');
     matchList.className = 'bracket-round__matches';
+    matchList.dataset.roundIndex = `${roundIndex}`;
+    matchList.dataset.expectedMatches = `${expectedMatches}`;
+    const previousExpectedMatches =
+      roundIndex > 0 ? Math.max(1, expectedMatchesPerRound[roundIndex - 1] || 1) : expectedMatches;
+    matchList.dataset.expectedPreviousMatches = `${previousExpectedMatches}`;
 
     const gapRem = matchGapByRound[roundIndex];
     if (Number.isFinite(gapRem)) {
       matchList.style.setProperty('--bracket-match-gap', `${gapRem}rem`);
+      matchList.dataset.baseMatchGapRem = `${gapRem}`;
     }
 
     const offsetRem = roundOffsetByRound[roundIndex];
-    if (offsetRem) {
+    if (Number.isFinite(offsetRem) && offsetRem !== 0) {
       matchList.style.setProperty('--bracket-round-offset', `${offsetRem}rem`);
+    } else if (offsetRem === 0) {
+      matchList.style.removeProperty('--bracket-round-offset');
+    }
+    if (Number.isFinite(offsetRem)) {
+      matchList.dataset.baseRoundOffsetRem = `${offsetRem}`;
     }
 
     for (let slotIndex = 0; slotIndex < expectedMatches; slotIndex += 1) {
