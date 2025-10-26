@@ -798,6 +798,29 @@ function filterSlotsByAvailability(options, {
     return [];
   }
 
+  const availableSlotTimes = new Set();
+  availabilityList.forEach((entry) => {
+    const slots = Array.isArray(entry?.availableSlots) ? entry.availableSlots : [];
+    slots.forEach((slot) => {
+      const slotStart = parseDateSafe(slot?.startsAt);
+      if (!slotStart) {
+        return;
+      }
+      const slotDateValue = formatDateInput(slotStart);
+      if (slotDateValue !== dateValue) {
+        return;
+      }
+      const timeValue = formatTimeInputValue(slotStart);
+      if (timeValue) {
+        availableSlotTimes.add(timeValue);
+      }
+    });
+  });
+
+  if (availableSlotTimes.size) {
+    return options.filter((slot) => availableSlotTimes.has(slot.value));
+  }
+
   return options.filter((slot) => {
     const slotStart = combineDateAndTime(dateValue, slot.value);
     if (!(slotStart instanceof Date) || Number.isNaN(slotStart.getTime())) {
@@ -2649,14 +2672,6 @@ if (adminMatchDatetimeInput) {
 }
 
 if (adminMatchDay && adminMatchSlot) {
-  const getAdminSelectedCourt = () => {
-    if (!adminMatchCourt) {
-      return '';
-    }
-    const value = adminMatchCourt.value || '';
-    return typeof value === 'string' ? value.trim() : '';
-  };
-
   const handleAdminScheduleDateChange = async () => {
     try {
       await updateMatchScheduleSlots({
@@ -2664,7 +2679,6 @@ if (adminMatchDay && adminMatchSlot) {
         dateValue: adminMatchDay.value,
         templates: getClubMatchScheduleTemplates(),
         scope: 'admin',
-        courtValue: getAdminSelectedCourt(),
       });
     } catch (error) {
       console.warn('No fue posible cargar la disponibilidad de pistas', error);
@@ -2679,13 +2693,6 @@ if (adminMatchDay && adminMatchSlot) {
   adminMatchDay.addEventListener('input', () => {
     handleAdminScheduleDateChange();
   });
-  if (adminMatchCourt) {
-    const handleCourtChange = () => {
-      handleAdminScheduleDateChange();
-    };
-    adminMatchCourt.addEventListener('change', handleCourtChange);
-    adminMatchCourt.addEventListener('input', handleCourtChange);
-  }
   adminMatchSlot.addEventListener('change', () => {
     syncAdminMatchScheduledValue();
   });
@@ -18722,39 +18729,13 @@ function openProposalForm(matchId, triggerButton) {
     return;
   }
 
-  const courtNames = getClubCourtNames();
-
-  const courtOptions = courtNames
-    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-    .join('');
-
   const form = document.createElement('form');
   form.className = 'proposal-form';
 
   const dateInputId = `proposal-${matchId}-datetime`;
   const dayInputId = `${dateInputId}-day`;
   const slotInputId = `${dateInputId}-slot`;
-  const courtInputId = `proposal-${matchId}-court`;
   const messageInputId = `proposal-${matchId}-message`;
-
-  const courtFieldMarkup = courtNames.length
-    ? `
-    <div class="proposal-form__field">
-      <label for="${courtInputId}">Pista (opcional)</label>
-      <select id="${courtInputId}" name="court">
-        <option value="">Por definir</option>
-        ${courtOptions}
-      </select>
-      <span class="form-hint">Las pistas disponibles se gestionan en el perfil del club.</span>
-    </div>
-  `
-    : `
-    <div class="proposal-form__field">
-      <label for="${courtInputId}">Pista (opcional)</label>
-      <input type="text" id="${courtInputId}" name="court" placeholder="Añade pistas en la sección del club" disabled />
-      <span class="form-hint">Añade pistas en la sección del club para poder asignarlas.</span>
-    </div>
-  `;
 
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const hasScheduleTemplates = Array.isArray(scheduleTemplates) && scheduleTemplates.length > 0;
@@ -18780,7 +18761,6 @@ function openProposalForm(matchId, triggerButton) {
 
   form.innerHTML = `
     <h4>Proponer fecha y hora</h4>
-    ${courtFieldMarkup}
     ${scheduleFieldMarkup}
     <div class="proposal-form__field">
       <label for="${messageInputId}">Mensaje (opcional)</label>
@@ -18796,7 +18776,6 @@ function openProposalForm(matchId, triggerButton) {
   const proposedInput = hasScheduleTemplates ? null : form.querySelector('input[name="proposedFor"]');
   const proposedDayInput = hasScheduleTemplates ? form.querySelector('input[name="proposedDay"]') : null;
   const proposedSlotSelect = hasScheduleTemplates ? form.querySelector('select[name="proposedSlot"]') : null;
-  const courtInput = form.querySelector('[name="court"]');
   const messageInput = form.querySelector('textarea[name="message"]');
   const cancelButton = form.querySelector('button[data-action="cancel"]');
   const submitButton = form.querySelector('button[type="submit"]');
@@ -18825,18 +18804,6 @@ function openProposalForm(matchId, triggerButton) {
   }
 
   if (hasScheduleTemplates) {
-    const getProposalCourtValue = () => {
-      if (!courtInput) {
-        return '';
-      }
-      if (courtInput.tagName === 'SELECT') {
-        const value = courtInput.value || '';
-        return typeof value === 'string' ? value.trim() : '';
-      }
-      const rawValue = courtInput.value || '';
-      return typeof rawValue === 'string' ? rawValue.trim() : '';
-    };
-
     const defaultDateString = !Number.isNaN(defaultDateValue.getTime())
       ? formatDateInput(defaultDateValue)
       : '';
@@ -18857,7 +18824,6 @@ function openProposalForm(matchId, triggerButton) {
         templates: scheduleTemplates,
         selectedTime,
         scope: 'player',
-        courtValue: getProposalCourtValue(),
       });
 
       if (result.hasOptions && !proposedSlotSelect.value) {
@@ -18886,21 +18852,6 @@ function openProposalForm(matchId, triggerButton) {
 
       proposedDayInput.addEventListener('change', handleDayChange);
       proposedDayInput.addEventListener('input', handleDayChange);
-    }
-
-    if (courtInput) {
-      const handleCourtChange = () => {
-        updateSlotOptions(proposedSlotSelect?.value || '')
-          .catch((error) => {
-            console.warn('No fue posible cargar la disponibilidad de pistas', error);
-          })
-          .finally(() => {
-            updateError();
-          });
-      };
-
-      courtInput.addEventListener('change', handleCourtChange);
-      courtInput.addEventListener('input', handleCourtChange);
     }
 
     if (proposedSlotSelect) {
@@ -18993,14 +18944,6 @@ function openProposalForm(matchId, triggerButton) {
     }
 
     const messageValue = messageInput?.value.trim();
-    const courtValue = (() => {
-      if (!courtInput) return '';
-      if (courtInput.tagName === 'SELECT') {
-        return courtInput.value;
-      }
-      const rawValue = courtInput.value || '';
-      return rawValue.trim();
-    })();
 
     if (submitButton) submitButton.disabled = true;
     if (cancelButton) cancelButton.disabled = true;
@@ -19011,7 +18954,6 @@ function openProposalForm(matchId, triggerButton) {
         body: {
           proposedFor: proposedDate.toISOString(),
           message: messageValue ? messageValue : undefined,
-          court: courtValue ? courtValue : undefined,
         },
       });
       showGlobalMessage('Se envió la propuesta de partido.', 'info');
@@ -19033,9 +18975,7 @@ function openProposalForm(matchId, triggerButton) {
   activeProposalMatchId = matchId;
 
   listItem.appendChild(form);
-  if (courtInput && !courtInput.disabled) {
-    courtInput.focus();
-  } else if (hasScheduleTemplates) {
+  if (hasScheduleTemplates) {
     (proposedDayInput || proposedSlotSelect)?.focus();
   } else {
     proposedInput?.focus();
@@ -22178,9 +22118,6 @@ function updateAdminMatchScheduleVisibility({ selectedTime } = {}) {
       templates,
       selectedTime,
       scope: 'admin',
-      courtValue: (adminMatchCourt && typeof adminMatchCourt.value === 'string')
-        ? adminMatchCourt.value.trim()
-        : '',
     })
       .catch((error) => {
         console.warn('No fue posible cargar la disponibilidad de pistas', error);
@@ -24962,13 +24899,6 @@ function buildMatchPayload(formData, isEditing = false) {
     payload.status = status;
   }
 
-  const court = (formData.get('court') || '').trim();
-  if (court) {
-    payload.court = court;
-  } else if (isEditing) {
-    payload.court = null;
-  }
-
   const notes = (formData.get('notes') || '').trim();
   if (notes) {
     payload.notes = notes;
@@ -25072,7 +25002,6 @@ async function submitTournamentMatchSchedule({
 
   const formData = new FormData(form);
   const scheduledAtRaw = (formData.get('scheduledAt') || '').toString();
-  const courtValue = (formData.get('court') || '').toString().trim();
   const statusValue = (formData.get('status') || '').toString();
   const notifyPlayers = formData.get('notifyPlayers') === 'true';
 
@@ -25103,7 +25032,6 @@ async function submitTournamentMatchSchedule({
 
   const payload = {
     scheduledAt: scheduledAtRaw || null,
-    court: courtValue || null,
   };
 
   if (statusValue) {
@@ -26124,31 +26052,6 @@ function openMatchModal(matchId = '') {
     .map(([value, label]) => `<option value="${value}">${label}</option>`)
     .join('');
 
-  const courtNames = getClubCourtNames();
-
-  const courtOptions = courtNames
-    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-    .join('');
-
-  const courtFieldMarkup = courtNames.length
-    ? `
-    <label>
-      Pista
-      <select name="court">
-        <option value="">Sin pista asignada</option>
-        ${courtOptions}
-      </select>
-      <span class="form-hint">Las pistas disponibles se gestionan en el perfil del club.</span>
-    </label>
-  `
-    : `
-    <label>
-      Pista
-      <input type="text" name="court" placeholder="Añade pistas en la sección del club" disabled />
-      <span class="form-hint">Añade pistas en la sección del club para poder asignarlas.</span>
-    </label>
-  `;
-
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = scheduleTemplates.length
     ? `
@@ -26209,7 +26112,6 @@ function openMatchModal(matchId = '') {
         ${statusOptions}
       </select>
     </label>
-    ${courtFieldMarkup}
     ${scheduleFieldMarkup}
     <label>
       Notas internas
@@ -26231,7 +26133,6 @@ function openMatchModal(matchId = '') {
   const scheduleDateField = form.elements.scheduledDate;
   const scheduleSlotField = form.elements.scheduledSlot;
   const statusField = form.elements.status;
-  const courtField = form.elements.court;
   const notesField = form.elements.notes;
   const submitButton = form.querySelector('button[type="submit"]');
 
@@ -26415,24 +26316,9 @@ function openMatchModal(matchId = '') {
       scheduleDateField,
       scheduleSlotField,
       scheduledField,
-      courtField,
       existingValue: scheduledField?.value || '',
       scope: 'admin',
     });
-  }
-  if (courtField) {
-    const courtValue = match?.court || '';
-    if (courtValue && courtField.tagName === 'SELECT') {
-      const options = Array.from(courtField.options || []);
-      const hasOption = options.some((option) => option.value === courtValue);
-      if (!hasOption) {
-        const option = document.createElement('option');
-        option.value = courtValue;
-        option.textContent = courtValue;
-        courtField.appendChild(option);
-      }
-    }
-    courtField.value = courtValue;
   }
   if (notesField) {
     notesField.value = match?.result?.notes || match?.notes || '';
@@ -26481,12 +26367,6 @@ function openMatchModal(matchId = '') {
     },
     onClose: () => setStatusMessage(status, '', ''),
   });
-
-  if (courtField && !courtField.disabled) {
-    requestAnimationFrame(() => {
-      courtField.focus();
-    });
-  }
 }
 
 function openClubModal() {
@@ -26712,30 +26592,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
     }
   }
 
-  const courtNames = getClubCourtNames();
-  const courtOptions = courtNames
-    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-    .join('');
-
-  const courtFieldMarkup = courtNames.length
-    ? `
-    <label>
-      Pista
-      <select name="court">
-        <option value="">Sin pista asignada</option>
-        ${courtOptions}
-      </select>
-      <span class="form-hint">Las pistas disponibles se gestionan en el perfil del club.</span>
-    </label>
-  `
-    : `
-    <label>
-      Pista
-      <input type="text" name="court" placeholder="Añade pistas en la sección del club" disabled />
-      <span class="form-hint">Añade pistas en la sección del club para poder asignarlas.</span>
-    </label>
-  `;
-
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = scheduleTemplates.length
     ? `
@@ -26792,8 +26648,8 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
         ${statusOptions}
       </select>
     </label>
-    ${courtFieldMarkup}
     ${scheduleFieldMarkup}
+    <p class="form-hint" data-match-court-info></p>
     <label class="checkbox-option">
       <input type="checkbox" name="notifyPlayers" value="true" />
       Notificar a los jugadores por correo y push
@@ -26813,11 +26669,11 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   const playerOneField = form.elements.playerLabel1;
   const playerTwoField = form.elements.playerLabel2;
   const statusField = form.elements.status;
-  const courtField = form.elements.court;
   const scheduledField = form.elements.scheduledAt;
   const scheduleDateField = form.elements.scheduledDate;
   const scheduleSlotField = form.elements.scheduledSlot;
   const notifyField = form.elements.notifyPlayers;
+  const courtInfoElement = form.querySelector('[data-match-court-info]');
   const cancelButton = form.querySelector('button[data-action="cancel"]');
   const submitButton = form.querySelector('button[type="submit"]');
 
@@ -26878,17 +26734,30 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
     statusField.value = currentStatus;
   }
 
-  if (courtField) {
-    const courtValue = match?.court || '';
-    if (courtValue && courtField.tagName === 'SELECT') {
-      const options = Array.from(courtField.options || []);
-      const hasOption = options.some((option) => option.value === courtValue);
-      if (!hasOption) {
-        const option = new Option(courtValue, courtValue, true, true);
-        courtField.appendChild(option);
-      }
+  if (courtInfoElement) {
+    const setAutoAssignHint = () => {
+      courtInfoElement.textContent =
+        'La pista se asignará automáticamente según la disponibilidad del club al guardar el horario.';
+    };
+
+    if (match?.court) {
+      courtInfoElement.textContent = `Pista asignada automáticamente: ${match.court}.`;
+    } else {
+      setAutoAssignHint();
     }
-    courtField.value = courtValue;
+
+    const resetCourtInfoMessage = () => {
+      setAutoAssignHint();
+    };
+
+    scheduleDateField?.addEventListener('change', resetCourtInfoMessage);
+    scheduleDateField?.addEventListener('input', resetCourtInfoMessage);
+    scheduleSlotField?.addEventListener('change', resetCourtInfoMessage);
+    scheduleSlotField?.addEventListener('input', resetCourtInfoMessage);
+    if (!scheduleDateField && scheduledField) {
+      scheduledField.addEventListener('change', resetCourtInfoMessage);
+      scheduledField.addEventListener('input', resetCourtInfoMessage);
+    }
   }
 
   if (notifyField) {
@@ -26903,7 +26772,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       scheduleDateField,
       scheduleSlotField,
       scheduledField,
-      courtField,
       existingValue: scheduledField?.value || '',
       scope: 'admin',
     });
