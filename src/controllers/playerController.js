@@ -11,6 +11,15 @@ const {
 const { hashPassword } = require('../utils/password');
 const { notifyAdminsOfNewUser } = require('../services/userNotificationService');
 
+function slugifyName(name) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
 function sanitizeUser(user) {
   const payload = user.toObject({ virtuals: false });
   if (!payload.photo && typeof payload.photoUrl === 'string') {
@@ -145,6 +154,96 @@ async function createPlayer(req, res) {
   await notifyAdminsOfNewUser(user, { actorId: req.user?.id });
 
   return res.status(201).json(sanitizeUser(user));
+}
+
+async function createDemoPlayers(req, res) {
+  const malePlayers = [
+    { fullName: 'Novak Djokovic', birthDate: '1987-05-22' },
+    { fullName: 'Carlos Alcaraz', birthDate: '2003-05-05' },
+    { fullName: 'Daniil Medvedev', birthDate: '1996-02-11' },
+    { fullName: 'Jannik Sinner', birthDate: '2001-08-16' },
+    { fullName: 'Holger Rune', birthDate: '2003-04-29' },
+    { fullName: 'Stefanos Tsitsipas', birthDate: '1998-08-12' },
+    { fullName: 'Andrey Rublev', birthDate: '1997-10-20' },
+    { fullName: 'Casper Ruud', birthDate: '1998-12-22' },
+    { fullName: 'Taylor Fritz', birthDate: '1997-10-28' },
+    { fullName: 'Frances Tiafoe', birthDate: '1998-01-20' },
+    { fullName: 'Alexander Zverev', birthDate: '1997-04-20' },
+    { fullName: 'Hubert Hurkacz', birthDate: '1997-02-11' },
+    { fullName: 'Karen Khachanov', birthDate: '1996-05-21' },
+    { fullName: 'Tommy Paul', birthDate: '1997-05-17' },
+    { fullName: 'Alex de Minaur', birthDate: '1999-02-17' },
+    { fullName: 'Felix Auger-Aliassime', birthDate: '2000-08-08' },
+  ].map((player) => ({ ...player, gender: GENDERS.MALE }));
+
+  const femalePlayers = [
+    { fullName: 'Iga Swiatek', birthDate: '2001-05-31' },
+    { fullName: 'Aryna Sabalenka', birthDate: '1998-05-05' },
+    { fullName: 'Jessica Pegula', birthDate: '1994-02-24' },
+    { fullName: 'Elena Rybakina', birthDate: '1999-06-17' },
+    { fullName: 'Caroline Garcia', birthDate: '1993-10-16' },
+    { fullName: 'Coco Gauff', birthDate: '2004-03-13' },
+    { fullName: 'Ons Jabeur', birthDate: '1994-08-28' },
+    { fullName: 'Maria Sakkari', birthDate: '1995-07-25' },
+    { fullName: 'Daria Kasatkina', birthDate: '1997-05-07' },
+    { fullName: 'Veronika Kudermetova', birthDate: '1997-04-24' },
+    { fullName: 'Belinda Bencic', birthDate: '1997-03-10' },
+    { fullName: 'Petra Kvitova', birthDate: '1990-03-08' },
+    { fullName: 'Barbora Krejcikova', birthDate: '1995-12-18' },
+    { fullName: 'Paula Badosa', birthDate: '1997-11-15' },
+    { fullName: 'Beatriz Haddad Maia', birthDate: '1996-05-30' },
+    { fullName: 'Jelena Ostapenko', birthDate: '1997-06-08' },
+  ].map((player) => ({ ...player, gender: GENDERS.FEMALE }));
+
+  const demoPlayers = [...malePlayers, ...femalePlayers];
+
+  const createdPlayers = [];
+  const skippedPlayers = [];
+  let playerIndex = 0;
+  const demoPassword = process.env.DEMO_PLAYER_PASSWORD || 'Demo1234!';
+  const hashedPassword = hashPassword(demoPassword);
+
+  for (const player of demoPlayers) {
+    playerIndex += 1;
+    const slug = slugifyName(player.fullName);
+    const email = `demo-${player.gender === GENDERS.MALE ? 'atp' : 'wta'}-${slug}@demo.tenis`;
+
+    const existing = await User.findOne({ email });
+    if (existing) {
+      skippedPlayers.push(player.fullName);
+      continue;
+    }
+
+    const birthDate = new Date(player.birthDate);
+
+    const created = await User.create({
+      fullName: player.fullName,
+      email,
+      password: hashedPassword,
+      gender: player.gender,
+      birthDate,
+      roles: [USER_ROLES.PLAYER],
+      role: USER_ROLES.PLAYER,
+      phone: (600000000 + playerIndex).toString(),
+      preferredSchedule: PREFERRED_SCHEDULES.FLEXIBLE,
+      notifyMatchRequests: true,
+      notifyMatchResults: true,
+      isMember: false,
+      membershipNumberVerified: false,
+      shirtSize: player.gender === GENDERS.MALE ? 'L' : 'M',
+      notes: 'Jugador generado automáticamente para el modo demo.',
+    });
+
+    createdPlayers.push(created.fullName);
+  }
+
+  return res.status(201).json({
+    created: createdPlayers,
+    skipped: skippedPlayers,
+    totalCreated: createdPlayers.length,
+    totalSkipped: skippedPlayers.length,
+    password: demoPassword,
+  });
 }
 
 async function updatePlayer(req, res) {
@@ -335,6 +434,7 @@ async function deletePlayer(req, res) {
 module.exports = {
   listPlayers,
   createPlayer,
+  createDemoPlayers,
   updatePlayer,
   deletePlayer,
   USER_ROLES,
