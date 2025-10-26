@@ -15138,9 +15138,8 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map() } =
           roundIndex,
           totalRounds,
           slotIndex: matchIndex,
-          useConnectors: false,
+          useConnectors: true,
         });
-        card.classList.add('bracket-match--list');
         matchList.appendChild(card);
       });
     }
@@ -15182,6 +15181,8 @@ function createTournamentBracketSection({
 
   const grid = buildTournamentBracketGrid(matches, { seedByPlayer, drawSize });
   section.appendChild(grid);
+
+  scheduleTournamentBracketAlignment(section);
 
   return section;
 }
