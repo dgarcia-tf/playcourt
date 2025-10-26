@@ -1425,6 +1425,7 @@ function createMatchScheduleSlotPicker({
   existingValue = '',
   existingCourt = '',
   onChange = () => {},
+  ignoreMatchId = '',
 } = {}) {
   const resolvedTemplates = Array.isArray(templates) ? templates : [];
   if (!container || !dateField || !scheduledField) {
@@ -1553,14 +1554,54 @@ function createMatchScheduleSlotPicker({
     );
   };
 
+  const reservationMatchesIgnoredMatch = (reservation) => {
+    if (!state.ignoredMatchId) {
+      return false;
+    }
+    const reservationMatchId = normalizeId(reservation?.match);
+    return reservationMatchId && reservationMatchId === state.ignoredMatchId;
+  };
+
+  const filterReservations = (reservations) => {
+    if (!state.ignoredMatchId) {
+      return reservations;
+    }
+    return reservations.filter((reservation) => !reservationMatchesIgnoredMatch(reservation));
+  };
+
+  const doesReservationCoverSlot = (reservation, timeValue) => {
+    const reservationStart = parseDateSafe(reservation?.startsAt);
+    if (!reservationStart) {
+      return false;
+    }
+    if (formatDateInput(reservationStart) !== state.dateValue) {
+      return false;
+    }
+    if (timeValue && formatTimeInputValue(reservationStart) !== timeValue) {
+      return false;
+    }
+    const reservationEnd =
+      parseDateSafe(reservation?.endsAt) || addMinutes(reservationStart, COURT_RESERVATION_DEFAULT_DURATION);
+    return isTimeRangeOverlapping(slotStart, slotEnd, reservationStart, reservationEnd);
+  };
+
+  const eventMatchesIgnoredMatch = (event) => {
+    if (!state.ignoredMatchId || !event) {
+      return false;
+    }
+    const eventMatchId = normalizeId(event.matchId || event.match);
+    return eventMatchId && eventMatchId === state.ignoredMatchId;
+  };
+
   const isSlotAvailableForCourt = (entry, slotStart, slotEnd, timeValue) => {
     if (!entry) {
       return false;
     }
 
     const availableSlots = Array.isArray(entry.availableSlots) ? entry.availableSlots : [];
+    const reservations = Array.isArray(entry.reservations) ? entry.reservations : [];
     if (availableSlots.length) {
-      return availableSlots.some((slot) => {
+      const matchesAvailableSlot = availableSlots.some((slot) => {
         const startsAt = parseDateSafe(slot?.startsAt);
         if (!startsAt) {
           return false;
@@ -1569,10 +1610,22 @@ function createMatchScheduleSlotPicker({
           formatDateInput(startsAt) === state.dateValue && formatTimeInputValue(startsAt) === timeValue
         );
       });
+
+      if (matchesAvailableSlot) {
+        return true;
+      }
+
+      if (state.ignoredMatchId) {
+        return reservations.some(
+          (reservation) => reservationMatchesIgnoredMatch(reservation) && doesReservationCoverSlot(reservation, timeValue)
+        );
+      }
+
+      return false;
     }
 
     return isCourtAvailableForSlot(slotStart, slotEnd, {
-      reservations: Array.isArray(entry.reservations) ? entry.reservations : [],
+      reservations: filterReservations(reservations),
       blocks: Array.isArray(entry.blocks) ? entry.blocks : [],
     });
   };
@@ -1672,16 +1725,18 @@ function createMatchScheduleSlotPicker({
           cell.classList.add('calendar-day-schedule__cell--last-column');
         }
 
-        const slotEvents = normalizedEvents.filter(
-          (entry) =>
-            isCourtCalendarEventForCourt(entry.event, court.name) &&
-            doesCourtCalendarEventOverlapSlot(entry, slotStart, slotEnd)
-        );
+    const slotEvents = normalizedEvents
+      .filter(
+        (entry) =>
+          isCourtCalendarEventForCourt(entry.event, court.name) &&
+          doesCourtCalendarEventOverlapSlot(entry, slotStart, slotEnd)
+      )
+      .filter((entry) => !eventMatchesIgnoredMatch(entry.event));
 
-        if (slotEvents.length) {
-          cell.classList.add('calendar-day-schedule__cell--busy');
-          slotEvents
-            .sort((a, b) => a.start - b.start)
+    if (slotEvents.length) {
+      cell.classList.add('calendar-day-schedule__cell--busy');
+      slotEvents
+        .sort((a, b) => a.start - b.start)
             .forEach((entry) => {
               const eventElement = createCourtCalendarEvent(entry.event);
               eventElement.classList.add('calendar-schedule-event');
@@ -19627,6 +19682,7 @@ function openProposalForm(matchId, triggerButton) {
         templates: scheduleTemplates,
         scope: 'player',
         existingValue: defaultSelectionValue,
+        ignoreMatchId: matchId,
         onChange: () => {
           updateError();
         },
@@ -22902,6 +22958,7 @@ function updateAdminMatchScheduleVisibility({ selectedTime, selectedCourt } = {}
       scope: 'admin',
       existingValue: adminMatchDate.value || '',
       existingCourt: resolvedSelectedCourt,
+      ignoreMatchId: state.adminMatchEditingId || '',
       onChange: () => {
         syncAdminMatchScheduledValue();
       },
@@ -27167,6 +27224,7 @@ function openMatchModal(matchId = '') {
       scope: 'admin',
       existingValue: scheduledField?.value || '',
       existingCourt: match?.court || '',
+      ignoreMatchId: match?._id || '',
       onChange: updateStatusForSchedule,
     });
 
@@ -27638,6 +27696,7 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       scope: 'admin',
       existingValue: scheduledField?.value || '',
       existingCourt: courtField?.value || match?.court || '',
+      ignoreMatchId: match?._id || '',
       onChange: () => {
         updateCourtInfoDisplay();
         if (statusField) {
