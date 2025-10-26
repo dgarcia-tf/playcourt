@@ -11431,7 +11431,14 @@ function applyTournamentBracketRoundOffsets(grid) {
     return;
   }
 
-  const roundLists = Array.from(grid.querySelectorAll('.bracket-round__matches'));
+  const roundLists = Array.from(grid.querySelectorAll('.bracket-round__matches')).filter(
+    (roundList) => {
+      const roundSection = roundList.closest('.bracket-round');
+      return !(
+        roundSection instanceof HTMLElement && roundSection.classList.contains('bracket-round--hidden')
+      );
+    }
+  );
   if (!roundLists.length) {
     return;
   }
@@ -14899,6 +14906,164 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
   return card;
 }
 
+function determineInitialBracketRoundIndex(roundEntries = []) {
+  if (!Array.isArray(roundEntries) || roundEntries.length === 0) {
+    return 0;
+  }
+
+  for (let index = 0; index < roundEntries.length; index += 1) {
+    const roundMatches = Array.isArray(roundEntries[index]?.matches)
+      ? roundEntries[index].matches
+      : [];
+
+    const hasPendingMatch = roundMatches.some(
+      (match) => !bracketMatchesHaveRecordedResults([match])
+    );
+
+    if (hasPendingMatch) {
+      return index;
+    }
+  }
+
+  return roundEntries.length - 1;
+}
+
+function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIndex = 0 } = {}) {
+  const sections = Array.isArray(roundSections)
+    ? roundSections.filter((section) => section instanceof HTMLElement)
+    : [];
+
+  if (!(grid instanceof HTMLElement) || sections.length <= 1) {
+    return null;
+  }
+
+  const nav = document.createElement('div');
+  nav.className = 'bracket-round-nav';
+  nav.setAttribute('aria-label', 'Navegación de rondas del cuadro');
+
+  const prevButton = document.createElement('button');
+  prevButton.type = 'button';
+  prevButton.className = 'bracket-round-nav__control bracket-round-nav__control--prev';
+  prevButton.setAttribute('aria-label', 'Ronda anterior');
+  prevButton.title = 'Ronda anterior';
+  prevButton.innerHTML = '<span aria-hidden="true">‹</span>';
+
+  const nextButton = document.createElement('button');
+  nextButton.type = 'button';
+  nextButton.className = 'bracket-round-nav__control bracket-round-nav__control--next';
+  nextButton.setAttribute('aria-label', 'Ronda siguiente');
+  nextButton.title = 'Ronda siguiente';
+  nextButton.innerHTML = '<span aria-hidden="true">›</span>';
+
+  const buttonList = document.createElement('div');
+  buttonList.className = 'bracket-round-nav__list';
+
+  nav.appendChild(prevButton);
+  nav.appendChild(buttonList);
+  nav.appendChild(nextButton);
+
+  const totalRounds = sections.length;
+  const useFocusMode = totalRounds > 3;
+  grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
+
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const roundButtons = sections.map((section, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'bracket-round-nav__button';
+    const rawLabel = section.dataset.roundName ||
+      section.querySelector('.bracket-round__title')?.textContent;
+    const label = typeof rawLabel === 'string' && rawLabel.trim() ? rawLabel.trim() : `Ronda ${
+      index + 1
+    }`;
+    button.textContent = label;
+    button.setAttribute('aria-label', label);
+    button.dataset.roundIndex = String(index);
+    button.addEventListener('click', () => {
+      setActiveRound(index);
+    });
+    buttonList.appendChild(button);
+    return button;
+  });
+
+  let activeRoundIndex = clamp(initialRoundIndex, 0, totalRounds - 1);
+
+  const setActiveRound = (index) => {
+    const clampedIndex = clamp(index, 0, totalRounds - 1);
+    activeRoundIndex = clampedIndex;
+    grid.dataset.activeRoundIndex = String(clampedIndex);
+    nav.dataset.activeRoundIndex = String(clampedIndex);
+
+    sections.forEach((section, sectionIndex) => {
+      const isActive = sectionIndex === clampedIndex;
+      const isPrevious = sectionIndex === clampedIndex - 1;
+      const isNext = sectionIndex === clampedIndex + 1;
+      const shouldHide = useFocusMode && Math.abs(sectionIndex - clampedIndex) > 1;
+
+      section.classList.toggle('bracket-round--active', isActive);
+      section.classList.toggle('bracket-round--previous', isPrevious);
+      section.classList.toggle('bracket-round--next', isNext);
+      section.classList.toggle('bracket-round--hidden', shouldHide);
+    });
+
+    roundButtons.forEach((button, buttonIndex) => {
+      const isActive = buttonIndex === clampedIndex;
+      button.classList.toggle('bracket-round-nav__button--active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      button.setAttribute('aria-current', isActive ? 'true' : 'false');
+    });
+
+    prevButton.disabled = clampedIndex <= 0;
+    nextButton.disabled = clampedIndex >= totalRounds - 1;
+
+    scheduleOnNextAnimationFrame(() => applyTournamentBracketRoundOffsets(grid));
+  };
+
+  prevButton.addEventListener('click', () => {
+    setActiveRound(activeRoundIndex - 1);
+  });
+
+  nextButton.addEventListener('click', () => {
+    setActiveRound(activeRoundIndex + 1);
+  });
+
+  nav.addEventListener('keydown', (event) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const buttonTarget = target ? target.closest('.bracket-round-nav__button') : null;
+    if (!buttonTarget) {
+      return;
+    }
+
+    let handled = false;
+    if (event.key === 'ArrowLeft') {
+      setActiveRound(activeRoundIndex - 1);
+      handled = true;
+    } else if (event.key === 'ArrowRight') {
+      setActiveRound(activeRoundIndex + 1);
+      handled = true;
+    } else if (event.key === 'Home') {
+      setActiveRound(0);
+      handled = true;
+    } else if (event.key === 'End') {
+      setActiveRound(totalRounds - 1);
+      handled = true;
+    }
+
+    if (handled) {
+      event.preventDefault();
+      const activeButton = roundButtons[activeRoundIndex];
+      if (activeButton) {
+        activeButton.focus();
+      }
+    }
+  });
+
+  setActiveRound(activeRoundIndex);
+
+  return nav;
+}
+
 function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map() } = {}) {
   const sanitizedMatches = Array.isArray(matches) ? matches.filter(Boolean) : [];
   const roundsByOrder = new Map();
@@ -14936,6 +15101,7 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map() } =
 
   const grid = document.createElement('div');
   grid.className = 'tournament-bracket-grid tournament-bracket-grid--by-round';
+  const roundSections = [];
 
   sortedRounds.forEach((roundEntry, roundIndex) => {
     const roundMatches = Array.isArray(roundEntry.matches) ? roundEntry.matches.slice() : [];
@@ -14943,6 +15109,7 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map() } =
 
     const roundSection = document.createElement('section');
     roundSection.className = 'bracket-round';
+    roundSection.dataset.roundIndex = String(roundIndex);
 
     const roundTitle = document.createElement('h5');
     roundTitle.className = 'bracket-round__title';
@@ -14954,6 +15121,7 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map() } =
       `Ronda ${roundEntry.order || roundIndex + 1}`;
 
     roundTitle.textContent = displayName;
+    roundSection.dataset.roundName = displayName;
     roundSection.appendChild(roundTitle);
 
     const matchList = document.createElement('div');
@@ -14979,7 +15147,21 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map() } =
 
     roundSection.appendChild(matchList);
     grid.appendChild(roundSection);
+    roundSections.push(roundSection);
   });
+
+  const initialRoundIndex = determineInitialBracketRoundIndex(sortedRounds);
+  const navigation = createBracketRoundNavigation(roundSections, grid, {
+    initialRoundIndex,
+  });
+
+  if (navigation) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'tournament-bracket-grid-wrapper';
+    wrapper.appendChild(navigation);
+    wrapper.appendChild(grid);
+    return wrapper;
+  }
 
   return grid;
 }
