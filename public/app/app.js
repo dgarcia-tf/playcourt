@@ -1306,6 +1306,438 @@ function attachSchedulePicker({
   return { syncScheduledValue, updateScheduleSlotOptions };
 }
 
+function createMatchScheduleSlotPicker({
+  container = null,
+  dateField = null,
+  scheduledField = null,
+  templates = getClubMatchScheduleTemplates(),
+  scope = 'player',
+  courtField = null,
+  existingValue = '',
+  existingCourt = '',
+  onChange = () => {},
+} = {}) {
+  const resolvedTemplates = Array.isArray(templates) ? templates : [];
+  if (!container || !dateField || !scheduledField || !resolvedTemplates.length) {
+    return {
+      clear: () => {},
+      refresh: () => {},
+      destroy: () => {},
+      getSelection: () => ({ scheduledAt: '', date: '', time: '', court: '' }),
+      setSelection: () => {},
+    };
+  }
+
+  container.classList.add('match-schedule-picker');
+  container.innerHTML = '';
+
+  const statusMessage = document.createElement('p');
+  statusMessage.className = 'match-schedule-picker__status';
+  container.appendChild(statusMessage);
+
+  const gridWrapper = document.createElement('div');
+  gridWrapper.className = 'match-schedule-picker__grid';
+  container.appendChild(gridWrapper);
+
+  const state = {
+    dateValue: '',
+    timeValue: '',
+    courtValue: '',
+    availability: [],
+  };
+
+  let loadToken = 0;
+
+  const setStatus = (message = '', type = '') => {
+    statusMessage.textContent = message;
+    statusMessage.classList.remove('match-schedule-picker__status--error');
+    if (type === 'error') {
+      statusMessage.classList.add('match-schedule-picker__status--error');
+    }
+  };
+
+  const emitChange = () => {
+    const scheduledAt = state.dateValue && state.timeValue ? `${state.dateValue}T${state.timeValue}` : '';
+    if (scheduledField) {
+      scheduledField.value = scheduledAt;
+    }
+    if (courtField) {
+      courtField.value = scheduledAt ? state.courtValue || '' : '';
+    }
+    try {
+      onChange({ scheduledAt, court: state.courtValue, date: state.dateValue, time: state.timeValue });
+    } catch (error) {
+      console.warn('No se pudo ejecutar el manejador de cambios del selector de horario', error);
+    }
+    return scheduledAt;
+  };
+
+  const highlightSelectedButtons = () => {
+    const buttons = gridWrapper.querySelectorAll('button[data-slot-value]');
+    buttons.forEach((button) => {
+      const value = button.dataset.slotValue || '';
+      const court = button.dataset.slotCourt || '';
+      const isSelected = Boolean(
+        value &&
+          value === state.timeValue &&
+          (state.courtValue ? normalizeCourtKey(state.courtValue) === normalizeCourtKey(court) : true)
+      );
+      button.classList.toggle('is-selected', isSelected);
+      button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+    });
+  };
+
+  const setSelection = ({ timeValue = '', courtValue = '' } = {}) => {
+    state.timeValue = timeValue || '';
+    state.courtValue = state.timeValue ? courtValue || '' : '';
+    highlightSelectedButtons();
+    return emitChange();
+  };
+
+  const ensureSelectionVisible = () => {
+    if (!state.timeValue) {
+      highlightSelectedButtons();
+      return;
+    }
+
+    const normalizedCourt = normalizeCourtKey(state.courtValue);
+    const selector = normalizedCourt
+      ? `button[data-slot-value="${state.timeValue}"][data-slot-court]`
+      : `button[data-slot-value="${state.timeValue}"]`;
+    const matchingButtons = Array.from(gridWrapper.querySelectorAll(selector));
+    const matchedButton = matchingButtons.find((button) => {
+      if (!normalizedCourt) {
+        return true;
+      }
+      return normalizeCourtKey(button.dataset.slotCourt || '') === normalizedCourt;
+    });
+
+    if (matchedButton) {
+      state.courtValue = matchedButton.dataset.slotCourt || '';
+      highlightSelectedButtons();
+      emitChange();
+      return;
+    }
+
+    const fallback = gridWrapper.querySelector(`button[data-slot-value="${state.timeValue}"]`);
+    if (fallback) {
+      state.courtValue = fallback.dataset.slotCourt || '';
+      highlightSelectedButtons();
+      emitChange();
+      return;
+    }
+
+    setSelection({ timeValue: '', courtValue: '' });
+  };
+
+  const getAvailabilityEntryForCourt = (courtName) => {
+    if (!courtName) {
+      return null;
+    }
+    const normalizedCourt = normalizeCourtKey(courtName);
+    if (!normalizedCourt) {
+      return null;
+    }
+    return (
+      state.availability.find((entry) => normalizeCourtKey(entry?.court) === normalizedCourt) || null
+    );
+  };
+
+  const isSlotAvailableForCourt = (entry, slotStart, slotEnd, timeValue) => {
+    if (!entry) {
+      return false;
+    }
+
+    const availableSlots = Array.isArray(entry.availableSlots) ? entry.availableSlots : [];
+    if (availableSlots.length) {
+      return availableSlots.some((slot) => {
+        const startsAt = parseDateSafe(slot?.startsAt);
+        if (!startsAt) {
+          return false;
+        }
+        return (
+          formatDateInput(startsAt) === state.dateValue && formatTimeInputValue(startsAt) === timeValue
+        );
+      });
+    }
+
+    return isCourtAvailableForSlot(slotStart, slotEnd, {
+      reservations: Array.isArray(entry.reservations) ? entry.reservations : [],
+      blocks: Array.isArray(entry.blocks) ? entry.blocks : [],
+    });
+  };
+
+  const buildNormalizedEvents = (events = []) =>
+    events
+      .map((event) => {
+        const bounds = getCourtCalendarEventBounds(event);
+        if (!bounds.start || !bounds.end) {
+          return null;
+        }
+        return { event, start: bounds.start, end: bounds.end };
+      })
+      .filter(Boolean);
+
+  const renderGrid = () => {
+    gridWrapper.innerHTML = '';
+
+    if (!state.dateValue) {
+      setStatus('Selecciona un día para ver la disponibilidad.');
+      return;
+    }
+
+    const slotOptions = getMatchScheduleSlotOptionsForDate(state.dateValue, resolvedTemplates);
+    if (!slotOptions.length) {
+      setStatus('No hay franjas configuradas para este día.');
+      return;
+    }
+
+    const events = buildPlayerCourtCalendarEvents(state.availability);
+    const normalizedEvents = buildNormalizedEvents(events);
+    const courts = getCourtCalendarCourts(events);
+
+    if (!courts.length) {
+      setStatus('Configura las pistas del club para habilitar la reserva automática.');
+      return;
+    }
+
+    setStatus('');
+
+    const headerRow = document.createElement('div');
+    headerRow.className = 'calendar-day-schedule__row calendar-day-schedule__row--header';
+    headerRow.style.setProperty('--calendar-schedule-court-count', courts.length);
+
+    const timeHeader = document.createElement('div');
+    timeHeader.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
+    timeHeader.textContent = 'Horario';
+    headerRow.appendChild(timeHeader);
+
+    courts.forEach((court, index) => {
+      const cell = document.createElement('div');
+      cell.className =
+        'calendar-day-schedule__cell calendar-day-schedule__cell--court calendar-day-schedule__cell--header';
+      cell.textContent = court.label;
+      if (index === courts.length - 1) {
+        cell.classList.add('calendar-day-schedule__cell--last-column');
+      }
+      headerRow.appendChild(cell);
+    });
+
+    const grid = document.createElement('div');
+    grid.className = 'calendar-day-schedule__grid';
+    grid.style.setProperty('--calendar-schedule-court-count', courts.length);
+    grid.appendChild(headerRow);
+
+    slotOptions.forEach((slotOption, slotIndex) => {
+      const slotStart = combineDateAndTime(state.dateValue, slotOption.value);
+      if (!(slotStart instanceof Date) || Number.isNaN(slotStart.getTime())) {
+        return;
+      }
+      const slotEnd = addMinutes(slotStart, COURT_RESERVATION_DEFAULT_DURATION);
+
+      const row = document.createElement('div');
+      row.className = 'calendar-day-schedule__row calendar-day-schedule__row--body';
+      row.style.setProperty('--calendar-schedule-court-count', courts.length);
+
+      const timeCell = document.createElement('div');
+      timeCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
+      timeCell.textContent = slotOption.displayLabel || slotOption.label;
+      if (slotIndex === slotOptions.length - 1) {
+        timeCell.classList.add('calendar-day-schedule__cell--last-row');
+      }
+      row.appendChild(timeCell);
+
+      courts.forEach((court, courtIndex) => {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--court';
+        if (slotIndex === slotOptions.length - 1) {
+          cell.classList.add('calendar-day-schedule__cell--last-row');
+        }
+        if (courtIndex === courts.length - 1) {
+          cell.classList.add('calendar-day-schedule__cell--last-column');
+        }
+
+        const slotEvents = normalizedEvents.filter(
+          (entry) =>
+            isCourtCalendarEventForCourt(entry.event, court.name) &&
+            doesCourtCalendarEventOverlapSlot(entry, slotStart, slotEnd)
+        );
+
+        if (slotEvents.length) {
+          cell.classList.add('calendar-day-schedule__cell--busy');
+          slotEvents
+            .sort((a, b) => a.start - b.start)
+            .forEach((entry) => {
+              const eventElement = createCourtCalendarEvent(entry.event);
+              eventElement.classList.add('calendar-schedule-event');
+              cell.appendChild(eventElement);
+            });
+        } else {
+          const availabilityEntry = getAvailabilityEntryForCourt(court.name);
+          const isAvailable = isSlotAvailableForCourt(
+            availabilityEntry,
+            slotStart,
+            slotEnd,
+            slotOption.value
+          );
+
+          if (isAvailable) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'calendar-day-schedule__slot-button';
+            button.dataset.slotValue = slotOption.value;
+            button.dataset.slotCourt = court.name;
+            button.textContent = 'Seleccionar';
+            button.addEventListener('click', () => {
+              setSelection({ timeValue: slotOption.value, courtValue: court.name });
+              highlightSelectedButtons();
+            });
+            cell.appendChild(button);
+          } else {
+            const unavailable = document.createElement('span');
+            unavailable.className = 'calendar-day-schedule__empty';
+            unavailable.textContent = 'No disponible';
+            cell.appendChild(unavailable);
+          }
+        }
+
+        row.appendChild(cell);
+      });
+
+      grid.appendChild(row);
+    });
+
+    gridWrapper.appendChild(grid);
+    ensureSelectionVisible();
+  };
+
+  const loadAvailabilityForDate = async (dateValue) => {
+    const normalizedDate = typeof dateValue === 'string' ? dateValue : '';
+    state.dateValue = normalizedDate;
+
+    if (!normalizedDate) {
+      state.availability = [];
+      renderGrid();
+      emitChange();
+      return;
+    }
+
+    const token = ++loadToken;
+    setStatus('Cargando disponibilidad...');
+    try {
+      const { availability, date } = await resolveScheduleAvailability({ scope, dateValue: normalizedDate });
+      if (token !== loadToken) {
+        return;
+      }
+      const resolvedDateValue = formatDateInput(date) || normalizedDate;
+      state.dateValue = resolvedDateValue;
+      if (dateField && dateField.value !== resolvedDateValue) {
+        dateField.value = resolvedDateValue;
+      }
+      state.availability = Array.isArray(availability) ? availability : [];
+      setStatus('');
+      renderGrid();
+    } catch (error) {
+      if (token !== loadToken) {
+        return;
+      }
+      state.availability = [];
+      renderGrid();
+      setStatus(error.message || 'No fue posible cargar la disponibilidad.', 'error');
+    }
+  };
+
+  const handleDateChange = () => {
+    const value = dateField.value || '';
+    loadAvailabilityForDate(value).catch((error) => {
+      console.warn('No se pudo actualizar la disponibilidad de pistas', error);
+    });
+  };
+
+  dateField.addEventListener('change', handleDateChange);
+  dateField.addEventListener('input', handleDateChange);
+
+  const normalizedExisting = typeof existingValue === 'string' ? existingValue.trim() : '';
+  if (normalizedExisting) {
+    const [existingDate, existingTime] = normalizedExisting.split('T');
+    state.dateValue = existingDate || '';
+    state.timeValue = existingTime || '';
+    state.courtValue = existingCourt || '';
+    if (dateField && existingDate) {
+      dateField.value = existingDate;
+    }
+    emitChange();
+    loadAvailabilityForDate(existingDate || '').catch((error) => {
+      console.warn('No se pudo inicializar la disponibilidad de pistas', error);
+    });
+  } else {
+    state.dateValue = dateField?.value || '';
+    emitChange();
+    if (state.dateValue) {
+      loadAvailabilityForDate(state.dateValue).catch((error) => {
+        console.warn('No se pudo cargar la disponibilidad de pistas', error);
+      });
+    } else {
+      renderGrid();
+    }
+  }
+
+  return {
+    clear() {
+      setSelection({ timeValue: '', courtValue: '' });
+      highlightSelectedButtons();
+    },
+    refresh() {
+      loadAvailabilityForDate(state.dateValue || dateField.value || '').catch((error) => {
+        console.warn('No se pudo actualizar la disponibilidad de pistas', error);
+      });
+    },
+    destroy() {
+      dateField.removeEventListener('change', handleDateChange);
+      dateField.removeEventListener('input', handleDateChange);
+    },
+    getSelection() {
+      return {
+        scheduledAt: state.dateValue && state.timeValue ? `${state.dateValue}T${state.timeValue}` : '',
+        date: state.dateValue,
+        time: state.timeValue,
+        court: state.courtValue,
+      };
+    },
+    setSelection(selection = {}) {
+      const scheduledAt = selection.scheduledAt || '';
+      let nextDate = selection.date || '';
+      let nextTime = selection.time || '';
+      let nextCourt = selection.court || '';
+
+      if (scheduledAt && (!nextDate || !nextTime)) {
+        const [parsedDate, parsedTime] = scheduledAt.split('T');
+        nextDate = nextDate || parsedDate || '';
+        nextTime = nextTime || parsedTime || '';
+      }
+
+      if (nextDate) {
+        state.dateValue = nextDate;
+        if (dateField) {
+          dateField.value = nextDate;
+        }
+        state.timeValue = nextTime || '';
+        state.courtValue = nextCourt || '';
+        emitChange();
+        loadAvailabilityForDate(nextDate).catch((error) => {
+          console.warn('No se pudo actualizar la disponibilidad de pistas', error);
+        });
+      } else {
+        state.dateValue = '';
+        state.timeValue = '';
+        state.courtValue = '';
+        emitChange();
+        renderGrid();
+      }
+    },
+  };
+}
+
 function populateCourtReservationCourts() {
   if (!courtReservationCourtSelect) {
     return;
@@ -2747,7 +3179,8 @@ const adminMatchPlayer1 = document.getElementById('admin-match-player1');
 const adminMatchPlayer2 = document.getElementById('admin-match-player2');
 const adminMatchScheduleContainer = document.getElementById('admin-match-schedule-container');
 const adminMatchDay = document.getElementById('admin-match-day');
-const adminMatchSlot = document.getElementById('admin-match-slot');
+const adminMatchSchedulePickerContainer = document.getElementById('admin-match-slot-picker');
+const adminMatchClearSlot = document.getElementById('admin-match-clear-slot');
 const adminMatchDatetimeField = document.getElementById('admin-match-datetime-field');
 const adminMatchDatetimeInput = document.getElementById('admin-match-datetime');
 const adminMatchDate = document.getElementById('admin-match-date');
@@ -2837,6 +3270,8 @@ const modalClose = document.getElementById('modal-close');
 
 let activeModalCleanup = null;
 let noticeDraftAttachments = [];
+let adminMatchSchedulePicker = null;
+let adminMatchClearSlotHandler = null;
 
 if (adminMatchDatetimeInput) {
   adminMatchDatetimeInput.step = String(CALENDAR_TIME_SLOT_STEP_SECONDS);
@@ -2847,33 +3282,6 @@ if (adminMatchDatetimeInput) {
   };
   adminMatchDatetimeInput.addEventListener('change', handleAdminManualScheduleChange);
   adminMatchDatetimeInput.addEventListener('input', handleAdminManualScheduleChange);
-}
-
-if (adminMatchDay && adminMatchSlot) {
-  const handleAdminScheduleDateChange = async () => {
-    try {
-      await updateMatchScheduleSlots({
-        select: adminMatchSlot,
-        dateValue: adminMatchDay.value,
-        templates: getClubMatchScheduleTemplates(),
-        scope: 'admin',
-      });
-    } catch (error) {
-      console.warn('No fue posible cargar la disponibilidad de pistas', error);
-    } finally {
-      syncAdminMatchScheduledValue();
-    }
-  };
-
-  adminMatchDay.addEventListener('change', () => {
-    handleAdminScheduleDateChange();
-  });
-  adminMatchDay.addEventListener('input', () => {
-    handleAdminScheduleDateChange();
-  });
-  adminMatchSlot.addEventListener('change', () => {
-    syncAdminMatchScheduledValue();
-  });
 }
 
 updateAdminMatchScheduleVisibility();
@@ -18964,6 +19372,9 @@ function resetAllMatchPagination() {
 }
 
 function closeProposalForm() {
+  if (activeProposalForm?._schedulePicker && typeof activeProposalForm._schedulePicker.destroy === 'function') {
+    activeProposalForm._schedulePicker.destroy();
+  }
   if (activeProposalForm) {
     activeProposalForm.remove();
   }
@@ -19005,11 +19416,11 @@ function openProposalForm(matchId, triggerButton) {
       <label for="${dayInputId}">Día del partido</label>
       <input type="date" id="${dayInputId}" name="proposedDay" required />
     </div>
-    <div class="proposal-form__field">
-      <label for="${slotInputId}">Franja horaria</label>
-      <select id="${slotInputId}" name="proposedSlot" required disabled>
-        <option value="">Selecciona un día para ver horarios disponibles</option>
-      </select>
+    <input type="hidden" name="proposedAt" />
+    <input type="hidden" name="proposedCourt" />
+    <div class="proposal-form__field proposal-form__field--slots">
+      <div class="match-schedule-picker" data-proposal-schedule-picker></div>
+      <span class="form-hint">Selecciona una franja disponible.</span>
     </div>
   `
     : `
@@ -19035,7 +19446,11 @@ function openProposalForm(matchId, triggerButton) {
 
   const proposedInput = hasScheduleTemplates ? null : form.querySelector('input[name="proposedFor"]');
   const proposedDayInput = hasScheduleTemplates ? form.querySelector('input[name="proposedDay"]') : null;
-  const proposedSlotSelect = hasScheduleTemplates ? form.querySelector('select[name="proposedSlot"]') : null;
+  const proposedAtField = hasScheduleTemplates ? form.querySelector('input[name="proposedAt"]') : null;
+  const proposedCourtField = hasScheduleTemplates ? form.querySelector('input[name="proposedCourt"]') : null;
+  const schedulePickerContainer = hasScheduleTemplates
+    ? form.querySelector('[data-proposal-schedule-picker]')
+    : null;
   const messageInput = form.querySelector('textarea[name="message"]');
   const cancelButton = form.querySelector('button[data-action="cancel"]');
   const submitButton = form.querySelector('button[type="submit"]');
@@ -19068,65 +19483,36 @@ function openProposalForm(matchId, triggerButton) {
       ? formatDateInput(defaultDateValue)
       : '';
     const minDateString = !Number.isNaN(minDateValue.getTime()) ? formatDateInput(minDateValue) : '';
-
-    if (proposedDayInput && minDateString) {
-      proposedDayInput.min = minDateString;
-    }
-
-    const updateSlotOptions = async (selectedTime = '') => {
-      if (!proposedSlotSelect) {
-        return { matched: false, hasOptions: false };
-      }
-
-      const result = await updateMatchScheduleSlots({
-        select: proposedSlotSelect,
-        dateValue: proposedDayInput?.value || '',
-        templates: scheduleTemplates,
-        selectedTime,
-        scope: 'player',
-      });
-
-      if (result.hasOptions && !proposedSlotSelect.value) {
-        const firstAvailable = Array.from(proposedSlotSelect.options).find((option) => option.value);
-        if (firstAvailable) {
-          proposedSlotSelect.value = firstAvailable.value;
-        }
-      }
-
-      return result;
-    };
+    const defaultTimeValue = !Number.isNaN(defaultDateValue.getTime())
+      ? formatTimeInputValue(defaultDateValue)
+      : '';
+    const defaultSelectionValue = defaultDateString && defaultTimeValue
+      ? `${defaultDateString}T${defaultTimeValue}`
+      : '';
 
     if (proposedDayInput) {
+      if (minDateString) {
+        proposedDayInput.min = minDateString;
+      }
       if (defaultDateString) {
         proposedDayInput.value = defaultDateString;
       }
-      const handleDayChange = () => {
-        updateSlotOptions()
-          .catch((error) => {
-            console.warn('No fue posible cargar la disponibilidad de pistas', error);
-          })
-          .finally(() => {
-            updateError();
-          });
-      };
-
-      proposedDayInput.addEventListener('change', handleDayChange);
-      proposedDayInput.addEventListener('input', handleDayChange);
     }
 
-    if (proposedSlotSelect) {
-      const defaultTimeValue = !Number.isNaN(defaultDateValue.getTime())
-        ? formatTimeInputValue(defaultDateValue)
-        : '';
-      updateSlotOptions(defaultTimeValue).catch((error) => {
-        console.warn('No fue posible cargar la disponibilidad de pistas', error);
+    if (schedulePickerContainer && proposedDayInput && proposedAtField) {
+      const schedulePicker = createMatchScheduleSlotPicker({
+        container: schedulePickerContainer,
+        dateField: proposedDayInput,
+        scheduledField: proposedAtField,
+        courtField: proposedCourtField,
+        templates: scheduleTemplates,
+        scope: 'player',
+        existingValue: defaultSelectionValue,
+        onChange: () => {
+          updateError();
+        },
       });
-      proposedSlotSelect.addEventListener('change', () => {
-        updateError();
-      });
-      proposedSlotSelect.addEventListener('input', () => {
-        updateError();
-      });
+      form._schedulePicker = schedulePicker;
     }
   }
 
@@ -19140,6 +19526,9 @@ function openProposalForm(matchId, triggerButton) {
     updateError();
 
     let proposedDate = null;
+    let selectedCourt = '';
+
+    const schedulePicker = form._schedulePicker;
 
     if (hasScheduleTemplates) {
       const dayValue = proposedDayInput?.value || '';
@@ -19149,19 +19538,21 @@ function openProposalForm(matchId, triggerButton) {
         return;
       }
 
-      const slotValue = proposedSlotSelect?.value || '';
-      if (!slotValue) {
+      const scheduledAtValue = schedulePicker?.getSelection().scheduledAt || proposedAtField?.value || '';
+      if (!scheduledAtValue) {
         updateError('Selecciona una franja horaria.');
-        proposedSlotSelect?.focus();
+        schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
         return;
       }
 
-      proposedDate = combineDateAndTime(dayValue, slotValue);
+      proposedDate = new Date(scheduledAtValue);
       if (!(proposedDate instanceof Date) || Number.isNaN(proposedDate.getTime())) {
         updateError('La combinación de día y franja no es válida.');
-        proposedSlotSelect?.focus();
+        schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
         return;
       }
+
+      selectedCourt = schedulePicker?.getSelection().court || proposedCourtField?.value || '';
     } else {
       if (!proposedInput) {
         updateError('Indica la fecha y hora de la propuesta.');
@@ -19196,7 +19587,7 @@ function openProposalForm(matchId, triggerButton) {
     if (!isValidReservationSlotStart(proposedDate)) {
       updateError('Selecciona un horario válido entre las 08:30 y las 22:15.');
       if (hasScheduleTemplates) {
-        proposedSlotSelect?.focus();
+        schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       } else {
         proposedInput?.focus();
       }
@@ -19213,6 +19604,7 @@ function openProposalForm(matchId, triggerButton) {
         method: 'POST',
         body: {
           proposedFor: proposedDate.toISOString(),
+          court: selectedCourt || undefined,
           message: messageValue ? messageValue : undefined,
         },
       });
@@ -19236,7 +19628,7 @@ function openProposalForm(matchId, triggerButton) {
 
   listItem.appendChild(form);
   if (hasScheduleTemplates) {
-    (proposedDayInput || proposedSlotSelect)?.focus();
+    (proposedDayInput || schedulePickerContainer)?.focus();
   } else {
     proposedInput?.focus();
   }
@@ -20267,7 +20659,10 @@ function renderClubProfile(club = {}) {
   const currentSlot = currentScheduledValue.includes('T')
     ? currentScheduledValue.split('T')[1]
     : '';
-  updateAdminMatchScheduleVisibility({ selectedTime: currentSlot });
+  updateAdminMatchScheduleVisibility({
+    selectedTime: currentSlot,
+    selectedCourt: adminMatchCourt?.value || '',
+  });
 
   renderRules();
 
@@ -22323,10 +22718,9 @@ function syncAdminMatchScheduledValue() {
   const templates = getClubMatchScheduleTemplates();
   const hasTemplates = Array.isArray(templates) && templates.length > 0;
 
-  if (hasTemplates && adminMatchDay && adminMatchSlot) {
-    const dateValue = adminMatchDay.value || '';
-    const slotValue = adminMatchSlot.value || '';
-    adminMatchDate.value = dateValue && slotValue ? `${dateValue}T${slotValue}` : '';
+  if (hasTemplates && adminMatchSchedulePicker) {
+    const selection = adminMatchSchedulePicker.getSelection();
+    adminMatchDate.value = selection.scheduledAt || '';
     return;
   }
 
@@ -22339,7 +22733,7 @@ function syncAdminMatchScheduledValue() {
   adminMatchDate.value = '';
 }
 
-function updateAdminMatchScheduleVisibility({ selectedTime } = {}) {
+function updateAdminMatchScheduleVisibility({ selectedTime, selectedCourt } = {}) {
   const templates = getClubMatchScheduleTemplates();
   const hasTemplates = Array.isArray(templates) && templates.length > 0;
 
@@ -22351,11 +22745,12 @@ function updateAdminMatchScheduleVisibility({ selectedTime } = {}) {
     adminMatchDay.disabled = !hasTemplates;
   }
 
-  if (adminMatchSlot) {
-    if (!hasTemplates) {
-      adminMatchSlot.innerHTML =
-        '<option value="">Configura horarios preferentes en el club para habilitar esta lista.</option>';
-      adminMatchSlot.disabled = true;
+  if (adminMatchClearSlot) {
+    adminMatchClearSlot.hidden = !hasTemplates;
+    adminMatchClearSlot.disabled = !hasTemplates;
+    if (adminMatchClearSlotHandler) {
+      adminMatchClearSlot.removeEventListener('click', adminMatchClearSlotHandler);
+      adminMatchClearSlotHandler = null;
     }
   }
 
@@ -22370,22 +22765,66 @@ function updateAdminMatchScheduleVisibility({ selectedTime } = {}) {
     }
   }
 
-  if (hasTemplates && adminMatchSlot) {
-    const dateValue = adminMatchDay?.value || '';
-    updateMatchScheduleSlots({
-      select: adminMatchSlot,
-      dateValue,
+  if (hasTemplates && adminMatchSchedulePickerContainer && adminMatchDay && adminMatchDate) {
+    if (adminMatchSchedulePicker) {
+      adminMatchSchedulePicker.destroy();
+      adminMatchSchedulePicker = null;
+    }
+
+    const resolvedSelectedCourt =
+      typeof selectedCourt === 'string' ? selectedCourt : adminMatchCourt?.value || '';
+
+    adminMatchSchedulePicker = createMatchScheduleSlotPicker({
+      container: adminMatchSchedulePickerContainer,
+      dateField: adminMatchDay,
+      scheduledField: adminMatchDate,
+      courtField: adminMatchCourt,
       templates,
-      selectedTime,
       scope: 'admin',
-    })
-      .catch((error) => {
-        console.warn('No fue posible cargar la disponibilidad de pistas', error);
-      })
-      .then(() => {
+      existingValue: adminMatchDate.value || '',
+      existingCourt: resolvedSelectedCourt,
+      onChange: () => {
         syncAdminMatchScheduledValue();
+      },
+    });
+
+    if (adminMatchClearSlot) {
+      adminMatchClearSlotHandler = (event) => {
+        event.preventDefault();
+        adminMatchSchedulePicker?.clear();
+        syncAdminMatchScheduledValue();
+      };
+      adminMatchClearSlot.addEventListener('click', adminMatchClearSlotHandler);
+    }
+
+    if (selectedTime && adminMatchDay.value) {
+      adminMatchSchedulePicker.setSelection({
+        date: adminMatchDay.value,
+        time: selectedTime,
+        court: resolvedSelectedCourt,
       });
+    } else if (resolvedSelectedCourt) {
+      const currentSelection = adminMatchSchedulePicker.getSelection();
+      if (currentSelection.scheduledAt && !currentSelection.court) {
+        adminMatchSchedulePicker.setSelection({
+          scheduledAt: currentSelection.scheduledAt,
+          court: resolvedSelectedCourt,
+        });
+      }
+    }
+
+    syncAdminMatchScheduledValue();
     return;
+  }
+
+  if (adminMatchSchedulePicker) {
+    adminMatchSchedulePicker.destroy();
+    adminMatchSchedulePicker = null;
+  }
+
+  if (adminMatchSchedulePickerContainer) {
+    adminMatchSchedulePickerContainer.innerHTML = '';
+    adminMatchSchedulePickerContainer.classList.remove('match-schedule-picker');
   }
 
   syncAdminMatchScheduledValue();
@@ -22472,10 +22911,11 @@ function setAdminMatchEditing(matchId) {
   if (adminMatchDay) {
     adminMatchDay.value = scheduledValue ? scheduledValue.split('T')[0] : '';
   }
+  populateAdminMatchCourtOptions(match.court || '');
   updateAdminMatchScheduleVisibility({
     selectedTime: scheduledValue ? scheduledValue.split('T')[1] : '',
+    selectedCourt: match.court || '',
   });
-  populateAdminMatchCourtOptions(match.court || '');
   if (adminMatchNotes) {
     const notes = match.result?.notes || match.notes || '';
     adminMatchNotes.value = notes;
@@ -25154,6 +25594,13 @@ function buildMatchPayload(formData, isEditing = false) {
     payload.scheduledAt = null;
   }
 
+  const courtValue = (formData.get('court') || '').toString().trim();
+  if (courtValue) {
+    payload.court = courtValue;
+  } else if (isEditing) {
+    payload.court = null;
+  }
+
   const status = formData.get('status');
   if (status) {
     payload.status = status;
@@ -25264,6 +25711,7 @@ async function submitTournamentMatchSchedule({
   const scheduledAtRaw = (formData.get('scheduledAt') || '').toString();
   const statusValue = (formData.get('status') || '').toString();
   const notifyPlayers = formData.get('notifyPlayers') === 'true';
+  const courtValue = (formData.get('court') || '').toString().trim();
 
   if (scheduledAtRaw) {
     const scheduledDate = new Date(scheduledAtRaw);
@@ -25297,6 +25745,8 @@ async function submitTournamentMatchSchedule({
   if (statusValue) {
     payload.status = statusValue;
   }
+
+  payload.court = courtValue || null;
 
   if (notifyPlayers) {
     payload.notifyPlayers = true;
@@ -26315,19 +26765,19 @@ function openMatchModal(matchId = '') {
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = scheduleTemplates.length
     ? `
-    <div class="form-grid">
+    <div class="match-schedule-field">
       <label>
         Día del partido
         <input type="date" name="scheduledDate" data-match-schedule="date" />
       </label>
-      <label>
-        Tramo horario
-        <select name="scheduledSlot" data-match-schedule="slot" disabled>
-          <option value="">Selecciona un día para ver horarios</option>
-        </select>
-      </label>
+      <input type="hidden" name="scheduledAt" />
+      <input type="hidden" name="court" />
+      <div class="match-schedule-picker" data-match-schedule="picker"></div>
+      <div class="match-schedule-actions">
+        <button type="button" class="ghost" data-match-schedule="clear">Dejar sin horario</button>
+        <span class="form-hint">Selecciona una franja para reservar la pista automáticamente.</span>
+      </div>
     </div>
-    <input type="hidden" name="scheduledAt" />
   `
     : `
     <label>
@@ -26390,8 +26840,10 @@ function openMatchModal(matchId = '') {
   const leagueField = form.elements.leagueId;
   const categoryField = form.elements.categoryId;
   const scheduledField = form.elements.scheduledAt;
+  const courtField = form.elements.court;
   const scheduleDateField = form.elements.scheduledDate;
-  const scheduleSlotField = form.elements.scheduledSlot;
+  const schedulePickerContainer = form.querySelector('[data-match-schedule="picker"]');
+  const scheduleClearButton = form.querySelector('button[data-match-schedule="clear"]');
   const statusField = form.elements.status;
   const notesField = form.elements.notes;
   const submitButton = form.querySelector('button[type="submit"]');
@@ -26562,23 +27014,49 @@ function openMatchModal(matchId = '') {
     });
   }
 
-  const usingSchedulePicker =
-    scheduleTemplates.length > 0 && scheduleDateField && scheduleSlotField && scheduledField;
   if (statusField) {
     statusField.value = match?.status || 'pendiente';
   }
   if (scheduledField) {
     scheduledField.value = formatDateTimeLocal(match?.scheduledAt);
   }
-  if (usingSchedulePicker) {
-    attachSchedulePicker({
-      scheduleTemplates,
-      scheduleDateField,
-      scheduleSlotField,
+  if (courtField) {
+    courtField.value = match?.court || '';
+  }
+
+  let schedulePicker = null;
+  if (scheduleTemplates.length > 0 && schedulePickerContainer && scheduleDateField && scheduledField) {
+    const updateStatusForSchedule = () => {
+      if (!statusField) {
+        return;
+      }
+      const hasSchedule = Boolean(scheduledField.value);
+      if (hasSchedule && statusField.value === 'pendiente') {
+        statusField.value = 'programado';
+      } else if (!hasSchedule && statusField.value === 'programado') {
+        statusField.value = 'pendiente';
+      }
+    };
+
+    schedulePicker = createMatchScheduleSlotPicker({
+      container: schedulePickerContainer,
+      dateField: scheduleDateField,
       scheduledField,
-      existingValue: scheduledField?.value || '',
+      courtField,
+      templates: scheduleTemplates,
       scope: 'admin',
+      existingValue: scheduledField?.value || '',
+      existingCourt: match?.court || '',
+      onChange: updateStatusForSchedule,
     });
+
+    scheduleClearButton?.addEventListener('click', (event) => {
+      event.preventDefault();
+      schedulePicker.clear();
+      updateStatusForSchedule();
+    });
+
+    updateStatusForSchedule();
   }
   if (notesField) {
     notesField.value = match?.result?.notes || match?.notes || '';
@@ -26625,7 +27103,10 @@ function openMatchModal(matchId = '') {
       body.appendChild(form);
       body.appendChild(status);
     },
-    onClose: () => setStatusMessage(status, '', ''),
+    onClose: () => {
+      setStatusMessage(status, '', '');
+      schedulePicker?.destroy();
+    },
   });
 }
 
@@ -26855,19 +27336,19 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = scheduleTemplates.length
     ? `
-    <div class="form-grid">
+    <div class="match-schedule-field">
       <label>
         Día del partido
         <input type="date" name="scheduledDate" data-match-schedule="date" />
       </label>
-      <label>
-        Franja horaria
-        <select name="scheduledSlot" data-match-schedule="slot" disabled>
-          <option value="">Selecciona un día para ver horarios</option>
-        </select>
-      </label>
+      <input type="hidden" name="scheduledAt" />
+      <input type="hidden" name="court" />
+      <div class="match-schedule-picker" data-match-schedule="picker"></div>
+      <div class="match-schedule-actions">
+        <button type="button" class="ghost" data-match-schedule="clear">Dejar sin horario</button>
+        <span class="form-hint">Selecciona una franja para reservar la pista automáticamente.</span>
+      </div>
     </div>
-    <input type="hidden" name="scheduledAt" />
   `
     : `
     <label>
@@ -26930,8 +27411,10 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   const playerTwoField = form.elements.playerLabel2;
   const statusField = form.elements.status;
   const scheduledField = form.elements.scheduledAt;
+  const courtField = form.elements.court;
   const scheduleDateField = form.elements.scheduledDate;
-  const scheduleSlotField = form.elements.scheduledSlot;
+  const schedulePickerContainer = form.querySelector('[data-match-schedule="picker"]');
+  const scheduleClearButton = form.querySelector('button[data-match-schedule="clear"]');
   const notifyField = form.elements.notifyPlayers;
   const courtInfoElement = form.querySelector('[data-match-court-info]');
   const cancelButton = form.querySelector('button[data-action="cancel"]');
@@ -26984,6 +27467,9 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   if (scheduledField) {
     scheduledField.value = scheduledValue;
   }
+  if (courtField) {
+    courtField.value = match?.court || '';
+  }
 
   if (statusField) {
     const currentStatus = match?.status && TOURNAMENT_MATCH_STATUS_LABELS[match.status]
@@ -26994,50 +27480,64 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
     statusField.value = currentStatus;
   }
 
-  if (courtInfoElement) {
-    const setAutoAssignHint = () => {
-      courtInfoElement.textContent =
-        'La pista se asignará automáticamente según la disponibilidad del club al guardar el horario.';
-    };
-
-    if (match?.court) {
+  const updateCourtInfoDisplay = () => {
+    if (!courtInfoElement) {
+      return;
+    }
+    const selectedCourt = courtField?.value?.trim();
+    if (selectedCourt) {
+      courtInfoElement.textContent = `Pista seleccionada: ${selectedCourt}.`;
+      return;
+    }
+    if (match?.court && scheduledValue && scheduledField?.value === scheduledValue) {
       courtInfoElement.textContent = `Pista asignada automáticamente: ${match.court}.`;
-    } else {
-      setAutoAssignHint();
+      return;
     }
+    courtInfoElement.textContent =
+      'La pista se asignará automáticamente según la disponibilidad del club al guardar el horario.';
+  };
 
-    const resetCourtInfoMessage = () => {
-      setAutoAssignHint();
-    };
+  updateCourtInfoDisplay();
 
-    scheduleDateField?.addEventListener('change', resetCourtInfoMessage);
-    scheduleDateField?.addEventListener('input', resetCourtInfoMessage);
-    scheduleSlotField?.addEventListener('change', resetCourtInfoMessage);
-    scheduleSlotField?.addEventListener('input', resetCourtInfoMessage);
-    if (!scheduleDateField && scheduledField) {
-      scheduledField.addEventListener('change', resetCourtInfoMessage);
-      scheduledField.addEventListener('input', resetCourtInfoMessage);
-    }
-  }
+  scheduleDateField?.addEventListener('change', updateCourtInfoDisplay);
+  scheduleDateField?.addEventListener('input', updateCourtInfoDisplay);
 
   if (notifyField) {
     notifyField.checked = !match?.scheduledAt;
   }
 
-  const usingSchedulePicker =
-    scheduleTemplates.length > 0 && scheduleDateField && scheduleSlotField && scheduledField;
-  if (usingSchedulePicker) {
-    attachSchedulePicker({
-      scheduleTemplates,
-      scheduleDateField,
-      scheduleSlotField,
+  let schedulePicker = null;
+  if (scheduleTemplates.length > 0 && schedulePickerContainer && scheduleDateField && scheduledField) {
+    schedulePicker = createMatchScheduleSlotPicker({
+      container: schedulePickerContainer,
+      dateField: scheduleDateField,
       scheduledField,
-      existingValue: scheduledField?.value || '',
+      courtField,
+      templates: scheduleTemplates,
       scope: 'admin',
+      existingValue: scheduledField?.value || '',
+      existingCourt: courtField?.value || match?.court || '',
+      onChange: () => {
+        updateCourtInfoDisplay();
+        if (statusField) {
+          const hasSchedule = Boolean(scheduledField.value);
+          if (hasSchedule && statusField.value === 'pendiente') {
+            statusField.value = 'programado';
+          } else if (!hasSchedule && statusField.value === 'programado') {
+            statusField.value = 'pendiente';
+          }
+        }
+      },
+    });
+
+    scheduleClearButton?.addEventListener('click', (event) => {
+      event.preventDefault();
+      schedulePicker.clear();
+      updateCourtInfoDisplay();
     });
   }
 
-  if (scheduledField && statusField) {
+  if (!schedulePicker && scheduledField && statusField) {
     const updateStatusForSchedule = () => {
       const hasSchedule = Boolean(scheduledField.value);
       if (hasSchedule && statusField.value === 'pendiente') {
@@ -27046,16 +27546,8 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
         statusField.value = 'pendiente';
       }
     };
-
-    if (usingSchedulePicker) {
-      scheduleDateField?.addEventListener('change', updateStatusForSchedule);
-      scheduleDateField?.addEventListener('input', updateStatusForSchedule);
-      scheduleSlotField?.addEventListener('change', updateStatusForSchedule);
-    } else {
-      scheduledField.addEventListener('input', updateStatusForSchedule);
-      scheduledField.addEventListener('change', updateStatusForSchedule);
-    }
-
+    scheduledField.addEventListener('input', updateStatusForSchedule);
+    scheduledField.addEventListener('change', updateStatusForSchedule);
     updateStatusForSchedule();
   }
 
@@ -27089,7 +27581,10 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       body.appendChild(form);
       body.appendChild(statusMessage);
     },
-    onClose: () => setStatusMessage(statusMessage, '', ''),
+    onClose: () => {
+      setStatusMessage(statusMessage, '', '');
+      schedulePicker?.destroy();
+    },
   });
 }
 

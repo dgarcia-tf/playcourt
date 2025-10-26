@@ -158,6 +158,7 @@ router.post(
   [
     param('matchId').isMongoId(),
     body('proposedFor').isISO8601().withMessage('Proporciona una fecha válida.'),
+    body('court').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
     body('message').optional().isString(),
   ],
   proposeMatch

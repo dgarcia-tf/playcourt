@@ -1472,17 +1472,20 @@
 
                     <div class="form-grid">
                       <div>
-                        <div id="admin-match-schedule-container" class="form-grid" hidden>
+                        <div id="admin-match-schedule-container" class="match-schedule-field" hidden>
                           <label>
                             Día del partido
                             <input id="admin-match-day" type="date" name="scheduledDate" />
                           </label>
-                          <label>
-                            Tramo horario
-                            <select id="admin-match-slot" name="scheduledSlot" disabled>
-                              <option value="">Selecciona un día para ver horarios</option>
-                            </select>
-                          </label>
+                          <div class="match-schedule-picker" id="admin-match-slot-picker" aria-live="polite"></div>
+                          <div class="match-schedule-actions">
+                            <button type="button" id="admin-match-clear-slot" class="ghost">
+                              Borrar selección
+                            </button>
+                            <span class="form-hint"
+                              >Selecciona un hueco disponible para asignar pista automáticamente.</span
+                            >
+                          </div>
                         </div>
                         <label id="admin-match-datetime-field">
                           Fecha y hora
@@ -1490,6 +1493,7 @@
                           <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
                         </label>
                         <input type="hidden" id="admin-match-date" name="scheduledAt" />
+                        <input type="hidden" id="admin-match-court" name="court" />
                       </div>
                     </div>
 

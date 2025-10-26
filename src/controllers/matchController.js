@@ -1618,7 +1618,7 @@ async function proposeMatch(req, res) {
   }
 
   const { matchId } = req.params;
-  const { proposedFor, message } = req.body;
+  const { proposedFor, message, court: requestedCourtInput } = req.body;
 
   const match = await Match.findById(matchId);
   if (!match) {
@@ -1653,6 +1653,14 @@ async function proposeMatch(req, res) {
   }
 
   const previousCourtValue = typeof match.court === 'string' ? match.court : undefined;
+  let requestedCourt;
+  if (typeof requestedCourtInput === 'string' && requestedCourtInput.trim()) {
+    try {
+      requestedCourt = await resolveClubCourtSelection(requestedCourtInput);
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({ message: error.message });
+    }
+  }
 
   match.proposal = {
     requestedBy: requesterId,
@@ -1673,14 +1681,17 @@ async function proposeMatch(req, res) {
 
   const { startsAt: reservationStart, endsAt: reservationEnd } = resolveEndsAt(proposedDate);
   try {
-    const assignedCourt = await autoAssignCourt({
-      scheduledDate: proposedDate,
-      excludeReservationId: existingReservation?._id,
-      preferredCourt: previousCourtValue,
-    });
+    let assignedCourt = requestedCourt;
+    if (!assignedCourt) {
+      assignedCourt = await autoAssignCourt({
+        scheduledDate: proposedDate,
+        excludeReservationId: existingReservation?._id,
+        preferredCourt: previousCourtValue,
+      });
+    }
     match.court = assignedCourt;
     await ensureCourtReservationAvailability({
-      court: match.court,
+      court: assignedCourt,
       startsAt: reservationStart,
       endsAt: reservationEnd,
       excludeReservationId: existingReservation?._id,
