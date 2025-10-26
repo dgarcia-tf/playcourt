@@ -1964,10 +1964,13 @@ body.tournament-fullscreen-active {
 
 .tournament-bracket-grid {
   --bracket-match-height: 9.75rem;
+  --bracket-grid-column-gap: 1.75rem;
+  --bracket-connector-thickness: 2px;
+  --bracket-connector-color: rgba(148, 163, 184, 0.45);
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(280px, 1fr);
-  column-gap: 1.75rem;
+  column-gap: var(--bracket-grid-column-gap);
   row-gap: 0;
   align-items: flex-start;
   padding: 0 0 0.5rem;
@@ -2083,9 +2086,10 @@ body.tournament-fullscreen-active {
 .bracket-round__matches {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--bracket-match-gap, 1rem);
   position: relative;
   padding: 0;
+  margin-top: var(--bracket-round-offset, 0);
 }
 
 .bracket-round__matches--list {
@@ -2112,11 +2116,60 @@ body.tournament-fullscreen-active {
   gap: 0.85rem;
   position: relative;
   min-height: auto;
+  z-index: 1;
 }
 
 .bracket-match--list::before,
 .bracket-match--list::after {
   content: none;
+}
+
+.bracket-match--has-prev::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--bracket-grid-column-gap, 1.75rem) / 2);
+  width: calc(var(--bracket-grid-column-gap, 1.75rem) / 2);
+  height: var(--bracket-connector-thickness, 2px);
+  background: var(--bracket-connector-color);
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bracket-match--has-next.bracket-match--top::after,
+.bracket-match--has-next.bracket-match--bottom::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  width: calc(var(--bracket-grid-column-gap, 1.75rem) / 2);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bracket-match--has-next.bracket-match--top::after {
+  top: 50%;
+  height: calc(50% + var(--bracket-match-gap, 1rem) / 2);
+  border-top: var(--bracket-connector-thickness, 2px) solid var(--bracket-connector-color);
+  border-right: var(--bracket-connector-thickness, 2px) solid var(--bracket-connector-color);
+  border-top-right-radius: 12px;
+}
+
+.bracket-match--has-next.bracket-match--bottom::after {
+  bottom: 50%;
+  height: calc(50% + var(--bracket-match-gap, 1rem) / 2);
+  border-bottom: var(--bracket-connector-thickness, 2px) solid var(--bracket-connector-color);
+  border-right: var(--bracket-connector-thickness, 2px) solid var(--bracket-connector-color);
+  border-bottom-right-radius: 12px;
+}
+
+.bracket-match--placeholder.bracket-match--has-prev::before {
+  background: rgba(148, 163, 184, 0.3);
+}
+
+.bracket-match--placeholder.bracket-match--has-next.bracket-match--top::after,
+.bracket-match--placeholder.bracket-match--has-next.bracket-match--bottom::after {
+  border-color: rgba(148, 163, 184, 0.3);
 }
 
 .bracket-match--placeholder {
