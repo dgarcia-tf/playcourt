@@ -20,7 +20,7 @@ function createApp() {
   app.use('/app/api', apiRouter);
 
   const appDirectory = path.join(__dirname, '..', 'public', 'app');
-  app.use(express.static(appDirectory));
+  app.use('/app', express.static(appDirectory, { index: false }));
   const uploadsDirectory = path.join(__dirname, '..', 'public', 'uploads');
   app.use('/uploads', express.static(uploadsDirectory));
 
@@ -28,7 +28,11 @@ function createApp() {
     res.json({ status: 'ok' });
   });
 
-  app.get('*', (req, res) => {
+  app.get('/', (req, res) => {
+    res.redirect('/app');
+  });
+
+  app.get(['/app', '/app/*'], (req, res) => {
     res.sendFile(path.join(appDirectory, 'index.html'));
   });
 
