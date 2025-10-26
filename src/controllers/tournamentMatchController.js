@@ -17,7 +17,13 @@ const {
   TOURNAMENT_BRACKETS,
 } = require('../models/TournamentMatch');
 const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
+const { RESERVATION_TYPES } = require('../models/CourtReservation');
 const { notifyTournamentMatchScheduled } = require('../services/tournamentNotificationService');
+const {
+  autoAssignCourt,
+  ensureReservationAvailability: ensureCourtReservationAvailability,
+  resolveEndsAt,
+} = require('../services/courtReservationService');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { createOrderOfPlayPdf } = require('../services/tournamentOrderOfPlayPdfService');
 
@@ -1652,15 +1658,53 @@ async function updateTournamentMatch(req, res) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
 
-  ['round', 'court'].forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(updates, field)) {
-      match[field] = updates[field];
-    }
-  });
+  if (Object.prototype.hasOwnProperty.call(updates, 'round')) {
+    match.round = updates.round;
+  }
 
+  const previousCourt = typeof match.court === 'string' ? match.court : undefined;
+  let preferredCourt = previousCourt;
+  if (Object.prototype.hasOwnProperty.call(updates, 'court')) {
+    const rawCourt = updates.court;
+    const trimmedCourt = typeof rawCourt === 'string' ? rawCourt.trim() : '';
+    preferredCourt = trimmedCourt || undefined;
+    match.court = preferredCourt;
+  }
+
+  let scheduledAtProvided = false;
   if (Object.prototype.hasOwnProperty.call(updates, 'scheduledAt')) {
-    const scheduledAt = updates.scheduledAt ? new Date(updates.scheduledAt) : null;
-    match.scheduledAt = scheduledAt && !Number.isNaN(scheduledAt.getTime()) ? scheduledAt : null;
+    scheduledAtProvided = true;
+    if (updates.scheduledAt) {
+      const scheduledAt = new Date(updates.scheduledAt);
+      if (Number.isNaN(scheduledAt.getTime())) {
+        return res.status(400).json({ message: 'Fecha y hora inválida.' });
+      }
+      match.scheduledAt = scheduledAt;
+    } else {
+      match.scheduledAt = null;
+    }
+  }
+
+  if (match.scheduledAt) {
+    const { startsAt, endsAt } = resolveEndsAt(match.scheduledAt);
+    try {
+      const assignedCourt = await autoAssignCourt({
+        scheduledDate: match.scheduledAt,
+        preferredCourt: preferredCourt || previousCourt,
+      });
+      match.court = assignedCourt;
+      await ensureCourtReservationAvailability({
+        court: assignedCourt,
+        startsAt,
+        endsAt,
+        reservationType: RESERVATION_TYPES.MATCH,
+        bypassManualAdvanceLimit: true,
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({ message: error.message });
+    }
+  } else if (scheduledAtProvided) {
+    match.court = undefined;
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'status')) {

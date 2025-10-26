@@ -1,4 +1,5 @@
 const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
+const { Club } = require('../models/Club');
 const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const { sendPushNotification } = require('./pushNotificationService');
 const { sendEmailNotification } = require('./emailService');
@@ -165,6 +166,65 @@ async function ensureReservationAvailability({
     error.statusCode = 409;
     throw error;
   }
+}
+
+async function autoAssignCourt({ scheduledDate, excludeReservationId, preferredCourt } = {}) {
+  const startDate = toDate(scheduledDate);
+  if (!startDate) {
+    const error = new Error('Fecha y hora inválida.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const club = await Club.getSingleton();
+  const courtEntries = Array.isArray(club?.courts) ? club.courts : [];
+  const courtNames = courtEntries
+    .map((entry) => (entry && typeof entry.name === 'string' ? entry.name.trim() : ''))
+    .filter(Boolean);
+
+  if (!courtNames.length) {
+    const error = new Error('No hay pistas registradas en el club.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { startsAt, endsAt } = resolveEndsAt(startDate);
+  if (!startsAt || !endsAt) {
+    const error = new Error('No se pudo determinar la duración del partido.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const uniqueCourts = Array.from(new Set(courtNames));
+  const attemptOrder = preferredCourt
+    ? [preferredCourt, ...uniqueCourts.filter((name) => name !== preferredCourt)]
+    : uniqueCourts;
+
+  for (const courtName of attemptOrder) {
+    try {
+      await ensureReservationAvailability({
+        court: courtName,
+        startsAt,
+        endsAt,
+        excludeReservationId,
+        reservationType: RESERVATION_TYPES.MATCH,
+        bypassManualAdvanceLimit: true,
+      });
+      return courtName;
+    } catch (error) {
+      if (error && error.statusCode === 409) {
+        continue;
+      }
+      if (error && error.message === INVALID_RESERVATION_SLOT_MESSAGE) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  const error = new Error('No hay pistas disponibles para el horario seleccionado.');
+  error.statusCode = 409;
+  throw error;
 }
 
 function normalizeParticipants(participants = []) {
@@ -411,4 +471,5 @@ module.exports = {
   resolveEndsAt,
   normalizeParticipants,
   cleanupExpiredManualReservations,
+  autoAssignCourt,
 };

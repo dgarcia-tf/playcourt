@@ -23,6 +23,7 @@ const {
   upsertMatchReservation,
   cancelMatchReservation,
   resolveEndsAt,
+  autoAssignCourt,
 } = require('../services/courtReservationService');
 const { generateCalendarMetadata } = require('../utils/calendarLinks');
 

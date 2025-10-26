@@ -798,6 +798,29 @@ function filterSlotsByAvailability(options, {
     return [];
   }
 
+  const availableSlotTimes = new Set();
+  availabilityList.forEach((entry) => {
+    const slots = Array.isArray(entry?.availableSlots) ? entry.availableSlots : [];
+    slots.forEach((slot) => {
+      const slotStart = parseDateSafe(slot?.startsAt);
+      if (!slotStart) {
+        return;
+      }
+      const slotDateValue = formatDateInput(slotStart);
+      if (slotDateValue !== dateValue) {
+        return;
+      }
+      const timeValue = formatTimeInputValue(slotStart);
+      if (timeValue) {
+        availableSlotTimes.add(timeValue);
+      }
+    });
+  });
+
+  if (availableSlotTimes.size) {
+    return options.filter((slot) => availableSlotTimes.has(slot.value));
+  }
+
   return options.filter((slot) => {
     const slotStart = combineDateAndTime(dateValue, slot.value);
     if (!(slotStart instanceof Date) || Number.isNaN(slotStart.getTime())) {
@@ -24979,7 +25002,6 @@ async function submitTournamentMatchSchedule({
 
   const formData = new FormData(form);
   const scheduledAtRaw = (formData.get('scheduledAt') || '').toString();
-  const courtValue = (formData.get('court') || '').toString().trim();
   const statusValue = (formData.get('status') || '').toString();
   const notifyPlayers = formData.get('notifyPlayers') === 'true';
 
@@ -25010,7 +25032,6 @@ async function submitTournamentMatchSchedule({
 
   const payload = {
     scheduledAt: scheduledAtRaw || null,
-    court: courtValue || null,
   };
 
   if (statusValue) {
@@ -26571,30 +26592,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
     }
   }
 
-  const courtNames = getClubCourtNames();
-  const courtOptions = courtNames
-    .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-    .join('');
-
-  const courtFieldMarkup = courtNames.length
-    ? `
-    <label>
-      Pista
-      <select name="court">
-        <option value="">Sin pista asignada</option>
-        ${courtOptions}
-      </select>
-      <span class="form-hint">Las pistas disponibles se gestionan en el perfil del club.</span>
-    </label>
-  `
-    : `
-    <label>
-      Pista
-      <input type="text" name="court" placeholder="Añade pistas en la sección del club" disabled />
-      <span class="form-hint">Añade pistas en la sección del club para poder asignarlas.</span>
-    </label>
-  `;
-
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = scheduleTemplates.length
     ? `
@@ -26651,8 +26648,8 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
         ${statusOptions}
       </select>
     </label>
-    ${courtFieldMarkup}
     ${scheduleFieldMarkup}
+    <p class="form-hint" data-match-court-info></p>
     <label class="checkbox-option">
       <input type="checkbox" name="notifyPlayers" value="true" />
       Notificar a los jugadores por correo y push
@@ -26672,11 +26669,11 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   const playerOneField = form.elements.playerLabel1;
   const playerTwoField = form.elements.playerLabel2;
   const statusField = form.elements.status;
-  const courtField = form.elements.court;
   const scheduledField = form.elements.scheduledAt;
   const scheduleDateField = form.elements.scheduledDate;
   const scheduleSlotField = form.elements.scheduledSlot;
   const notifyField = form.elements.notifyPlayers;
+  const courtInfoElement = form.querySelector('[data-match-court-info]');
   const cancelButton = form.querySelector('button[data-action="cancel"]');
   const submitButton = form.querySelector('button[type="submit"]');
 
@@ -26737,17 +26734,30 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
     statusField.value = currentStatus;
   }
 
-  if (courtField) {
-    const courtValue = match?.court || '';
-    if (courtValue && courtField.tagName === 'SELECT') {
-      const options = Array.from(courtField.options || []);
-      const hasOption = options.some((option) => option.value === courtValue);
-      if (!hasOption) {
-        const option = new Option(courtValue, courtValue, true, true);
-        courtField.appendChild(option);
-      }
+  if (courtInfoElement) {
+    const setAutoAssignHint = () => {
+      courtInfoElement.textContent =
+        'La pista se asignará automáticamente según la disponibilidad del club al guardar el horario.';
+    };
+
+    if (match?.court) {
+      courtInfoElement.textContent = `Pista asignada automáticamente: ${match.court}.`;
+    } else {
+      setAutoAssignHint();
     }
-    courtField.value = courtValue;
+
+    const resetCourtInfoMessage = () => {
+      setAutoAssignHint();
+    };
+
+    scheduleDateField?.addEventListener('change', resetCourtInfoMessage);
+    scheduleDateField?.addEventListener('input', resetCourtInfoMessage);
+    scheduleSlotField?.addEventListener('change', resetCourtInfoMessage);
+    scheduleSlotField?.addEventListener('input', resetCourtInfoMessage);
+    if (!scheduleDateField && scheduledField) {
+      scheduledField.addEventListener('change', resetCourtInfoMessage);
+      scheduledField.addEventListener('input', resetCourtInfoMessage);
+    }
   }
 
   if (notifyField) {
@@ -26762,7 +26772,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       scheduleDateField,
       scheduleSlotField,
       scheduledField,
-      courtField,
       existingValue: scheduledField?.value || '',
       scope: 'admin',
     });
