@@ -1081,12 +1081,19 @@ async function autoGenerateTournamentBracket(req, res) {
       ? Math.min(rawConfiguredCapacity, maxAllowedParticipants)
       : null;
 
+  if (configuredCapacity && uniquePlayers.length > configuredCapacity) {
+    return res.status(400).json({
+      message: `Hay más jugadores inscritos que el límite configurado de ${configuredCapacity} plazas. Ajusta el tamaño del cuadro o modifica las inscripciones de la categoría.`,
+    });
+  }
+
   const baseDrawSize =
     configuredCapacity && configuredCapacity >= uniquePlayers.length
       ? configuredCapacity
       : uniquePlayers.length;
 
   const drawSize = Math.min(nextPowerOfTwo(baseDrawSize), maxAllowedParticipants);
+  const effectiveCategoryDrawSize = configuredCapacity || drawSize;
 
   const seedPositions = generateSeedingPositions(drawSize);
   const maxSeedNumber = seedPositions.length;
@@ -1411,7 +1418,7 @@ async function autoGenerateTournamentBracket(req, res) {
 
   category.draw = drawRounds;
   category.consolationDraw = consolationDrawRounds;
-  category.drawSize = drawSize;
+  category.drawSize = effectiveCategoryDrawSize;
   category.status = TOURNAMENT_CATEGORY_STATUSES.IN_PLAY;
   category.markModified('draw');
   category.markModified('consolationDraw');
