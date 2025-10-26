@@ -461,6 +461,17 @@
                             Usuarios
                           </a>
                         </li>
+                        <li>
+                          <a
+                            href="/app/administracion/modo-demo"
+                            class="menu-button menu-button--nested"
+                            data-target="section-demo-mode"
+                            data-parent-target="section-admin"
+                            data-requires-admin="true"
+                          >
+                            Modo demo
+                          </a>
+                        </li>
                       </ul>
                     </div>
                   </li>
@@ -1863,6 +1874,49 @@
                 <ul class="list" id="user-directory-list"></ul>
                 <div class="empty-state" id="user-directory-empty" hidden>
                   Aún no hay usuarios que coincidan con el filtro seleccionado.
+                </div>
+              </article>
+            </section>
+            <section
+              id="section-demo-mode"
+              class="app-section"
+              data-admin-only="true"
+              hidden
+            >
+              <article class="card" id="demo-mode-card">
+                <div class="card-header">
+                  <div>
+                    <h3>Modo demo</h3>
+                    <p class="card-subtitle">
+                      Genera cuentas ficticias para mostrar la plataforma sin usar datos reales.
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <button
+                      type="button"
+                      class="primary"
+                      id="demo-mode-generate-button"
+                      data-admin-only="true"
+                      data-admin-visible="toggle"
+                      hidden
+                    >
+                      Generar jugadores demo
+                    </button>
+                    <span class="tag admin">Admin</span>
+                  </div>
+                </div>
+                <p>
+                  Se crearán cuentas de jugadores profesionales con una contraseña compartida. Si las cuentas ya existen,
+                  se conservarán sin modificaciones.
+                </p>
+                <p class="form-hint">
+                  Puedes repetir la operación en cualquier momento para recuperar las cuentas demo que se hayan eliminado.
+                </p>
+                <p class="status-message" id="demo-mode-status"></p>
+                <div class="demo-mode-results" id="demo-mode-results" hidden>
+                  <p class="demo-mode-result-line" id="demo-mode-created"></p>
+                  <p class="demo-mode-result-line" id="demo-mode-skipped"></p>
+                  <p class="form-hint demo-mode-password" id="demo-mode-password" hidden></p>
                 </div>
               </article>
             </section>

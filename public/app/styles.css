@@ -1120,6 +1120,28 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-bottom: 2rem;
 }
 
+.demo-mode-results {
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.demo-mode-result-line {
+  margin: 0;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.demo-mode-result-line + .demo-mode-result-line {
+  margin-top: 0.75rem;
+}
+
+.demo-mode-password {
+  margin-top: 1rem;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
