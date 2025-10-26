@@ -124,7 +124,25 @@ async function ensureReservationAvailability({
     ],
   };
 
-  if (excludeReservationId) {
+  if (Array.isArray(excludeReservationId)) {
+    const exclusionIds = excludeReservationId
+      .map((id) => {
+        if (!id) {
+          return null;
+        }
+        if (typeof id === 'string') {
+          return id;
+        }
+        if (typeof id === 'object' && id.toString) {
+          return id.toString();
+        }
+        return null;
+      })
+      .filter(Boolean);
+    if (exclusionIds.length) {
+      query._id = { $nin: exclusionIds };
+    }
+  } else if (excludeReservationId) {
     query._id = { $ne: excludeReservationId };
   }
 
@@ -362,7 +380,11 @@ async function upsertMatchReservation({ match, createdBy }) {
   }
 
   const participants = normalizeParticipants(match.players);
-  const existing = await CourtReservation.findOne({ match: match._id });
+  const existingReservations = await CourtReservation.find({ match: match._id });
+  const excludeReservationIds = existingReservations.map((reservation) => reservation?._id).filter(Boolean);
+
+  const existing = existingReservations.find((reservation) => reservation?.court === match.court) ||
+    (existingReservations.length ? existingReservations[0] : null);
 
   let contextType;
   let contextId;
@@ -378,7 +400,7 @@ async function upsertMatchReservation({ match, createdBy }) {
     court: match.court,
     startsAt,
     endsAt,
-    excludeReservationId: existing?._id,
+    excludeReservationId: excludeReservationIds,
     reservationType: RESERVATION_TYPES.MATCH,
     contextType,
     contextId,
