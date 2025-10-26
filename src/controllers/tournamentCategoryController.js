@@ -27,14 +27,14 @@ function shouldHideCategoryForUser(category, user) {
   return hasCategoryMinimumAgeRequirement(category);
 }
 
-function validateDrawSizeInput(rawValue) {
+function validateDrawSizeInput(rawValue, { required = false } = {}) {
   if (rawValue === undefined || rawValue === null || rawValue === '') {
-    return { value: null };
+    return required ? { error: true, value: null } : { value: null };
   }
 
   const numericValue = Number(rawValue);
   if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    return { value: null };
+    return { error: true, value: numericValue };
   }
 
   if (!TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.includes(numericValue)) {
@@ -208,7 +208,9 @@ async function createTournamentCategory(req, res) {
     return res.status(404).json({ message: 'Torneo no encontrado' });
   }
 
-  const { error: drawSizeError, value: normalizedDrawSize } = validateDrawSizeInput(drawSize);
+  const { error: drawSizeError, value: normalizedDrawSize } = validateDrawSizeInput(drawSize, {
+    required: true,
+  });
   if (drawSizeError) {
     return res.status(400).json({
       message: 'El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.',
@@ -224,7 +226,7 @@ async function createTournamentCategory(req, res) {
       color && isValidCategoryColor(color)
         ? resolveCategoryColor(color)
         : DEFAULT_CATEGORY_COLOR,
-    drawSize: typeof normalizedDrawSize === 'number' ? normalizedDrawSize : undefined,
+    drawSize: normalizedDrawSize,
     matchType: Object.values(TOURNAMENT_CATEGORY_MATCH_TYPES).includes(matchType)
       ? matchType
       : TOURNAMENT_CATEGORY_MATCH_TYPES.SINGLES,
@@ -344,7 +346,8 @@ async function updateTournamentCategory(req, res) {
 
   if (Object.prototype.hasOwnProperty.call(updates, 'drawSize')) {
     const { error: drawSizeError, value: normalizedDrawSize } = validateDrawSizeInput(
-      updates.drawSize
+      updates.drawSize,
+      { required: true }
     );
     if (drawSizeError) {
       return res
@@ -352,11 +355,7 @@ async function updateTournamentCategory(req, res) {
         .json({ message: 'El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.' });
     }
 
-    if (normalizedDrawSize === null) {
-      category.drawSize = undefined;
-    } else {
-      category.drawSize = normalizedDrawSize;
-    }
+    category.drawSize = normalizedDrawSize;
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'matchType')) {
