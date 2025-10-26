@@ -53,6 +53,7 @@ const { GENDERS } = require('../models/User');
 const {
   TOURNAMENT_CATEGORY_MATCH_TYPES,
   TOURNAMENT_CATEGORY_MATCH_FORMATS,
+  TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES,
 } = require('../models/TournamentCategory');
 const { tournamentPosterUpload } = require('../middleware/upload');
 const { CATEGORY_COLOR_PALETTE, isValidCategoryColor, normalizeHexColor } = require('../utils/colors');
