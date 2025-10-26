@@ -1187,11 +1187,12 @@ async function autoGenerateTournamentBracket(req, res) {
         roundDrawMatches.push(drawMatch);
 
         if (players.length < 2) {
-          shouldCreateMatch = false;
-          if (players.length === 1 && roundIndex + 1 < totalRounds) {
+          const hasSinglePlayer = players.length === 1;
+          shouldCreateMatch = hasSinglePlayer;
+          if (hasSinglePlayer && roundIndex + 1 < totalRounds) {
             const parentIndex = Math.floor(matchIndex / 2);
             const slot = matchIndex % 2;
-            preAssignedSlotsByRound[roundIndex + 1][parentIndex][slot] = players[0];
+            feederInfoByRound[roundIndex + 1][parentIndex][slot] = true;
           }
         } else if (roundIndex + 1 < totalRounds) {
           const parentIndex = Math.floor(matchIndex / 2);
