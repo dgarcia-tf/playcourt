@@ -1,6 +1,11 @@
 const { validationResult, body, query } = require('express-validator');
 const mongoose = require('mongoose');
-const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
+const {
+  CourtReservation,
+  RESERVATION_STATUS,
+  RESERVATION_TYPES,
+  RESERVATION_GAME_TYPES,
+} = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { CourtBlock } = require('../models/CourtBlock');
@@ -13,6 +18,7 @@ const {
   RESERVATION_DAY_START_MINUTE,
   RESERVATION_DAY_END_MINUTE,
   MANUAL_RESERVATION_MAX_ADVANCE_HOURS,
+  cleanupExpiredManualReservations,
 } = require('../services/courtReservationService');
 
 function sanitizeNotes(notes) {
@@ -27,6 +33,29 @@ function normalizeCourtName(value) {
     return '';
   }
   return value.trim();
+}
+
+function normalizeGameType(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const singlesAliases = ['individual', 'individuales', 'singles', 'single', 'simple', 'sencillo'];
+  const doublesAliases = ['dobles', 'doubles', 'double', 'parejas', 'pares'];
+
+  if (singlesAliases.includes(normalized)) {
+    return RESERVATION_GAME_TYPES.SINGLES;
+  }
+  if (doublesAliases.includes(normalized)) {
+    return RESERVATION_GAME_TYPES.DOUBLES;
+  }
+
+  return undefined;
 }
 
 function toDate(value) {
@@ -140,6 +169,14 @@ const validateCreateReservation = [
     .optional()
     .isMongoId()
     .withMessage('Cada participante debe ser un identificador válido.'),
+  body('gameType')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('El tipo de partido debe ser un texto.'),
+  body('matchType')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('El tipo de partido debe ser un texto.'),
 ];
 
 const validateListReservations = [
@@ -167,6 +204,8 @@ async function createReservation(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
+  await cleanupExpiredManualReservations().catch(() => null);
+
   const {
     court: rawCourt,
     startsAt: rawStartsAt,
@@ -174,6 +213,7 @@ async function createReservation(req, res) {
     durationMinutes,
     notes,
     matchType: rawMatchType,
+    gameType: rawGameType,
   } = req.body;
 
   const startsAt = toDate(rawStartsAt);
@@ -214,13 +254,91 @@ async function createReservation(req, res) {
     bypassManualAdvanceLimit: hasCourtManagementAccess(req.user),
   });
 
+  let gameType = RESERVATION_GAME_TYPES.SINGLES;
+  const typeCandidates = [rawGameType, rawMatchType];
+  for (const candidate of typeCandidates) {
+    if (candidate === undefined || candidate === null || candidate === '') {
+      continue;
+    }
+
+    const normalizedType = normalizeGameType(candidate);
+    if (normalizedType === undefined) {
+      return res.status(400).json({ message: 'El tipo de partido seleccionado no es válido.' });
+    }
+
+    if (normalizedType) {
+      gameType = normalizedType;
+      break;
+    }
+  }
+
   const participantList = Array.isArray(req.body.participants) ? req.body.participants : [];
   const normalizedParticipants = normalizeParticipants(participantList);
   const requesterId = req.user.id.toString();
-  if (!normalizedParticipants.includes(requesterId)) {
-    normalizedParticipants.unshift(requesterId);
+  const participants = normalizedParticipants.includes(requesterId)
+    ? [...normalizedParticipants]
+    : [requesterId, ...normalizedParticipants];
+
+  if (!participants.includes(requesterId)) {
+    participants.unshift(requesterId);
   }
-  const participants = normalizedParticipants.slice(0, 4);
+
+  const requiredParticipants =
+    gameType === RESERVATION_GAME_TYPES.DOUBLES ? 4 : 2;
+
+  if (participants.length < requiredParticipants) {
+    return res.status(400).json({
+      message:
+        gameType === RESERVATION_GAME_TYPES.DOUBLES
+          ? 'Debes añadir a los cuatro jugadores para una reserva de dobles.'
+          : 'Debes añadir al segundo jugador para una reserva individual.',
+    });
+  }
+
+  if (participants.length > requiredParticipants) {
+    return res.status(400).json({
+      message:
+        gameType === RESERVATION_GAME_TYPES.DOUBLES
+          ? 'Una reserva de dobles solo puede tener cuatro participantes.'
+          : 'Una reserva individual solo puede tener dos participantes.',
+    });
+  }
+
+  const now = new Date();
+  const conflictingReservation = await CourtReservation.findOne({
+    type: RESERVATION_TYPES.MANUAL,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
+    endsAt: { $gt: now },
+    participants: { $in: participants },
+  })
+    .populate('participants', 'fullName')
+    .lean();
+
+  if (conflictingReservation) {
+    const conflictingParticipants = normalizeParticipants(conflictingReservation.participants);
+    const conflictingId = participants.find((participantId) =>
+      conflictingParticipants.includes(participantId)
+    );
+
+    let conflictMessage =
+      'Uno de los jugadores ya tiene una reserva activa. Cancela la reserva anterior antes de crear una nueva.';
+    if (conflictingId && Array.isArray(conflictingReservation.participants)) {
+      const conflictingUser = conflictingReservation.participants.find((participant) => {
+        const participantId =
+          participant && typeof participant === 'object'
+            ? participant._id?.toString?.() || participant.id?.toString?.()
+            : participant?.toString?.();
+        return participantId === conflictingId;
+      });
+      const displayName =
+        conflictingUser?.fullName || conflictingUser?.email || conflictingReservation.createdBy?.fullName;
+      if (displayName) {
+        conflictMessage = `El jugador ${displayName} ya tiene una reserva activa. Cancela la reserva anterior antes de crear una nueva.`;
+      }
+    }
+
+    return res.status(409).json({ message: conflictMessage });
+  }
 
   const reservation = await CourtReservation.create({
     court,
@@ -230,11 +348,11 @@ async function createReservation(req, res) {
     createdBy: req.user.id,
     participants,
     type: RESERVATION_TYPES.MANUAL,
+    gameType,
   });
 
-  await reservation
-    .populate('createdBy', 'fullName email roles')
-    .populate('participants', 'fullName email roles');
+  await reservation.populate('createdBy', 'fullName email roles');
+  await reservation.populate('participants', 'fullName');
 
   return res.status(201).json(reservation);
 }
@@ -244,6 +362,8 @@ async function listReservations(req, res) {
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
+
+  await cleanupExpiredManualReservations().catch(() => null);
 
   const { date, court: rawCourt, start: rawStart, end: rawEnd } = req.query;
 
@@ -282,7 +402,7 @@ async function listReservations(req, res) {
   const reservations = await CourtReservation.find(filters)
     .sort({ startsAt: 1 })
     .populate('createdBy', 'fullName email roles')
-    .populate('participants', 'fullName email roles')
+    .populate('participants', 'fullName')
     .populate({
       path: 'match',
       select: 'players category league season status scheduledAt court',
@@ -339,6 +459,8 @@ async function getAvailability(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
+  await cleanupExpiredManualReservations().catch(() => null);
+
   const { date, court: rawCourt } = req.query;
   const range = buildDayRange(date);
   if (!range) {
@@ -368,7 +490,7 @@ async function getAvailability(req, res) {
   })
     .sort({ startsAt: 1 })
     .populate('createdBy', 'fullName email roles')
-    .populate('participants', 'fullName email roles')
+    .populate('participants', 'fullName')
     .populate({
       path: 'match',
       select: 'players category league season status scheduledAt court',

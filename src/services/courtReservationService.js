@@ -1,5 +1,7 @@
 const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
+const { sendPushNotification } = require('./pushNotificationService');
+const { sendEmailNotification } = require('./emailService');
 
 const DEFAULT_RESERVATION_DURATION_MINUTES = 75;
 const RESERVATION_DAY_START_MINUTE = 8 * 60 + 30;
@@ -182,6 +184,90 @@ function normalizeParticipants(participants = []) {
   return normalized;
 }
 
+function formatReservationDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '';
+  }
+  try {
+    return date.toLocaleString('es-ES', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  } catch (error) {
+    return date.toLocaleString('es-ES');
+  }
+}
+
+async function cleanupExpiredManualReservations({ now = new Date() } = {}) {
+  const referenceDate = toDate(now) || new Date();
+
+  const expiredReservations = await CourtReservation.find({
+    type: RESERVATION_TYPES.MANUAL,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
+    endsAt: { $lte: referenceDate },
+  })
+    .populate('participants', '_id fullName')
+    .populate('createdBy', '_id fullName email');
+
+  if (!expiredReservations.length) {
+    return 0;
+  }
+
+  let removed = 0;
+
+  for (const reservation of expiredReservations) {
+    try {
+      const creatorId = reservation?.createdBy?._id
+        ? reservation.createdBy._id.toString()
+        : reservation?.createdBy?.toString?.();
+      const participantIds = normalizeParticipants(reservation.participants);
+      const recipientIds = participantIds.filter((participantId) => {
+        if (!participantId) {
+          return false;
+        }
+        return participantId !== creatorId;
+      });
+
+      if (recipientIds.length) {
+        const formattedStart = formatReservationDate(reservation.startsAt);
+        const metadata = {
+          tipo: 'reserva_expirada',
+          court: reservation.court || '',
+        };
+        if (reservation.startsAt instanceof Date && !Number.isNaN(reservation.startsAt.getTime())) {
+          metadata.startsAt = reservation.startsAt.toISOString();
+        }
+        if (reservation.endsAt instanceof Date && !Number.isNaN(reservation.endsAt.getTime())) {
+          metadata.endsAt = reservation.endsAt.toISOString();
+        }
+
+        const notificationPayload = {
+          title: 'Reserva eliminada automáticamente',
+          message:
+            formattedStart && reservation.court
+              ? `La reserva de la pista ${reservation.court} para ${formattedStart} se ha eliminado automáticamente al haber vencido.`
+              : 'Una reserva de pista se ha eliminado automáticamente al haber vencido.',
+          recipients: recipientIds,
+          metadata,
+        };
+
+        await Promise.allSettled([
+          sendPushNotification({ ...notificationPayload }),
+          sendEmailNotification({ ...notificationPayload }),
+        ]);
+      }
+
+      await CourtReservation.deleteOne({ _id: reservation._id });
+      removed += 1;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('No se pudo limpiar una reserva expirada', error);
+    }
+  }
+
+  return removed;
+}
+
 function resolveMatchReservationWindow(match) {
   if (!match) {
     return { startsAt: null, endsAt: null };
@@ -324,4 +410,5 @@ module.exports = {
   cancelMatchReservation,
   resolveEndsAt,
   normalizeParticipants,
+  cleanupExpiredManualReservations,
 };

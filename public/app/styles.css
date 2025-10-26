@@ -5204,6 +5204,11 @@ body.tournament-fullscreen-active {
   gap: 1.5rem;
 }
 
+.court-reservations-layout {
+  display: grid;
+  gap: 1.5rem;
+}
+
 @media (min-width: 960px) {
   .courts-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5217,6 +5222,14 @@ body.tournament-fullscreen-active {
 #court-calendar-card,
 #court-block-card {
   grid-column: 1 / -1;
+}
+
+.calendar-date-picker {
+  margin: 0;
+}
+
+.calendar-date-picker input[type='date'] {
+  min-width: 0;
 }
 
 .court-reservation-item {
@@ -5253,6 +5266,60 @@ body.tournament-fullscreen-active {
   display: flex;
   gap: 0.5rem;
   justify-content: flex-end;
+}
+
+.reservation-modal-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.reservation-modal-form .form-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .reservation-modal-form .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.reservation-game-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.reservation-game-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+}
+
+.reservation-participants-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reservation-participants-grid--doubles {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.reservation-participant-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.reservation-participant-field select {
+  width: 100%;
+}
+
+.reservation-form-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 }
 
 .court-availability-item {

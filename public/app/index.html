@@ -1576,71 +1576,47 @@
             </section>
 
             <section id="section-court-reservations" class="app-section" hidden>
-              <div class="courts-grid">
-                <article class="card" id="court-reservation-form-card">
+              <div class="court-reservations-layout">
+                <article class="card" id="player-court-calendar-card">
                   <div class="card-header">
-                    <h3>Reservar pista</h3>
-                    <p class="card-subtitle">
-                      Escoge fecha, hora y pista disponible según la configuración del club.
+                    <div>
+                      <h3>Calendario de pistas</h3>
+                      <p class="card-subtitle">
+                        Consulta las franjas disponibles y reserva tu pista en la vista de día.
+                      </p>
+                    </div>
+                    <div class="calendar-actions">
+                      <div class="calendar-nav">
+                        <button
+                          type="button"
+                          class="ghost"
+                          id="player-court-calendar-prev"
+                          aria-label="Ver día anterior"
+                        >
+                          ◀
+                        </button>
+                        <span class="calendar-label" id="player-court-calendar-label"></span>
+                        <button
+                          type="button"
+                          class="ghost"
+                          id="player-court-calendar-next"
+                          aria-label="Ver día siguiente"
+                        >
+                          ▶
+                        </button>
+                      </div>
+                      <label class="inline-field calendar-date-picker">
+                        <span class="sr-only">Seleccionar fecha</span>
+                        <input type="date" id="player-court-calendar-date" />
+                      </label>
+                    </div>
+                  </div>
+                  <div class="calendar-container" id="player-court-calendar-container">
+                    <p class="empty-state">
+                      Selecciona una fecha para consultar la disponibilidad de pistas y realizar reservas.
                     </p>
                   </div>
-                  <form id="court-reservation-form" class="form">
-                    <div class="form-grid">
-                      <label class="inline-field">
-                        Fecha
-                        <input type="date" id="court-reservation-date" name="date" required />
-                      </label>
-                      <label class="inline-field">
-                        Hora
-                        <select id="court-reservation-time" name="time" required></select>
-                      </label>
-                      <label class="inline-field">
-                        Duración
-                        <select id="court-reservation-duration" name="duration">
-                          <option value="75" selected>75 minutos</option>
-                        </select>
-                      </label>
-                      <label class="inline-field">
-                        Pista
-                        <select id="court-reservation-court" name="court" required>
-                          <option value="" disabled selected>
-                            Añade pistas en la sección del club para habilitar las reservas
-                          </option>
-                        </select>
-                      </label>
-                    </div>
-                    <label class="inline-field">
-                      Notas
-                      <textarea
-                        id="court-reservation-notes"
-                        name="notes"
-                        rows="2"
-                        maxlength="500"
-                        placeholder="Añade información relevante para el rival o el club"
-                      ></textarea>
-                    </label>
-                    <p class="status-message" id="court-reservation-status"></p>
-                    <div class="form-actions">
-                      <button type="submit" class="primary" id="court-reservation-submit">Guardar reserva</button>
-                    </div>
-                  </form>
-                </article>
-
-                <article class="card" id="court-availability-card">
-                  <div class="card-header">
-                    <h3>Disponibilidad de pistas</h3>
-                    <div class="card-actions">
-                      <label class="inline-field">
-                        Fecha
-                        <input type="date" id="court-availability-date" />
-                      </label>
-                    </div>
-                  </div>
-                  <ul class="list" id="court-availability-list">
-                    <li class="empty-state" id="court-availability-empty">
-                      Selecciona una fecha para consultar la disponibilidad de pistas.
-                    </li>
-                  </ul>
+                  <p class="status-message" id="player-court-calendar-status"></p>
                 </article>
 
                 <article class="card" id="court-reservations-card">
