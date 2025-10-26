@@ -8006,13 +8006,21 @@ function formatTimeRangeLabel(start, end) {
   return `${startLabel} – ${endLabel}`;
 }
 
+function capitalizeFirstLetter(text) {
+  if (!text) {
+    return text;
+  }
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
 function formatDateOnly(value, options = {}) {
   try {
-    return new Intl.DateTimeFormat('es-ES', {
+    const formatted = new Intl.DateTimeFormat('es-ES', {
       weekday: options.weekday ?? 'long',
       day: 'numeric',
       month: 'long',
     }).format(new Date(value));
+    return capitalizeFirstLetter(formatted);
   } catch (error) {
     return value;
   }
@@ -8031,12 +8039,13 @@ function formatMonthLabel(date) {
 
 function formatDayLabel(date) {
   try {
-    return new Intl.DateTimeFormat('es-ES', {
+    const formatted = new Intl.DateTimeFormat('es-ES', {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
       year: 'numeric',
     }).format(date);
+    return capitalizeFirstLetter(formatted);
   } catch (error) {
     return formatDateOnly(date);
   }
@@ -8191,7 +8200,15 @@ function getReservationSlotStartsForDate(baseDate = new Date()) {
   ) {
     slots.push(addMinutes(dayStart, minute));
   }
-  return slots;
+
+  const now = new Date();
+  const isToday = startOfDay(now).getTime() === dayStart.getTime();
+
+  if (!isToday) {
+    return slots;
+  }
+
+  return slots.filter((slot) => slot.getTime() >= now.getTime());
 }
 
 function getReservationSlotEnd(start) {
@@ -8199,7 +8216,7 @@ function getReservationSlotEnd(start) {
 }
 
 function formatReservationSlotLabel(start) {
-  return formatTimeRangeLabel(start, getReservationSlotEnd(start));
+  return formatTime(start);
 }
 
 function isValidReservationSlotStart(date) {
@@ -15893,7 +15910,7 @@ function createCalendarDaySchedule(date, events = []) {
   slots.forEach((slotStart, slotIndex) => {
     const slotEnd = getReservationSlotEnd(slotStart);
     const row = document.createElement('div');
-    row.className = 'calendar-day-schedule__row';
+    row.className = 'calendar-day-schedule__row calendar-day-schedule__row--body';
     row.style.setProperty('--calendar-schedule-court-count', courts.length);
 
     const timeCell = document.createElement('div');
@@ -17683,9 +17700,17 @@ function createCourtCalendarDaySchedule(date, events = []) {
 
   const header = document.createElement('div');
   header.className = 'calendar-day-header calendar-day-schedule__header';
-  header.innerHTML = `<strong>${dayReference.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
-    weekday: 'long',
-  }).format(dayReference)}</span>`;
+  const dayLabel = formatDayLabel(dayReference);
+  const [weekdayLabel, ...restParts] = dayLabel.split(', ');
+  const headerTitle = document.createElement('strong');
+  headerTitle.textContent = weekdayLabel || dayLabel;
+  header.appendChild(headerTitle);
+  const restLabel = restParts.join(', ');
+  if (restLabel) {
+    const headerDetail = document.createElement('span');
+    headerDetail.textContent = restLabel;
+    header.appendChild(headerDetail);
+  }
   container.appendChild(header);
 
   const scroller = document.createElement('div');
@@ -17723,7 +17748,7 @@ function createCourtCalendarDaySchedule(date, events = []) {
     const slotEndDate = getReservationSlotEnd(slotStartDate);
 
     const row = document.createElement('div');
-    row.className = 'calendar-day-schedule__row';
+    row.className = 'calendar-day-schedule__row calendar-day-schedule__row--body';
     row.style.setProperty('--calendar-schedule-court-count', courts.length);
 
     const timeCell = document.createElement('div');
@@ -23257,18 +23282,6 @@ async function submitTournamentCategoryForm({
 
   payload.drawSize = drawSizeFieldValue;
 
-  const normalizedConfirmedPlayers = Number.isFinite(Number(confirmedPlayers))
-    ? Number(confirmedPlayers)
-    : 0;
-  if (normalizedConfirmedPlayers > drawSizeFieldValue) {
-    setStatusMessage(
-      statusElement,
-      'error',
-      `Hay ${normalizedConfirmedPlayers} jugadores confirmados y el cuadro seleccionado solo admite ${drawSizeFieldValue} plazas. Amplía el cuadro o libera cupos antes de guardar.`
-    );
-    return { success: false };
-  }
-
   const normalizedCategoryId = categoryId ? normalizeId(categoryId) : '';
   const isEditing = Boolean(normalizedCategoryId);
 
@@ -23409,13 +23422,11 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
     <label>
       Tamaño de cuadro
       <select name="drawSize" required>
-        <option value="" disabled ${editing ? '' : 'selected'}>Selecciona el tamaño del cuadro</option>
+        <option value="" disabled selected>Selecciona el tamaño del cuadro</option>
         ${TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS.map(
           (size) => `<option value="${size}">${size} jugadores</option>`
         ).join('')}
       </select>
-      <span class="form-hint" data-draw-size-summary></span>
-      <span class="form-hint error" data-draw-size-warning hidden></span>
     </label>
     <div class="form-actions">
       <button type="submit" class="primary">${
@@ -23464,8 +23475,6 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
   }
   if (form.elements.drawSize) {
     const drawSizeElement = form.elements.drawSize;
-    const drawSizeSummary = form.querySelector('[data-draw-size-summary]');
-    const drawSizeWarning = form.querySelector('[data-draw-size-warning]');
     const normalizedDrawSize = Number.isFinite(Number(category?.drawSize))
       ? String(Number(category.drawSize))
       : '';
@@ -23473,33 +23482,6 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
     if (!normalizedDrawSize && drawSizeElement.options.length) {
       drawSizeElement.selectedIndex = 0;
     }
-
-    const updateDrawSizeMessaging = () => {
-      const selectedSize = Number.parseInt(drawSizeElement.value, 10);
-      if (drawSizeSummary) {
-        drawSizeSummary.textContent = confirmedPlayersCount
-          ? `${confirmedPlayersCount} jugadores confirmados en esta categoría.`
-          : 'Selecciona cuántas plazas tendrá el cuadro principal.';
-      }
-      if (!drawSizeWarning) {
-        return;
-      }
-      if (
-        confirmedPlayersCount > 0 &&
-        Number.isFinite(selectedSize) &&
-        selectedSize > 0 &&
-        confirmedPlayersCount > selectedSize
-      ) {
-        drawSizeWarning.hidden = false;
-        drawSizeWarning.textContent = `Hay ${confirmedPlayersCount} jugadores confirmados y el cuadro seleccionado solo admite ${selectedSize} plazas.`;
-      } else {
-        drawSizeWarning.hidden = true;
-        drawSizeWarning.textContent = '';
-      }
-    };
-
-    drawSizeElement.addEventListener('change', updateDrawSizeMessaging);
-    updateDrawSizeMessaging();
   }
 
   form.addEventListener('submit', async (event) => {

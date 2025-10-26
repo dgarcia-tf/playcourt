@@ -355,17 +355,6 @@ async function updateTournamentCategory(req, res) {
         .json({ message: 'El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.' });
     }
 
-    const confirmedEnrollmentCount = await TournamentEnrollment.countDocuments({
-      category: categoryId,
-      tournament: tournamentId,
-      status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
-    });
-    if (confirmedEnrollmentCount > normalizedDrawSize) {
-      return res.status(400).json({
-        message: `Hay ${confirmedEnrollmentCount} jugadores confirmados y el cuadro seleccionado solo admite ${normalizedDrawSize} plazas. Amplía el cuadro o libera cupos antes de guardar.`,
-      });
-    }
-
     category.drawSize = normalizedDrawSize;
   }
 
