@@ -1211,6 +1211,7 @@ function getScheduleAvailabilityState(scope = 'player') {
       availability: state.courtAdminSchedule || [],
       date: state.courtAdminDate,
       court: state.courtAdminCourt || '',
+      ignoreManualLimit: Boolean(state.courtAdminIgnoreManualLimit),
     };
   }
 
@@ -1218,10 +1219,16 @@ function getScheduleAvailabilityState(scope = 'player') {
     availability: state.courtAvailability || [],
     date: state.courtAvailabilityDate,
     court: state.courtAvailabilityCourt || '',
+    ignoreManualLimit: Boolean(state.courtAvailabilityIgnoreManualLimit),
   };
 }
 
-async function resolveScheduleAvailability({ scope = 'player', dateValue, courtValue } = {}) {
+async function resolveScheduleAvailability({
+  scope = 'player',
+  dateValue,
+  courtValue,
+  ignoreManualLimit,
+} = {}) {
   const dateString = typeof dateValue === 'string' ? dateValue : '';
   const targetDate = dateString ? new Date(`${dateString}T00:00:00`) : null;
   if (targetDate && Number.isNaN(targetDate.getTime())) {
@@ -1233,24 +1240,38 @@ async function resolveScheduleAvailability({ scope = 'player', dateValue, courtV
   const targetDateValue = formatDateInput(targetDate);
   const normalizedCourt = typeof courtValue === 'string' ? courtValue.trim() : '';
   const currentCourtValue = typeof currentState.court === 'string' ? currentState.court : '';
+  const shouldIgnoreManualLimit =
+    typeof ignoreManualLimit === 'boolean'
+      ? ignoreManualLimit
+      : scope !== 'player' && hasCourtManagementAccess();
+  const currentIgnoreManualLimit = Boolean(currentState.ignoreManualLimit);
 
   if (!targetDateValue) {
     return currentState;
   }
 
-  if (currentDateValue === targetDateValue && currentCourtValue === normalizedCourt) {
+  if (
+    currentDateValue === targetDateValue &&
+    currentCourtValue === normalizedCourt &&
+    currentIgnoreManualLimit === shouldIgnoreManualLimit
+  ) {
     return currentState;
   }
 
   if (scope === 'admin') {
     state.courtAdminDate = targetDate;
     state.courtAdminCourt = normalizedCourt;
+    state.courtAdminIgnoreManualLimit = shouldIgnoreManualLimit;
   } else {
     state.courtAvailabilityDate = targetDate;
     state.courtAvailabilityCourt = normalizedCourt;
+    state.courtAvailabilityIgnoreManualLimit = shouldIgnoreManualLimit;
   }
 
-  await refreshCourtAvailability(scope, { court: normalizedCourt });
+  await refreshCourtAvailability(scope, {
+    court: normalizedCourt,
+    ignoreManualLimit: shouldIgnoreManualLimit,
+  });
 
   return getScheduleAvailabilityState(scope);
 }
@@ -1274,6 +1295,7 @@ async function updateMatchScheduleSlots({
   selectedTime = '',
   scope = 'player',
   courtValue = '',
+  ignoreManualLimit,
 } = {}) {
   if (!select) {
     return { matched: false, hasOptions: false };
@@ -1285,10 +1307,16 @@ async function updateMatchScheduleSlots({
 
   setScheduleSelectLoading(select);
 
+  const shouldIgnoreManualLimit =
+    typeof ignoreManualLimit === 'boolean'
+      ? ignoreManualLimit
+      : scope !== 'player' && hasCourtManagementAccess();
+
   const { availability, date, court } = await resolveScheduleAvailability({
     scope,
     dateValue,
     courtValue,
+    ignoreManualLimit: shouldIgnoreManualLimit,
   });
   return renderMatchScheduleSlots({
     select,
@@ -1309,6 +1337,7 @@ function attachSchedulePicker({
   courtField = null,
   existingValue = '',
   scope = 'player',
+  ignoreManualLimit,
 } = {}) {
   const templates = Array.isArray(scheduleTemplates) ? scheduleTemplates : [];
   if (!templates.length || !scheduleDateField || !scheduleSlotField || !scheduledField) {
@@ -1328,6 +1357,11 @@ function attachSchedulePicker({
     return scheduledField.value;
   };
 
+  const shouldIgnoreManualLimit =
+    typeof ignoreManualLimit === 'boolean'
+      ? ignoreManualLimit
+      : scope !== 'player' && hasCourtManagementAccess();
+
   const getSelectedCourtValue = () => {
     if (!courtField) {
       return '';
@@ -1344,6 +1378,7 @@ function attachSchedulePicker({
       selectedTime,
       scope,
       courtValue: getSelectedCourtValue(),
+      ignoreManualLimit: shouldIgnoreManualLimit,
     });
   };
 
@@ -1426,6 +1461,7 @@ function createMatchScheduleSlotPicker({
   existingCourt = '',
   onChange = () => {},
   ignoreMatchId = '',
+  ignoreManualLimit,
 } = {}) {
   const resolvedTemplates = Array.isArray(templates) ? templates : [];
   if (!container || !dateField || !scheduledField) {
@@ -1455,6 +1491,10 @@ function createMatchScheduleSlotPicker({
     courtValue: '',
     availability: [],
     availabilityDate: null,
+    ignoreManualLimit:
+      typeof ignoreManualLimit === 'boolean'
+        ? ignoreManualLimit
+        : scope !== 'player' && hasCourtManagementAccess(),
   };
 
   let loadToken = 0;
@@ -1796,7 +1836,11 @@ function createMatchScheduleSlotPicker({
     const token = ++loadToken;
     setStatus('Cargando disponibilidad...');
     try {
-      const { availability, date } = await resolveScheduleAvailability({ scope, dateValue: normalizedDate });
+      const { availability, date } = await resolveScheduleAvailability({
+        scope,
+        dateValue: normalizedDate,
+        ignoreManualLimit: state.ignoreManualLimit,
+      });
       if (token !== loadToken) {
         return;
       }
@@ -2592,10 +2636,12 @@ const state = {
   courtAvailability: [],
   courtAvailabilityDate: new Date(),
   courtAvailabilityCourt: '',
+  courtAvailabilityIgnoreManualLimit: false,
   courtAdminDate: new Date(),
   courtAdminCourt: '',
   courtAdminSchedule: [],
   courtAdminBlocks: [],
+  courtAdminIgnoreManualLimit: false,
   courtCalendarDate: new Date(),
   courtCalendarEvents: [],
   courtCalendarViewMode: 'month',
@@ -16898,13 +16944,18 @@ async function loadPlayerCourtData() {
   await refreshCourtAvailability('player');
 }
 
-async function refreshCourtAvailability(scope = 'player', { court: courtValue = '' } = {}) {
+async function refreshCourtAvailability(
+  scope = 'player',
+  { court: courtValue = '', ignoreManualLimit = false } = {}
+) {
   const normalizedCourt = typeof courtValue === 'string' ? courtValue.trim() : '';
   const targetDate = scope === 'admin' ? state.courtAdminDate : state.courtAvailabilityDate;
   const formatted = formatDateInput(targetDate) || formatDateInput(new Date());
   if (!formatted) {
     return;
   }
+
+  const normalizedIgnoreManualLimit = Boolean(ignoreManualLimit);
 
   if (scope === 'admin' && courtAdminStatus) {
     setStatusMessage(courtAdminStatus, 'info', 'Cargando reservas...');
@@ -16917,6 +16968,9 @@ async function refreshCourtAvailability(scope = 'player', { court: courtValue = 
     if (normalizedCourt) {
       params.append('court', normalizedCourt);
     }
+    if (normalizedIgnoreManualLimit) {
+      params.append('ignoreManualLimit', 'true');
+    }
     const availability = await request(`/courts/availability?${params.toString()}`);
     const courts = Array.isArray(availability?.courts) ? availability.courts : [];
     if (scope === 'admin') {
@@ -16925,6 +16979,7 @@ async function refreshCourtAvailability(scope = 'player', { court: courtValue = 
       state.courtAdminBlocks = Array.isArray(availability?.blocks)
         ? availability.blocks
         : [];
+      state.courtAdminIgnoreManualLimit = normalizedIgnoreManualLimit;
       renderCourtAdminSchedule();
       if (courtAdminStatus) {
         setStatusMessage(courtAdminStatus, '', '');
@@ -16932,6 +16987,7 @@ async function refreshCourtAvailability(scope = 'player', { court: courtValue = 
     } else {
       state.courtAvailabilityCourt = normalizedCourt;
       state.courtAvailability = courts;
+      state.courtAvailabilityIgnoreManualLimit = normalizedIgnoreManualLimit;
       renderCourtAvailability();
       renderPlayerCourtCalendar();
       if (playerCourtCalendarStatus) {
@@ -16943,6 +16999,7 @@ async function refreshCourtAvailability(scope = 'player', { court: courtValue = 
       state.courtAdminCourt = normalizedCourt;
       state.courtAdminSchedule = [];
       state.courtAdminBlocks = [];
+      state.courtAdminIgnoreManualLimit = normalizedIgnoreManualLimit;
       renderCourtAdminSchedule();
       if (courtAdminStatus) {
         setStatusMessage(courtAdminStatus, 'error', error.message);
@@ -16950,6 +17007,7 @@ async function refreshCourtAvailability(scope = 'player', { court: courtValue = 
     } else {
       state.courtAvailabilityCourt = normalizedCourt;
       state.courtAvailability = [];
+      state.courtAvailabilityIgnoreManualLimit = normalizedIgnoreManualLimit;
       renderCourtAvailability();
       renderPlayerCourtCalendar();
       if (playerCourtCalendarStatus) {
@@ -22959,6 +23017,7 @@ function updateAdminMatchScheduleVisibility({ selectedTime, selectedCourt } = {}
       existingValue: adminMatchDate.value || '',
       existingCourt: resolvedSelectedCourt,
       ignoreMatchId: state.adminMatchEditingId || '',
+      ignoreManualLimit: hasCourtManagementAccess(),
       onChange: () => {
         syncAdminMatchScheduledValue();
       },
@@ -27697,6 +27756,7 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       existingValue: scheduledField?.value || '',
       existingCourt: courtField?.value || match?.court || '',
       ignoreMatchId: match?._id || '',
+      ignoreManualLimit: hasCourtManagementAccess(),
       onChange: () => {
         updateCourtInfoDisplay();
         if (statusField) {

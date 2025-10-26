@@ -479,6 +479,8 @@ async function getAvailability(req, res) {
     selectedCourts = resolvedCourt ? [resolvedCourt] : [];
   }
 
+  const ignoreManualLimit = req.query.ignoreManualLimit === 'true';
+
   if (!selectedCourts.length) {
     return res.json({ date: range.start, courts: [], blocks: [] });
   }
@@ -536,7 +538,11 @@ async function getAvailability(req, res) {
   const manualReservationCutoff = new Date(
     Date.now() + MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000
   );
-  const canBypassManualLimit = hasCourtManagementAccess(req.user);
+  let canBypassManualLimit = hasCourtManagementAccess(req.user);
+  if (!canBypassManualLimit && ignoreManualLimit) {
+    canBypassManualLimit =
+      userHasRole(req.user, USER_ROLES.ADMIN) || userHasRole(req.user, USER_ROLES.COURT_MANAGER);
+  }
 
   const grouped = selectedCourts.map((courtName) => ({
     court: courtName,
