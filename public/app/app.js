@@ -10741,12 +10741,32 @@ function applyTournamentBracketRoundOffsets(grid) {
     return;
   }
 
+  const matchElementById = new Map();
+  const matchElementByNumber = new Map();
+
   roundLists.forEach((roundList) => {
-    if (roundList instanceof HTMLElement) {
+    if (!(roundList instanceof HTMLElement)) {
+      return;
+    }
+
+    const baseGapRem = Number.parseFloat(roundList.dataset.baseMatchGapRem);
+    if (Number.isFinite(baseGapRem)) {
+      roundList.style.setProperty('--bracket-match-gap', `${baseGapRem}rem`);
+    } else {
+      roundList.style.removeProperty('--bracket-match-gap');
+    }
+
+    const baseOffsetRem = Number.parseFloat(roundList.dataset.baseRoundOffsetRem);
+    if (Number.isFinite(baseOffsetRem)) {
+      if (baseOffsetRem !== 0) {
+        roundList.style.setProperty('--bracket-round-offset', `${baseOffsetRem}rem`);
+      } else {
+        roundList.style.removeProperty('--bracket-round-offset');
+      }
+    } else {
       roundList.style.removeProperty('--bracket-round-offset');
       roundList.style.removeProperty('--bracket-match-gap');
     }
-  });
 
   for (let index = 1; index < roundLists.length; index += 1) {
     const previousRound = roundLists[index - 1];
@@ -13915,6 +13935,54 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
   const card = document.createElement('div');
   card.className = 'bracket-match';
 
+  if (matchId) {
+    card.dataset.matchId = matchId;
+  }
+
+  const displayMatchNumber = match?.matchNumber || matchNumber;
+  if (displayMatchNumber) {
+    card.dataset.matchNumber = `${displayMatchNumber}`;
+  }
+
+  const previousMatchIds = Array.isArray(match?.previousMatches)
+    ? match.previousMatches
+        .map((previous) => normalizeId(previous))
+        .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
+    : [];
+  if (previousMatchIds.length) {
+    card.dataset.previousMatchIds = previousMatchIds.join(',');
+  }
+
+  const placeholderSources = [];
+  if (Array.isArray(placeholderLabels)) {
+    placeholderSources.push(...placeholderLabels);
+  }
+  if (typeof match?.placeholderA === 'string') {
+    placeholderSources.push(match.placeholderA);
+  }
+  if (typeof match?.placeholderB === 'string') {
+    placeholderSources.push(match.placeholderB);
+  }
+
+  const placeholderMatchNumbers = new Set();
+  placeholderSources.forEach((text) => {
+    if (typeof text !== 'string' || !/partido/i.test(text)) {
+      return;
+    }
+    const numberRegex = /\d+/g;
+    numberRegex.lastIndex = 0;
+    let matchResult = null;
+    while ((matchResult = numberRegex.exec(text))) {
+      const [numberValue] = matchResult;
+      if (numberValue) {
+        placeholderMatchNumbers.add(numberValue);
+      }
+    }
+  });
+  if (placeholderMatchNumbers.size) {
+    card.dataset.previousMatchNumbers = Array.from(placeholderMatchNumbers).join(',');
+  }
+
   if (roundIndex > 0) {
     card.classList.add('bracket-match--has-prev');
   }
@@ -13931,7 +13999,6 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
 
   const label = document.createElement('span');
   label.className = 'bracket-match__label';
-  const displayMatchNumber = match?.matchNumber || matchNumber;
   label.textContent = displayMatchNumber ? `Partido ${displayMatchNumber}` : 'Partido';
   header.appendChild(label);
 
@@ -14254,15 +14321,26 @@ function buildTournamentBracketGrid(matches = [], { seedByPlayer = new Map(), dr
 
     const matchList = document.createElement('div');
     matchList.className = 'bracket-round__matches';
+    matchList.dataset.roundIndex = `${roundIndex}`;
+    matchList.dataset.expectedMatches = `${expectedMatches}`;
+    const previousExpectedMatches =
+      roundIndex > 0 ? Math.max(1, expectedMatchesPerRound[roundIndex - 1] || 1) : expectedMatches;
+    matchList.dataset.expectedPreviousMatches = `${previousExpectedMatches}`;
 
     const gapRem = matchGapByRound[roundIndex];
     if (Number.isFinite(gapRem)) {
       matchList.style.setProperty('--bracket-match-gap', `${gapRem}rem`);
+      matchList.dataset.baseMatchGapRem = `${gapRem}`;
     }
 
     const offsetRem = roundOffsetByRound[roundIndex];
-    if (offsetRem) {
+    if (Number.isFinite(offsetRem) && offsetRem !== 0) {
       matchList.style.setProperty('--bracket-round-offset', `${offsetRem}rem`);
+    } else if (offsetRem === 0) {
+      matchList.style.removeProperty('--bracket-round-offset');
+    }
+    if (Number.isFinite(offsetRem)) {
+      matchList.dataset.baseRoundOffsetRem = `${offsetRem}`;
     }
 
     for (let slotIndex = 0; slotIndex < expectedMatches; slotIndex += 1) {
