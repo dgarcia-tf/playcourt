@@ -305,6 +305,10 @@ textarea {
   color: var(--text-muted);
 }
 
+.form-hint.error {
+  color: var(--danger);
+}
+
 .form-hint.match-format-hint {
   margin: 0 0 1rem;
   display: block;

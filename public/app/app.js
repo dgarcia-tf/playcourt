@@ -23242,6 +23242,7 @@ async function submitTournamentCategoryForm({
   tournamentId,
   categoryId = '',
   statusElement,
+  confirmedPlayers = 0,
 }) {
   if (!form || !tournamentId) return { success: false };
 
@@ -23364,6 +23365,9 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
 
   const editing = Boolean(category);
   const selectedColor = category ? getCategoryColor(category) : DEFAULT_CATEGORY_COLOR;
+  const confirmedPlayersCount = Number.isFinite(Number(category?.enrollmentCount))
+    ? Number(category.enrollmentCount)
+    : 0;
 
   const form = document.createElement('form');
   form.className = 'form';
@@ -23493,6 +23497,7 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
       tournamentId,
       categoryId: normalizedCategoryId,
       statusElement: status,
+      confirmedPlayers: confirmedPlayersCount,
     });
     if (result.success) {
       closeModal();
