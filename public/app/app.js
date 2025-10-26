@@ -10744,10 +10744,9 @@ function applyTournamentBracketRoundOffsets(grid) {
   roundLists.forEach((roundList) => {
     if (roundList instanceof HTMLElement) {
       roundList.style.removeProperty('--bracket-round-offset');
+      roundList.style.removeProperty('--bracket-match-gap');
     }
   });
-
-  let accumulatedOffsetPx = 0;
 
   for (let index = 1; index < roundLists.length; index += 1) {
     const previousRound = roundLists[index - 1];
@@ -10758,24 +10757,57 @@ function applyTournamentBracketRoundOffsets(grid) {
     }
 
     const previousMatches = Array.from(previousRound.querySelectorAll('.bracket-match'));
-    if (!previousMatches.length) {
+    const currentMatches = Array.from(currentRound.querySelectorAll('.bracket-match'));
+
+    if (!previousMatches.length || !currentMatches.length) {
       continue;
     }
 
-    const firstPreviousMatch = previousMatches[0];
-    const firstPreviousRect = firstPreviousMatch.getBoundingClientRect();
-    const secondPreviousMatch = previousMatches[1] || null;
-
-    const previousMatchHeightPx = firstPreviousRect.height;
-    let previousGapPx = previousMatchHeightPx;
-
-    if (secondPreviousMatch) {
-      const secondPreviousRect = secondPreviousMatch.getBoundingClientRect();
-      previousGapPx = Math.max(0, secondPreviousRect.top - firstPreviousRect.bottom);
+    const currentFirstMatch = currentMatches[0];
+    if (!(currentFirstMatch instanceof HTMLElement)) {
+      continue;
     }
 
-    accumulatedOffsetPx += (previousMatchHeightPx + previousGapPx) / 2;
-    currentRound.style.setProperty('--bracket-round-offset', `${accumulatedOffsetPx}px`);
+    const getGroupCenter = (matches, startIndex, groupSize) => {
+      if (!Array.isArray(matches) || matches.length === 0) {
+        return null;
+      }
+
+      const safeStart = Math.max(0, startIndex);
+      const size = Math.max(1, groupSize);
+      const group = matches.slice(safeStart, safeStart + size).filter((match) => match instanceof HTMLElement);
+
+      if (!group.length) {
+        return null;
+      }
+
+      const firstRect = group[0].getBoundingClientRect();
+      const lastRect = group[group.length - 1].getBoundingClientRect();
+
+      return (firstRect.top + lastRect.bottom) / 2;
+    };
+
+    const currentFirstRect = currentFirstMatch.getBoundingClientRect();
+    const currentFirstCenter = currentFirstRect.top + currentFirstRect.height / 2;
+
+    const groupSize = Math.max(1, Math.floor(previousMatches.length / currentMatches.length));
+    const firstGroupCenter = getGroupCenter(previousMatches, 0, groupSize);
+
+    if (Number.isFinite(firstGroupCenter)) {
+      const offsetPx = Math.max(0, firstGroupCenter - currentFirstCenter);
+      currentRound.style.setProperty('--bracket-round-offset', `${offsetPx}px`);
+    }
+
+    if (currentMatches.length > 1) {
+      const secondGroupStart = groupSize;
+      const secondGroupCenter = getGroupCenter(previousMatches, secondGroupStart, groupSize);
+
+      if (Number.isFinite(firstGroupCenter) && Number.isFinite(secondGroupCenter)) {
+        const desiredCenterDistance = Math.max(0, secondGroupCenter - firstGroupCenter);
+        const desiredGap = Math.max(0, desiredCenterDistance - currentFirstRect.height);
+        currentRound.style.setProperty('--bracket-match-gap', `${desiredGap}px`);
+      }
+    }
   }
 }
 
