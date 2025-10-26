@@ -5,6 +5,7 @@ const {
   TournamentCategory,
   TOURNAMENT_CATEGORY_STATUSES,
   TOURNAMENT_CATEGORY_MATCH_TYPES,
+  TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES,
 } = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
@@ -31,6 +32,10 @@ const ROUND_NAME_LABELS = {
 const BYE_PLACEHOLDER = 'BYE';
 const BRACKET_RESULTS_BLOCKED_MESSAGE =
   'No es posible generar un nuevo cuadro porque esta categoría ya tiene resultados registrados.';
+
+const MAX_DRAW_SIZE = TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.length
+  ? Math.max(...TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES)
+  : 32;
 
 function nextPowerOfTwo(value) {
   if (value <= 1) {
@@ -1056,15 +1061,32 @@ async function autoGenerateTournamentBracket(req, res) {
     });
   }
 
+  const maxAllowedParticipants = Number.isFinite(MAX_DRAW_SIZE) && MAX_DRAW_SIZE > 0 ? MAX_DRAW_SIZE : 32;
+
+  if (uniquePlayers.length > maxAllowedParticipants) {
+    return res.status(400).json({
+      message: `La categoría supera el máximo permitido de ${maxAllowedParticipants} jugadores.`,
+    });
+  }
+
   const hasRecordedResults = await hasCategoryMatchesWithResults(tournamentId, categoryId);
   if (hasRecordedResults) {
     return res.status(400).json({ message: BRACKET_RESULTS_BLOCKED_MESSAGE });
   }
 
-  const drawSize =
-    category.drawSize && category.drawSize >= uniquePlayers.length
-      ? nextPowerOfTwo(category.drawSize)
-      : nextPowerOfTwo(uniquePlayers.length);
+  const rawConfiguredCapacity =
+    typeof category.drawSize === 'number' ? category.drawSize : Number(category.drawSize);
+  const configuredCapacity =
+    Number.isFinite(rawConfiguredCapacity) && rawConfiguredCapacity > 0
+      ? Math.min(rawConfiguredCapacity, maxAllowedParticipants)
+      : null;
+
+  const baseDrawSize =
+    configuredCapacity && configuredCapacity >= uniquePlayers.length
+      ? configuredCapacity
+      : uniquePlayers.length;
+
+  const drawSize = Math.min(nextPowerOfTwo(baseDrawSize), maxAllowedParticipants);
 
   const seedPositions = generateSeedingPositions(drawSize);
   const maxSeedNumber = seedPositions.length;

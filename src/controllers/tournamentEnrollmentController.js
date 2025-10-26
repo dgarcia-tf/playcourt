@@ -5,6 +5,7 @@ const {
   TournamentCategory,
   TOURNAMENT_CATEGORY_MATCH_TYPES,
   TOURNAMENT_CATEGORY_STATUSES,
+  TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES,
 } = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
@@ -15,6 +16,10 @@ const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { categoryAllowsGender } = require('../utils/gender');
 const { hasCategoryMinimumAgeRequirement } = require('../utils/age');
+
+const MAX_ALLOWED_CATEGORY_CAPACITY = TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.length
+  ? Math.max(...TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES)
+  : 32;
 
 async function ensureTournament(tournamentId) {
   const tournament = await Tournament.findById(tournamentId);
@@ -78,6 +83,37 @@ function sanitizeCategory(category) {
     matchType: plain.matchType || '',
     gender: plain.gender || '',
   };
+}
+
+function resolveCategoryName(category) {
+  if (!category) {
+    return 'esta categoría';
+  }
+
+  const menuTitle = typeof category.menuTitle === 'string' ? category.menuTitle.trim() : '';
+  const name = typeof category.name === 'string' ? category.name.trim() : '';
+
+  return menuTitle || name || 'esta categoría';
+}
+
+function resolveCategoryCapacity(category) {
+  if (!category) {
+    return null;
+  }
+
+  const rawValue =
+    typeof category.drawSize === 'number' ? category.drawSize : Number(category.drawSize);
+
+  if (!Number.isFinite(rawValue) || rawValue <= 0) {
+    return null;
+  }
+
+  return Math.min(rawValue, MAX_ALLOWED_CATEGORY_CAPACITY);
+}
+
+function buildCapacityReachedMessage(category, capacity) {
+  const label = resolveCategoryName(category);
+  return `La categoría "${label}" ha alcanzado el máximo de ${capacity} jugadores.`;
 }
 
 function createCategoryEntry(enrollment) {
@@ -329,6 +365,19 @@ async function createTournamentEnrollment(req, res) {
     }
   }
 
+  const maxPlayers = resolveCategoryCapacity(category);
+  if (typeof maxPlayers === 'number') {
+    const activeEnrollmentCount = await TournamentEnrollment.countDocuments({
+      tournament: tournament.id,
+      category: category.id,
+      status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+    });
+
+    if (activeEnrollmentCount >= maxPlayers) {
+      return res.status(400).json({ message: buildCapacityReachedMessage(category, maxPlayers) });
+    }
+  }
+
   try {
     const enrollment = await TournamentEnrollment.create({
       tournament: tournament.id,
@@ -484,6 +533,48 @@ async function createTournamentAdminEnrollment(req, res) {
     return res
       .status(409)
       .json({ message: 'El jugador ya está inscrito en alguna de las categorías seleccionadas.' });
+  }
+
+  const capacityEntries = categories
+    .map((category) => ({ category, capacity: resolveCategoryCapacity(category) }))
+    .filter((entry) => typeof entry.capacity === 'number');
+
+  if (capacityEntries.length) {
+    const categoryIdsForCapacity = capacityEntries
+      .map((entry) => entry.category?._id)
+      .filter((id) => Boolean(id));
+
+    if (categoryIdsForCapacity.length) {
+      const enrollmentCounts = await TournamentEnrollment.aggregate([
+        {
+          $match: {
+            tournament: tournament._id,
+            category: { $in: categoryIdsForCapacity },
+            status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
+          },
+        },
+        {
+          $group: {
+            _id: '$category',
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const countMap = new Map(enrollmentCounts.map((entry) => [entry._id.toString(), entry.count]));
+
+      const exceeded = capacityEntries.find(({ category, capacity }) => {
+        const categoryId = category?._id ? category._id.toString() : category?.id || '';
+        const currentCount = countMap.get(categoryId) || 0;
+        return currentCount >= capacity;
+      });
+
+      if (exceeded) {
+        return res
+          .status(400)
+          .json({ message: buildCapacityReachedMessage(exceeded.category, exceeded.capacity) });
+      }
+    }
   }
 
   const enrollmentPayload = categories.map((category) => ({
