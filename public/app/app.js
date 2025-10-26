@@ -10765,23 +10765,8 @@ function applyTournamentBracketRoundOffsets(grid) {
       }
     } else {
       roundList.style.removeProperty('--bracket-round-offset');
+      roundList.style.removeProperty('--bracket-match-gap');
     }
-
-    const matches = Array.from(roundList.querySelectorAll('.bracket-match'));
-    matches.forEach((matchElement) => {
-      if (!(matchElement instanceof HTMLElement)) {
-        return;
-      }
-      const matchId = matchElement.dataset.matchId;
-      if (matchId && !matchElementById.has(matchId)) {
-        matchElementById.set(matchId, matchElement);
-      }
-      const matchNumber = matchElement.dataset.matchNumber;
-      if (matchNumber && !matchElementByNumber.has(matchNumber)) {
-        matchElementByNumber.set(matchNumber, matchElement);
-      }
-    });
-  });
 
   for (let index = 1; index < roundLists.length; index += 1) {
     const previousRound = roundLists[index - 1];
@@ -10791,112 +10776,42 @@ function applyTournamentBracketRoundOffsets(grid) {
       continue;
     }
 
-    const previousMatches = Array.from(previousRound.querySelectorAll('.bracket-match')).filter(
-      (match) => match instanceof HTMLElement
-    );
-    const currentMatches = Array.from(currentRound.querySelectorAll('.bracket-match')).filter(
-      (match) => match instanceof HTMLElement
-    );
+    const previousMatches = Array.from(previousRound.querySelectorAll('.bracket-match'));
+    const currentMatches = Array.from(currentRound.querySelectorAll('.bracket-match'));
 
     if (!previousMatches.length || !currentMatches.length) {
       continue;
     }
 
-    const previousCount = previousMatches.length;
-    const currentCount = currentMatches.length;
-    const expectedPreviousMatches = Number.parseInt(
-      currentRound.dataset.expectedPreviousMatches || '',
-      10
-    );
-    const expectedCurrentMatches = Number.parseInt(currentRound.dataset.expectedMatches || '', 10);
-
-    let baseGroupSize = Math.floor(previousCount / Math.max(currentCount, 1));
-    if (!Number.isFinite(baseGroupSize) || baseGroupSize < 1) {
-      baseGroupSize = 1;
+    const currentFirstMatch = currentMatches[0];
+    if (!(currentFirstMatch instanceof HTMLElement)) {
+      continue;
     }
 
-    if (
-      Number.isFinite(expectedPreviousMatches) &&
-      Number.isFinite(expectedCurrentMatches) &&
-      expectedCurrentMatches > 0
-    ) {
-      const expectedRatio = expectedPreviousMatches / expectedCurrentMatches;
-      if (Number.isFinite(expectedRatio) && expectedRatio > 0) {
-        const normalizedExpected = Math.max(1, Math.round(expectedRatio));
-        if (normalizedExpected > baseGroupSize) {
-          baseGroupSize = normalizedExpected;
-        }
-      }
-    }
-
-    let remainder = previousCount - baseGroupSize * currentCount;
-    if (!Number.isFinite(remainder) || remainder < 0) {
-      remainder = 0;
-    }
-
-    const getGroupCenter = (elements) => {
-      if (!Array.isArray(elements) || elements.length === 0) {
+    const getGroupCenter = (matches, startIndex, groupSize) => {
+      if (!Array.isArray(matches) || matches.length === 0) {
         return null;
       }
 
-      const firstElement = elements[0];
-      const lastElement = elements[elements.length - 1];
-      if (!(firstElement instanceof HTMLElement) || !(lastElement instanceof HTMLElement)) {
+      const safeStart = Math.max(0, startIndex);
+      const size = Math.max(1, groupSize);
+      const group = matches.slice(safeStart, safeStart + size).filter((match) => match instanceof HTMLElement);
+
+      if (!group.length) {
         return null;
       }
 
-      const firstRect = firstElement.getBoundingClientRect();
-      const lastRect = lastElement.getBoundingClientRect();
+      const firstRect = group[0].getBoundingClientRect();
+      const lastRect = group[group.length - 1].getBoundingClientRect();
+
       return (firstRect.top + lastRect.bottom) / 2;
     };
 
-    const getFallbackGroup = (matchIndex) => {
-      if (matchIndex < 0) {
-        return [];
-      }
-      const adjustedIndex = Math.min(matchIndex, currentCount - 1);
-      const extra = adjustedIndex < remainder ? 1 : 0;
-      const start = adjustedIndex * baseGroupSize + Math.min(adjustedIndex, remainder);
-      const size = baseGroupSize + extra;
-      return previousMatches.slice(start, start + size).filter((match) => match instanceof HTMLElement);
-    };
-
-    const resolveFeederGroup = (matchElement, matchIndex) => {
-      if (!(matchElement instanceof HTMLElement)) {
-        return [];
-      }
-
-      const previousIds = (matchElement.dataset.previousMatchIds || '')
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const byId = previousIds
-        .map((id) => matchElementById.get(id))
-        .filter((element) => element instanceof HTMLElement);
-      if (byId.length) {
-        return byId;
-      }
-
-      const previousNumbers = (matchElement.dataset.previousMatchNumbers || '')
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const byNumber = previousNumbers
-        .map((numberValue) => matchElementByNumber.get(numberValue))
-        .filter((element) => element instanceof HTMLElement);
-      if (byNumber.length) {
-        return byNumber;
-      }
-
-      return getFallbackGroup(matchIndex);
-    };
-
-    const currentFirstMatch = currentMatches[0];
     const currentFirstRect = currentFirstMatch.getBoundingClientRect();
     const currentFirstCenter = currentFirstRect.top + currentFirstRect.height / 2;
 
-    const firstGroup = resolveFeederGroup(currentFirstMatch, 0);
-    const firstGroupCenter = getGroupCenter(firstGroup);
+    const groupSize = Math.max(1, Math.floor(previousMatches.length / currentMatches.length));
+    const firstGroupCenter = getGroupCenter(previousMatches, 0, groupSize);
 
     if (Number.isFinite(firstGroupCenter)) {
       const offsetPx = Math.max(0, firstGroupCenter - currentFirstCenter);
@@ -10904,9 +10819,8 @@ function applyTournamentBracketRoundOffsets(grid) {
     }
 
     if (currentMatches.length > 1) {
-      const secondMatch = currentMatches[1];
-      const secondGroup = resolveFeederGroup(secondMatch, 1);
-      const secondGroupCenter = getGroupCenter(secondGroup);
+      const secondGroupStart = groupSize;
+      const secondGroupCenter = getGroupCenter(previousMatches, secondGroupStart, groupSize);
 
       if (Number.isFinite(firstGroupCenter) && Number.isFinite(secondGroupCenter)) {
         const desiredCenterDistance = Math.max(0, secondGroupCenter - firstGroupCenter);
