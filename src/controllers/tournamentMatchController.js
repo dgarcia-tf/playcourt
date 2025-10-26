@@ -1350,13 +1350,19 @@ async function autoGenerateTournamentBracket(req, res) {
     });
   }
 
-  const firstRoundMatches = mainMatchesMatrix[0].filter(Boolean);
-  const loserDrawSize = drawSize / 2;
+  const firstRoundMatches = Array.isArray(mainMatchesMatrix[0])
+    ? mainMatchesMatrix[0].filter(Boolean)
+    : [];
+  const consolationSourceMatches = firstRoundMatches.filter((match) => {
+    const playersCount = Array.isArray(match.players) ? match.players.length : 0;
+    return playersCount >= 2;
+  });
   const consolationPayloads = [];
   const consolationDrawRounds = [];
   const consolationMatrix = [];
 
-  if (loserDrawSize >= 2) {
+  if (consolationSourceMatches.length >= 2) {
+    const loserDrawSize = nextPowerOfTwo(consolationSourceMatches.length);
     const consolationRounds = Math.ceil(Math.log2(loserDrawSize));
 
     for (let roundIndex = 0; roundIndex < consolationRounds; roundIndex += 1) {
@@ -1407,7 +1413,7 @@ async function autoGenerateTournamentBracket(req, res) {
     }
 
     const consolationFirstRound = consolationMatrix[0];
-    firstRoundMatches.forEach((match, index) => {
+    consolationSourceMatches.forEach((match, index) => {
       const target = consolationFirstRound[Math.floor(index / 2)];
       if (target) {
         match.loserNextMatch = target._id;
