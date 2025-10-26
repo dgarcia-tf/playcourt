@@ -395,64 +395,6 @@ async function resolveClubCourtSelection(courtInput) {
   return matched.name;
 }
 
-async function autoAssignCourt({ scheduledDate, excludeReservationId, preferredCourt } = {}) {
-  if (!(scheduledDate instanceof Date) || Number.isNaN(scheduledDate.getTime())) {
-    const error = new Error('Fecha y hora inválida.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const club = await Club.getSingleton();
-  const courtEntries = Array.isArray(club?.courts) ? club.courts : [];
-  const courtNames = courtEntries
-    .map((entry) => (entry && typeof entry.name === 'string' ? entry.name.trim() : ''))
-    .filter(Boolean);
-
-  if (!courtNames.length) {
-    const error = new Error('No hay pistas registradas en el club.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const { startsAt, endsAt } = resolveEndsAt(scheduledDate);
-  if (!startsAt || !endsAt) {
-    const error = new Error('No se pudo determinar la duración del partido.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const uniqueCourts = Array.from(new Set(courtNames));
-  const attemptOrder = preferredCourt
-    ? [preferredCourt, ...uniqueCourts.filter((name) => name !== preferredCourt)]
-    : uniqueCourts;
-
-  for (const courtName of attemptOrder) {
-    try {
-      await ensureCourtReservationAvailability({
-        court: courtName,
-        startsAt,
-        endsAt,
-        excludeReservationId,
-        reservationType: RESERVATION_TYPES.MATCH,
-        bypassManualAdvanceLimit: true,
-      });
-      return courtName;
-    } catch (error) {
-      if (error && error.statusCode === 409) {
-        continue;
-      }
-      if (error && error.message === 'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 22:15.') {
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  const error = new Error('No hay pistas disponibles para el horario seleccionado.');
-  error.statusCode = 409;
-  throw error;
-}
-
 async function ensureSchedulingAvailability({ scheduledDate, players = [], court, excludeMatchId }) {
   if (!(scheduledDate instanceof Date) || Number.isNaN(scheduledDate.getTime())) {
     const error = new Error('Fecha y hora inválida.');
