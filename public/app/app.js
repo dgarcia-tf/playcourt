@@ -809,7 +809,20 @@ function normalizeClubScheduleEntry(entry, index) {
 function getClubMatchScheduleTemplates() {
   const club = state.club || {};
   const schedules = Array.isArray(club.schedules) ? club.schedules : [];
-  return schedules.map(normalizeClubScheduleEntry).filter(Boolean);
+  const normalized = schedules.map(normalizeClubScheduleEntry).filter(Boolean);
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  return [
+    {
+      id: 'default',
+      label: 'Horario del club',
+      dayValue: '',
+      opensMinutes: COURT_RESERVATION_FIRST_SLOT_MINUTE,
+      closesMinutes: COURT_RESERVATION_LAST_SLOT_END_MINUTE,
+    },
+  ];
 }
 
 function buildSlotsForScheduleEntry(entry, baseDate) {
@@ -1442,7 +1455,6 @@ function createMatchScheduleSlotPicker({
     courtValue: '',
     availability: [],
     availabilityDate: null,
-    ignoredMatchId: normalizeId(ignoreMatchId),
   };
 
   let loadToken = 0;
