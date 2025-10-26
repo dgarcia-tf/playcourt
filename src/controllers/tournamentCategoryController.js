@@ -7,6 +7,7 @@ const {
   TOURNAMENT_CATEGORY_MATCH_TYPES,
   TOURNAMENT_CATEGORY_MATCH_FORMATS,
   DEFAULT_TOURNAMENT_CATEGORY_MATCH_FORMAT,
+  TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES,
 } = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
@@ -24,6 +25,23 @@ function shouldHideCategoryForUser(category, user) {
   }
 
   return hasCategoryMinimumAgeRequirement(category);
+}
+
+function validateDrawSizeInput(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return { value: null };
+  }
+
+  const numericValue = Number(rawValue);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return { value: null };
+  }
+
+  if (!TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.includes(numericValue)) {
+    return { error: true, value: numericValue };
+  }
+
+  return { value: numericValue };
 }
 
 function sanitizeDrawRounds(rounds = []) {
@@ -190,6 +208,13 @@ async function createTournamentCategory(req, res) {
     return res.status(404).json({ message: 'Torneo no encontrado' });
   }
 
+  const { error: drawSizeError, value: normalizedDrawSize } = validateDrawSizeInput(drawSize);
+  if (drawSizeError) {
+    return res.status(400).json({
+      message: 'El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.',
+    });
+  }
+
   const payload = {
     name,
     description,
@@ -199,7 +224,7 @@ async function createTournamentCategory(req, res) {
       color && isValidCategoryColor(color)
         ? resolveCategoryColor(color)
         : DEFAULT_CATEGORY_COLOR,
-    drawSize,
+    drawSize: typeof normalizedDrawSize === 'number' ? normalizedDrawSize : undefined,
     matchType: Object.values(TOURNAMENT_CATEGORY_MATCH_TYPES).includes(matchType)
       ? matchType
       : TOURNAMENT_CATEGORY_MATCH_TYPES.SINGLES,
@@ -291,6 +316,7 @@ async function getTournamentCategory(req, res) {
   const enrollmentCount = await TournamentEnrollment.countDocuments({
     category: categoryId,
     tournament: tournamentId,
+    status: { $ne: TOURNAMENT_ENROLLMENT_STATUS.CANCELLED },
   });
 
   return res.json({ ...category, enrollmentCount });
@@ -317,8 +343,20 @@ async function updateTournamentCategory(req, res) {
   });
 
   if (Object.prototype.hasOwnProperty.call(updates, 'drawSize')) {
-    const size = Number(updates.drawSize);
-    category.drawSize = Number.isFinite(size) && size >= 0 ? size : category.drawSize;
+    const { error: drawSizeError, value: normalizedDrawSize } = validateDrawSizeInput(
+      updates.drawSize
+    );
+    if (drawSizeError) {
+      return res
+        .status(400)
+        .json({ message: 'El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.' });
+    }
+
+    if (normalizedDrawSize === null) {
+      category.drawSize = undefined;
+    } else {
+      category.drawSize = normalizedDrawSize;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'matchType')) {

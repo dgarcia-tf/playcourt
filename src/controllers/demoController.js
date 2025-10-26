@@ -36,7 +36,7 @@ const {
 const { hashPassword } = require('../utils/password');
 
 const DEMO_PASSWORD = 'Demo1234!';
-const MAX_PLAYERS_PER_CATEGORY = 64;
+const MAX_PLAYERS_PER_CATEGORY = 32;
 const LEAGUE_PLAYERS_PER_CATEGORY = 15;
 const TOURNAMENT_SINGLES_PLAYERS = 24;
 const TOURNAMENT_DOUBLES_PAIRS = 12;
