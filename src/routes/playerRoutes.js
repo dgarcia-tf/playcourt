@@ -3,6 +3,7 @@ const { body, param, query } = require('express-validator');
 const {
   listPlayers,
   createPlayer,
+  createDemoPlayers,
   updatePlayer,
   deletePlayer,
   USER_ROLES,
@@ -15,6 +16,8 @@ const { isValidImageDataUrl, sanitizeBoolean } = require('../utils/validators');
 const router = express.Router();
 
 router.use(authenticate, authorizeRoles('admin'));
+
+router.post('/demo', createDemoPlayers);
 
 router.get(
   '/',
