@@ -8006,13 +8006,21 @@ function formatTimeRangeLabel(start, end) {
   return `${startLabel} – ${endLabel}`;
 }
 
+function capitalizeFirstLetter(text) {
+  if (!text) {
+    return text;
+  }
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
 function formatDateOnly(value, options = {}) {
   try {
-    return new Intl.DateTimeFormat('es-ES', {
+    const formatted = new Intl.DateTimeFormat('es-ES', {
       weekday: options.weekday ?? 'long',
       day: 'numeric',
       month: 'long',
     }).format(new Date(value));
+    return capitalizeFirstLetter(formatted);
   } catch (error) {
     return value;
   }
@@ -8031,12 +8039,13 @@ function formatMonthLabel(date) {
 
 function formatDayLabel(date) {
   try {
-    return new Intl.DateTimeFormat('es-ES', {
+    const formatted = new Intl.DateTimeFormat('es-ES', {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
       year: 'numeric',
     }).format(date);
+    return capitalizeFirstLetter(formatted);
   } catch (error) {
     return formatDateOnly(date);
   }
@@ -17691,9 +17700,17 @@ function createCourtCalendarDaySchedule(date, events = []) {
 
   const header = document.createElement('div');
   header.className = 'calendar-day-header calendar-day-schedule__header';
-  header.innerHTML = `<strong>${dayReference.getDate()}</strong><span>${new Intl.DateTimeFormat('es-ES', {
-    weekday: 'long',
-  }).format(dayReference)}</span>`;
+  const dayLabel = formatDayLabel(dayReference);
+  const [weekdayLabel, ...restParts] = dayLabel.split(', ');
+  const headerTitle = document.createElement('strong');
+  headerTitle.textContent = weekdayLabel || dayLabel;
+  header.appendChild(headerTitle);
+  const restLabel = restParts.join(', ');
+  if (restLabel) {
+    const headerDetail = document.createElement('span');
+    headerDetail.textContent = restLabel;
+    header.appendChild(headerDetail);
+  }
   container.appendChild(header);
 
   const scroller = document.createElement('div');
