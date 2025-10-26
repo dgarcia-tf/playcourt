@@ -10741,9 +10741,6 @@ function applyTournamentBracketRoundOffsets(grid) {
     return;
   }
 
-  const matchElementById = new Map();
-  const matchElementByNumber = new Map();
-
   roundLists.forEach((roundList) => {
     if (!(roundList instanceof HTMLElement)) {
       return;
@@ -10767,6 +10764,7 @@ function applyTournamentBracketRoundOffsets(grid) {
       roundList.style.removeProperty('--bracket-round-offset');
       roundList.style.removeProperty('--bracket-match-gap');
     }
+  });
 
   for (let index = 1; index < roundLists.length; index += 1) {
     const previousRound = roundLists[index - 1];
