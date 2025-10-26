@@ -395,7 +395,7 @@ async function resolveClubCourtSelection(courtInput) {
   return matched.name;
 }
 
-async function ensureSchedulingAvailability({ scheduledDate, players = [], court, excludeMatchId }) {
+async function ensureSchedulingAvailability({ scheduledDate, court, excludeMatchId }) {
   if (!(scheduledDate instanceof Date) || Number.isNaN(scheduledDate.getTime())) {
     const error = new Error('Fecha y hora inválida.');
     error.statusCode = 400;
@@ -405,40 +405,25 @@ async function ensureSchedulingAvailability({ scheduledDate, players = [], court
   const windowStart = new Date(scheduledDate.getTime() - MIN_MATCH_DURATION_MS);
   const windowEnd = new Date(scheduledDate.getTime() + MIN_MATCH_DURATION_MS);
 
-  const normalizedPlayers = Array.isArray(players)
-    ? players.map((playerId) => playerId && playerId.toString())
-    : [];
-
-  const conditions = [];
-  if (normalizedPlayers.length) {
-    conditions.push({ players: { $in: normalizedPlayers } });
-  }
-
   if (court) {
-    conditions.push({ court });
-  }
+    const query = {
+      scheduledAt: { $gte: windowStart, $lt: windowEnd },
+      status: { $in: ACTIVE_STATUSES },
+      court,
+    };
 
-  if (!conditions.length) {
-    return;
-  }
+    if (excludeMatchId) {
+      query._id = { $ne: excludeMatchId };
+    }
 
-  const query = {
-    scheduledAt: { $gte: windowStart, $lt: windowEnd },
-    status: { $in: ACTIVE_STATUSES },
-    $or: conditions,
-  };
-
-  if (excludeMatchId) {
-    query._id = { $ne: excludeMatchId };
-  }
-
-  const conflict = await Match.findOne(query).select('_id');
-  if (conflict) {
-    const error = new Error(
-      'No se puede programar el partido en la misma franja horaria. Debe haber al menos 1 hora y 30 minutos entre partidos.'
-    );
-    error.statusCode = 400;
-    throw error;
+    const conflict = await Match.findOne(query).select('_id');
+    if (conflict) {
+      const error = new Error(
+        'La pista ya está reservada en la franja seleccionada. Elige otro horario disponible.'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
   }
 }
 
