@@ -20,7 +20,7 @@ const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { RESERVATION_TYPES } = require('../models/CourtReservation');
 const { notifyTournamentMatchScheduled } = require('../services/tournamentNotificationService');
 const {
-  autoAssignCourt: assignMatchCourt,
+  autoAssignCourt,
   ensureReservationAvailability: ensureCourtReservationAvailability,
   resolveEndsAt,
 } = require('../services/courtReservationService');
@@ -1688,7 +1688,7 @@ async function updateTournamentMatch(req, res) {
   if (match.scheduledAt) {
     const { startsAt, endsAt } = resolveEndsAt(match.scheduledAt);
     try {
-      const assignedCourt = await assignMatchCourt({
+      const assignedCourt = await autoAssignCourt({
         scheduledDate: match.scheduledAt,
         preferredCourt: preferredCourt || previousCourt,
       });
