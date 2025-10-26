@@ -85,6 +85,187 @@ const PUSH_SUPPORTED =
   'PushManager' in window &&
   'Notification' in window;
 
+const DEFAULT_APP_BASE_PATH = '/app';
+
+const SECTION_ROUTE_ENTRIES = [
+  ['panel', 'section-dashboard'],
+  ['', 'section-dashboard'],
+  ['reservas', 'section-court-reservations'],
+  ['noticias', 'section-chat'],
+  ['notificaciones', 'section-notifications'],
+  ['ligas', 'section-league-dashboard'],
+  ['ligas/inscribirse', 'section-leagues'],
+  ['ligas/categorias', 'section-categories'],
+  ['ligas/jugadores', 'section-league-players'],
+  ['ligas/pagos', 'section-league-payments'],
+  ['ligas/partidos', 'section-matches'],
+  ['ligas/calendario', 'section-calendar'],
+  ['ligas/ranking', 'section-ranking'],
+  ['ligas/reglamento', 'section-rules'],
+  ['torneos/panel', 'section-tournament-dashboard'],
+  ['torneos', 'section-tournaments'],
+  ['torneos/categorias', 'section-tournament-categories'],
+  ['torneos/cuadros', 'section-tournament-brackets'],
+  ['torneos/inscripciones', 'section-tournament-enrollments'],
+  ['torneos/dobles', 'section-tournament-doubles'],
+  ['torneos/pagos', 'section-tournament-payments'],
+  ['torneos/partidos', 'section-tournament-matches'],
+  ['torneos/reglamento', 'section-tournament-rules'],
+  ['administracion', 'section-admin'],
+  ['administracion/club', 'section-club'],
+  ['administracion/pistas', 'section-court-admin'],
+  ['administracion/usuarios', 'section-user-directory'],
+  ['mi-cuenta', 'section-account'],
+];
+
+const SECTION_ROUTE_TO_ID = new Map(SECTION_ROUTE_ENTRIES);
+
+const SECTION_ID_TO_ROUTE = new Map();
+SECTION_ROUTE_ENTRIES.forEach(([route, sectionId]) => {
+  if (!SECTION_ID_TO_ROUTE.has(sectionId) && route) {
+    SECTION_ID_TO_ROUTE.set(sectionId, route);
+  }
+});
+if (!SECTION_ID_TO_ROUTE.has('section-dashboard')) {
+  SECTION_ID_TO_ROUTE.set('section-dashboard', '');
+}
+
+function resolveAppBasePath() {
+  if (typeof document === 'undefined') {
+    return DEFAULT_APP_BASE_PATH;
+  }
+
+  const datasetValue = document.body?.dataset?.appBasePath;
+  if (datasetValue) {
+    return datasetValue;
+  }
+
+  if (typeof window !== 'undefined' && window.location?.pathname) {
+    const { pathname } = window.location;
+    if (pathname.startsWith(DEFAULT_APP_BASE_PATH)) {
+      return DEFAULT_APP_BASE_PATH;
+    }
+
+    if (!pathname || pathname === '/') {
+      return '/';
+    }
+
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments.length) {
+      return `/${segments[0]}`;
+    }
+  }
+
+  return DEFAULT_APP_BASE_PATH;
+}
+
+const APP_BASE_PATH = resolveAppBasePath();
+
+let shouldReplaceHistoryOnNextSection = false;
+
+function normalizeHistoryPath(path) {
+  if (typeof path !== 'string' || !path) {
+    return APP_BASE_PATH || '/';
+  }
+
+  if (path.length > 1 && path.endsWith('/')) {
+    return path.replace(/\/+$/, '');
+  }
+
+  return path;
+}
+
+function normalizeAppPath(pathname) {
+  if (typeof pathname !== 'string') {
+    return null;
+  }
+
+  const base = (APP_BASE_PATH || '').replace(/\/+$/, '');
+  let remaining = pathname;
+
+  if (base && base !== '/') {
+    if (!remaining.startsWith(base)) {
+      return null;
+    }
+    remaining = remaining.slice(base.length);
+  }
+
+  remaining = remaining.replace(/^\/+/, '').replace(/\/+$/, '');
+  return remaining;
+}
+
+function getSectionIdFromPath(pathname) {
+  const normalized = normalizeAppPath(pathname);
+  if (normalized == null) {
+    return null;
+  }
+
+  let routeKey = normalized;
+  if (!routeKey) {
+    return SECTION_ROUTE_TO_ID.get('') || 'section-dashboard';
+  }
+
+  try {
+    routeKey = decodeURIComponent(routeKey);
+  } catch (error) {
+    // Ignorar errores de decodificación y continuar con la ruta original.
+  }
+
+  return SECTION_ROUTE_TO_ID.get(routeKey) || null;
+}
+
+function buildPathFromSection(sectionId) {
+  if (typeof sectionId !== 'string' || !sectionId) {
+    return APP_BASE_PATH || '/';
+  }
+
+  const base = (APP_BASE_PATH || '/').replace(/\/+$/, '') || '/';
+  const slug = SECTION_ID_TO_ROUTE.get(sectionId);
+  if (!slug) {
+    return base || '/';
+  }
+
+  const normalizedSlug = slug
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join('/');
+
+  if (!normalizedSlug) {
+    return base || '/';
+  }
+
+  if (!base || base === '/' || base === '') {
+    return `/${normalizedSlug}`;
+  }
+
+  return `${base}/${normalizedSlug}`;
+}
+
+function syncSectionRoute(sectionId, { replace = false } = {}) {
+  if (typeof window === 'undefined' || !window.history) {
+    return;
+  }
+
+  const targetPath = buildPathFromSection(sectionId);
+  if (!targetPath) {
+    return;
+  }
+
+  const statePayload = { section: sectionId };
+  const normalizedTarget = normalizeHistoryPath(targetPath);
+  const normalizedCurrent = normalizeHistoryPath(window.location.pathname || '/');
+
+  if (replace || normalizedCurrent === normalizedTarget) {
+    window.history.replaceState(statePayload, '', targetPath);
+    return;
+  }
+
+  if (typeof window.history.pushState === 'function') {
+    window.history.pushState(statePayload, '', targetPath);
+  }
+}
+
 const CATEGORY_STATUS_LABELS = {
   inscripcion: 'Inscripción abierta',
   en_curso: 'En curso',
@@ -5915,7 +6096,7 @@ function applyCourtManagerMenuRestrictions() {
   });
 }
 
-function showSection(sectionId) {
+function showSection(sectionId, { syncHistory = true, replace = false } = {}) {
   if (!sectionId || !appSections.length) return;
 
   const targetSection = document.getElementById(sectionId);
@@ -5936,7 +6117,15 @@ function showSection(sectionId) {
     }
   }
 
+  const previousSectionId = state.activeSection;
   state.activeSection = resolvedSectionId;
+
+  if (syncHistory) {
+    const shouldReplaceHistory =
+      replace || shouldReplaceHistoryOnNextSection || !previousSectionId;
+    syncSectionRoute(resolvedSectionId, { replace: shouldReplaceHistory });
+  }
+  shouldReplaceHistoryOnNextSection = false;
 
   appSections.forEach((section) => {
     section.hidden = section.id !== resolvedSectionId;
@@ -6476,6 +6665,11 @@ if (appMenu) {
       }
     }
 
+    if (!targetId) {
+      return;
+    }
+
+    event.preventDefault();
     showSection(targetId);
 
     if (menuGroup && shouldUseHoverNavigation()) {
@@ -6521,6 +6715,50 @@ if (hoverMediaQuery) {
 }
 
 document.addEventListener('click', handleOutsideMenuClick);
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', (event) => {
+    const stateSection = typeof event.state?.section === 'string' ? event.state.section : null;
+    let targetSectionId = stateSection || null;
+
+    if (!targetSectionId) {
+      const resolvedFromPath = getSectionIdFromPath(window.location.pathname);
+      targetSectionId = resolvedFromPath || 'section-dashboard';
+      if (!resolvedFromPath) {
+        shouldReplaceHistoryOnNextSection = true;
+      }
+    }
+
+    if (!state.token) {
+      state.activeSection = targetSectionId;
+      const expectedPath = buildPathFromSection(targetSectionId);
+      const normalizedExpected = normalizeHistoryPath(expectedPath);
+      const normalizedCurrent = normalizeHistoryPath(window.location.pathname || '/');
+      if (normalizedExpected !== normalizedCurrent) {
+        shouldReplaceHistoryOnNextSection = true;
+      }
+      return;
+    }
+
+    if (!document.getElementById(targetSectionId)) {
+      shouldReplaceHistoryOnNextSection = true;
+      showSection('section-dashboard', { replace: true });
+      return;
+    }
+
+    if (targetSectionId === state.activeSection) {
+      const expectedPath = buildPathFromSection(state.activeSection);
+      const normalizedExpected = normalizeHistoryPath(expectedPath);
+      const normalizedCurrent = normalizeHistoryPath(window.location.pathname || '/');
+      if (normalizedExpected !== normalizedCurrent) {
+        showSection(targetSectionId, { replace: true });
+      }
+      return;
+    }
+
+    showSection(targetSectionId, { replace: true });
+  });
+}
 
 function updateProfileCard() {
   if (!state.user) return;
@@ -28436,6 +28674,11 @@ loginForm.addEventListener('submit', async (event) => {
     applySetupState();
     persistSession();
     persistRememberedCredentials(payload.email, payload.password, rememberCredentials);
+    applyInitialSectionFromLocation();
+    if (!state.activeSection) {
+      state.activeSection = 'section-dashboard';
+    }
+    shouldReplaceHistoryOnNextSection = true;
     updateAuthUI();
     setStatusMessage(loginStatus, 'success', 'Sesión iniciada.');
     await loadAllData();
@@ -28536,6 +28779,11 @@ registerForm.addEventListener('submit', async (event) => {
     state.needsSetup = !data.setupCompleted;
     applySetupState();
     persistSession();
+    applyInitialSectionFromLocation();
+    if (!state.activeSection) {
+      state.activeSection = 'section-dashboard';
+    }
+    shouldReplaceHistoryOnNextSection = true;
     updateAuthUI();
     await loadAllData();
     registerForm.reset();
@@ -30659,11 +30907,24 @@ if (state.push.supported) {
 
 updatePushSettingsUI();
 
+function applyInitialSectionFromLocation() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const sectionId = getSectionIdFromPath(window.location.pathname);
+  if (sectionId) {
+    state.activeSection = sectionId;
+  }
+}
+
 async function init() {
   resetData();
   loadRememberedCredentials();
   await checkSetupStatus();
   restoreSession();
+  applyInitialSectionFromLocation();
+  shouldReplaceHistoryOnNextSection = true;
   updateAuthUI();
   if (state.token) {
     await loadAllData();
