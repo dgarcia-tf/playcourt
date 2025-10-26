@@ -6,6 +6,7 @@ const {
   TOURNAMENT_CATEGORY_STATUSES,
   TOURNAMENT_CATEGORY_MATCH_TYPES,
   TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES,
+  MAX_TOURNAMENT_CATEGORY_PLAYERS,
 } = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
@@ -39,9 +40,12 @@ const BYE_PLACEHOLDER = 'BYE';
 const BRACKET_RESULTS_BLOCKED_MESSAGE =
   'No es posible generar un nuevo cuadro porque esta categoría ya tiene resultados registrados.';
 
-const MAX_DRAW_SIZE = TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.length
-  ? Math.max(...TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES)
-  : 32;
+const MAX_CATEGORY_PARTICIPANTS =
+  Number.isFinite(MAX_TOURNAMENT_CATEGORY_PLAYERS) && MAX_TOURNAMENT_CATEGORY_PLAYERS > 0
+    ? MAX_TOURNAMENT_CATEGORY_PLAYERS
+    : 24;
+
+const MAX_BRACKET_SLOTS = 32;
 
 function nextPowerOfTwo(value) {
   if (value <= 1) {
@@ -1067,11 +1071,9 @@ async function autoGenerateTournamentBracket(req, res) {
     });
   }
 
-  const maxAllowedParticipants = Number.isFinite(MAX_DRAW_SIZE) && MAX_DRAW_SIZE > 0 ? MAX_DRAW_SIZE : 32;
-
-  if (uniquePlayers.length > maxAllowedParticipants) {
+  if (uniquePlayers.length > MAX_CATEGORY_PARTICIPANTS) {
     return res.status(400).json({
-      message: `La categoría supera el máximo permitido de ${maxAllowedParticipants} jugadores.`,
+      message: `La categoría supera el máximo permitido de ${MAX_CATEGORY_PARTICIPANTS} jugadores.`,
     });
   }
 
@@ -1084,7 +1086,7 @@ async function autoGenerateTournamentBracket(req, res) {
     typeof category.drawSize === 'number' ? category.drawSize : Number(category.drawSize);
   const configuredCapacity =
     Number.isFinite(rawConfiguredCapacity) && rawConfiguredCapacity > 0
-      ? Math.min(rawConfiguredCapacity, maxAllowedParticipants)
+      ? Math.min(rawConfiguredCapacity, MAX_CATEGORY_PARTICIPANTS)
       : null;
 
   if (configuredCapacity && uniquePlayers.length > configuredCapacity) {
@@ -1098,7 +1100,7 @@ async function autoGenerateTournamentBracket(req, res) {
       ? configuredCapacity
       : uniquePlayers.length;
 
-  const drawSize = Math.min(nextPowerOfTwo(baseDrawSize), maxAllowedParticipants);
+  const drawSize = Math.min(nextPowerOfTwo(baseDrawSize), MAX_BRACKET_SLOTS);
   const effectiveCategoryDrawSize = configuredCapacity || drawSize;
 
   const seedPositions = generateSeedingPositions(drawSize);
