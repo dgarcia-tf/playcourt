@@ -6,6 +6,7 @@ const {
   TOURNAMENT_CATEGORY_MATCH_TYPES,
   TOURNAMENT_CATEGORY_STATUSES,
   TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES,
+  MAX_TOURNAMENT_CATEGORY_PLAYERS,
 } = require('../models/TournamentCategory');
 const {
   TournamentEnrollment,
@@ -17,9 +18,15 @@ const { canAccessPrivateContent } = require('../utils/accessControl');
 const { categoryAllowsGender } = require('../utils/gender');
 const { hasCategoryMinimumAgeRequirement } = require('../utils/age');
 
-const MAX_ALLOWED_CATEGORY_CAPACITY = TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.length
-  ? Math.max(...TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES)
-  : 32;
+const MAX_ALLOWED_CATEGORY_CAPACITY = (() => {
+  if (Number.isFinite(MAX_TOURNAMENT_CATEGORY_PLAYERS) && MAX_TOURNAMENT_CATEGORY_PLAYERS > 0) {
+    return MAX_TOURNAMENT_CATEGORY_PLAYERS;
+  }
+  if (TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.length) {
+    return Math.max(...TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES);
+  }
+  return 32;
+})();
 
 async function ensureTournament(tournamentId) {
   const tournament = await Tournament.findById(tournamentId);
