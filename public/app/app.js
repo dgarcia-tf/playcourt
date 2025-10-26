@@ -70,6 +70,7 @@ const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const TOURNAMENT_BRACKET_SIZES = [8, 16, 24, 32, 64];
+const TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS = [8, 16, 24, 32];
 const TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION =
   'El cuadro actual desaparecerá y se generará uno nuevo. ¿Deseas continuar?';
 const TOURNAMENT_BRACKET_RESULTS_BLOCKED_MESSAGE =
@@ -23200,12 +23201,12 @@ function buildTournamentCategoryPayload(form) {
     payload.matchFormat = matchFormat;
   }
 
-  const drawSizeValue = (formData.get('drawSize') || '').trim();
-  if (drawSizeValue) {
-    const parsed = Number.parseInt(drawSizeValue, 10);
-    if (!Number.isNaN(parsed) && parsed >= 0) {
-      payload.drawSize = parsed;
-    }
+  const drawSizeValue = Number.parseInt(formData.get('drawSize'), 10);
+  if (
+    Number.isFinite(drawSizeValue) &&
+    TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS.includes(drawSizeValue)
+  ) {
+    payload.drawSize = drawSizeValue;
   }
 
   return payload;
@@ -23239,6 +23240,21 @@ async function submitTournamentCategoryForm({
     setStatusMessage(statusElement, 'error', 'Selecciona el formato de partido.');
     return { success: false };
   }
+
+  const drawSizeFieldValue = Number.parseInt(form.elements.drawSize?.value, 10);
+  if (
+    !Number.isFinite(drawSizeFieldValue) ||
+    !TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS.includes(drawSizeFieldValue)
+  ) {
+    setStatusMessage(
+      statusElement,
+      'error',
+      'Selecciona un tamaño de cuadro válido (8, 16, 24 o 32).'
+    );
+    return { success: false };
+  }
+
+  payload.drawSize = drawSizeFieldValue;
 
   const normalizedCategoryId = categoryId ? normalizeId(categoryId) : '';
   const isEditing = Boolean(normalizedCategoryId);
@@ -23375,8 +23391,13 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
       selected: selectedColor,
     })}
     <label>
-      Tamaño de cuadro (opcional)
-      <input type="number" name="drawSize" min="0" placeholder="Ej. 16" />
+      Tamaño de cuadro
+      <select name="drawSize" required>
+        <option value="" disabled selected>Selecciona el tamaño del cuadro</option>
+        ${TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS.map(
+          (size) => `<option value="${size}">${size} jugadores</option>`
+        ).join('')}
+      </select>
     </label>
     <div class="form-actions">
       <button type="submit" class="primary">${
@@ -23424,9 +23445,14 @@ async function openTournamentCategoryModal({ tournamentId: initialTournamentId =
     form.elements.matchFormat.value = category?.matchFormat || defaultMatchFormat;
   }
   if (form.elements.drawSize) {
-    form.elements.drawSize.value = Number.isFinite(Number(category?.drawSize))
-      ? Number(category.drawSize)
+    const drawSizeElement = form.elements.drawSize;
+    const normalizedDrawSize = Number.isFinite(Number(category?.drawSize))
+      ? String(Number(category.drawSize))
       : '';
+    drawSizeElement.value = normalizedDrawSize || '';
+    if (!normalizedDrawSize && drawSizeElement.options.length) {
+      drawSizeElement.selectedIndex = 0;
+    }
   }
 
   form.addEventListener('submit', async (event) => {
