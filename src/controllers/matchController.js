@@ -1,7 +1,7 @@
 const { validationResult } = require('express-validator');
 const mongoose = require('mongoose');
 const { Match } = require('../models/Match');
-const { CourtReservation, RESERVATION_STATUS } = require('../models/CourtReservation');
+const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { Category, MATCH_FORMATS, DEFAULT_CATEGORY_MATCH_FORMAT } = require('../models/Category');
 const { Enrollment } = require('../models/Enrollment');
 const { Season } = require('../models/Season');
@@ -394,6 +394,64 @@ async function resolveClubCourtSelection(courtInput) {
   return matched.name;
 }
 
+async function autoAssignCourt({ scheduledDate, excludeReservationId, preferredCourt } = {}) {
+  if (!(scheduledDate instanceof Date) || Number.isNaN(scheduledDate.getTime())) {
+    const error = new Error('Fecha y hora inválida.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const club = await Club.getSingleton();
+  const courtEntries = Array.isArray(club?.courts) ? club.courts : [];
+  const courtNames = courtEntries
+    .map((entry) => (entry && typeof entry.name === 'string' ? entry.name.trim() : ''))
+    .filter(Boolean);
+
+  if (!courtNames.length) {
+    const error = new Error('No hay pistas registradas en el club.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { startsAt, endsAt } = resolveEndsAt(scheduledDate);
+  if (!startsAt || !endsAt) {
+    const error = new Error('No se pudo determinar la duración del partido.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const uniqueCourts = Array.from(new Set(courtNames));
+  const attemptOrder = preferredCourt
+    ? [preferredCourt, ...uniqueCourts.filter((name) => name !== preferredCourt)]
+    : uniqueCourts;
+
+  for (const courtName of attemptOrder) {
+    try {
+      await ensureCourtReservationAvailability({
+        court: courtName,
+        startsAt,
+        endsAt,
+        excludeReservationId,
+        reservationType: RESERVATION_TYPES.MATCH,
+        bypassManualAdvanceLimit: true,
+      });
+      return courtName;
+    } catch (error) {
+      if (error && error.statusCode === 409) {
+        continue;
+      }
+      if (error && error.message === 'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 22:15.') {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  const error = new Error('No hay pistas disponibles para el horario seleccionado.');
+  error.statusCode = 409;
+  throw error;
+}
+
 async function ensureSchedulingAvailability({ scheduledDate, players = [], court, excludeMatchId }) {
   if (!(scheduledDate instanceof Date) || Number.isNaN(scheduledDate.getTime())) {
     const error = new Error('Fecha y hora inválida.');
@@ -545,6 +603,15 @@ async function createMatch(req, res) {
   }
 
   if (scheduledDate) {
+    if (!resolvedCourt && !matchPayload.court) {
+      try {
+        const assignedCourt = await autoAssignCourt({ scheduledDate });
+        matchPayload.court = assignedCourt;
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({ message: error.message });
+      }
+    }
+
     try {
       await ensureSchedulingAvailability({
         scheduledDate,
@@ -562,6 +629,8 @@ async function createMatch(req, res) {
           court: resolvedCourt || matchPayload.court,
           startsAt: reservationStart,
           endsAt: reservationEnd,
+          reservationType: RESERVATION_TYPES.MATCH,
+          bypassManualAdvanceLimit: true,
         });
       } catch (error) {
         return res.status(error.statusCode || 400).json({ message: error.message });
@@ -825,6 +894,7 @@ async function updateMatch(req, res) {
   if (scheduledAt !== undefined) {
     if (!scheduledAt) {
       match.scheduledAt = undefined;
+      match.court = undefined;
       if (status === 'programado' && !match.proposal) {
         match.status = 'pendiente';
         match.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
@@ -881,6 +951,18 @@ async function updateMatch(req, res) {
   }
 
   if (match.scheduledAt instanceof Date && !Number.isNaN(match.scheduledAt.getTime())) {
+    if (!match.court) {
+      try {
+        match.court = await autoAssignCourt({
+          scheduledDate: match.scheduledAt,
+          excludeReservationId: existingReservation?._id,
+          preferredCourt: previousCourtValue,
+        });
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({ message: error.message });
+      }
+    }
+
     try {
       await ensureSchedulingAvailability({
         scheduledDate: match.scheduledAt,
@@ -902,6 +984,8 @@ async function updateMatch(req, res) {
           startsAt: reservationStart,
           endsAt: reservationEnd,
           excludeReservationId: existingReservation?._id,
+          reservationType: RESERVATION_TYPES.MATCH,
+          bypassManualAdvanceLimit: true,
         });
       } catch (error) {
         return res.status(error.statusCode || 400).json({ message: error.message });
@@ -1591,7 +1675,7 @@ async function proposeMatch(req, res) {
   }
 
   const { matchId } = req.params;
-  const { proposedFor, message, court } = req.body;
+  const { proposedFor, message } = req.body;
 
   const match = await Match.findById(matchId);
   if (!match) {
@@ -1625,10 +1709,7 @@ async function proposeMatch(req, res) {
     return res.status(400).json({ message: 'Fecha inválida.' });
   }
 
-  const proposedCourt = typeof court === 'string' ? court.trim() : '';
-  if (!proposedCourt) {
-    return res.status(400).json({ message: 'Debes seleccionar una pista para proponer la fecha.' });
-  }
+  const previousCourtValue = typeof match.court === 'string' ? match.court : undefined;
 
   match.proposal = {
     requestedBy: requesterId,
@@ -1641,13 +1722,6 @@ async function proposeMatch(req, res) {
   match.status = 'propuesto';
   match.scheduledAt = undefined;
   match.court = undefined;
-  try {
-    match.court = await resolveClubCourtSelection(proposedCourt);
-  } catch (error) {
-    return res.status(error.statusCode || 400).json({
-      message: error.message || 'La pista seleccionada no es válida.',
-    });
-  }
 
   const existingReservation = await CourtReservation.findOne({
     match: matchId,
@@ -1656,11 +1730,19 @@ async function proposeMatch(req, res) {
 
   const { startsAt: reservationStart, endsAt: reservationEnd } = resolveEndsAt(proposedDate);
   try {
+    const assignedCourt = await autoAssignCourt({
+      scheduledDate: proposedDate,
+      excludeReservationId: existingReservation?._id,
+      preferredCourt: previousCourtValue,
+    });
+    match.court = assignedCourt;
     await ensureCourtReservationAvailability({
       court: match.court,
       startsAt: reservationStart,
       endsAt: reservationEnd,
       excludeReservationId: existingReservation?._id,
+      reservationType: RESERVATION_TYPES.MATCH,
+      bypassManualAdvanceLimit: true,
     });
   } catch (error) {
     return res.status(error.statusCode || 400).json({ message: error.message });
@@ -1747,7 +1829,7 @@ async function respondToProposal(req, res) {
   }
 
   const { matchId } = req.params;
-  const { decision, court } = req.body;
+  const { decision } = req.body;
 
   const match = await Match.findById(matchId);
   if (!match) {
@@ -1794,17 +1876,14 @@ async function respondToProposal(req, res) {
     }
     match.scheduledAt = proposedDate;
     match.expiresAt = undefined;
-    if (court !== undefined) {
-      if (court === null || (typeof court === 'string' && !court.trim())) {
-        match.court = undefined;
-      } else {
-        try {
-          match.court = await resolveClubCourtSelection(court);
-        } catch (error) {
-          return res
-            .status(error.statusCode || 400)
-            .json({ message: error.message || 'La pista seleccionada no es válida.' });
-        }
+    if (!match.court) {
+      try {
+        match.court = await autoAssignCourt({
+          scheduledDate: proposedDate,
+          excludeReservationId: existingReservation?._id,
+        });
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({ message: error.message });
       }
     }
   } else if (decision === 'reject') {
@@ -1847,6 +1926,8 @@ async function respondToProposal(req, res) {
           startsAt: reservationStart,
           endsAt: reservationEnd,
           excludeReservationId: existingReservation?._id,
+          reservationType: RESERVATION_TYPES.MATCH,
+          bypassManualAdvanceLimit: true,
         });
       } catch (error) {
         return res.status(error.statusCode || 400).json({ message: error.message });
