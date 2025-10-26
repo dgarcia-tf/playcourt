@@ -223,7 +223,11 @@ router.post(
       })
       .custom((value) => value === null || CATEGORY_COLOR_PALETTE.includes(value))
       .withMessage('Color de categoría inválido'),
-    body('drawSize').optional({ nullable: true }).isInt({ min: 0 }),
+    body('drawSize')
+      .isInt({ min: 1 })
+      .toInt()
+      .custom((value) => TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.includes(Number(value)))
+      .withMessage('El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.'),
   ],
   createTournamentCategory
 );
@@ -251,7 +255,12 @@ router.patch(
       })
       .custom((value) => value === null || CATEGORY_COLOR_PALETTE.includes(value))
       .withMessage('Color de categoría inválido'),
-    body('drawSize').optional({ nullable: true }).isInt({ min: 0 }),
+    body('drawSize')
+      .optional({ nullable: true })
+      .isInt({ min: 1 })
+      .toInt()
+      .custom((value) => TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.includes(Number(value)))
+      .withMessage('El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.'),
   ],
   updateTournamentCategory
 );

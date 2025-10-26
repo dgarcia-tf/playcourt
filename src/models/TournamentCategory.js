@@ -155,7 +155,8 @@ const tournamentCategorySchema = new mongoose.Schema(
     },
     drawSize: {
       type: Number,
-      min: 0,
+      enum: TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES,
+      required: true,
     },
     draw: {
       type: [bracketRoundSchema],
