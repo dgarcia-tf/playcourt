@@ -8207,7 +8207,7 @@ function getReservationSlotEnd(start) {
 }
 
 function formatReservationSlotLabel(start) {
-  return formatTimeRangeLabel(start, getReservationSlotEnd(start));
+  return formatTime(start);
 }
 
 function isValidReservationSlotStart(date) {
