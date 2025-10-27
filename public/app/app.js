@@ -20,8 +20,6 @@
     const statusSpan = document.createElement('span');
     statusSpan.textContent = `Estado: ${formatTournamentEnrollmentStatusLabel(enrollment.status)}`;
     content.appendChild(statusSpan);
-  }
-
   meta.appendChild(document.createElement('span')).textContent = `Tipo: ${isTournament ? 'Torneo' : 'Liga'}`;
   if (isTournament && enrollment.seedNumber) {
     meta.appendChild(document.createElement('span')).textContent = `Cabeza de serie nº ${enrollment.seedNumber}`;

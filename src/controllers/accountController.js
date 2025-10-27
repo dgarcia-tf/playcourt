@@ -313,7 +313,15 @@ async function getAccountSummary(req, res) {
       })
       .sort({ joinedAt: -1, createdAt: -1 })
       .lean(),
-    tournamentEnrollmentQuery,
+    TournamentEnrollment.find({ user: userId })
+      .populate({
+        path: 'category',
+        select: 'name color status tournament',
+        populate: { path: 'tournament', select: 'name status' },
+      })
+      .populate('tournament', 'name status')
+      .sort({ createdAt: -1 })
+      .lean(),
     Match.find({
       players: userId,
       status: { $in: UPCOMING_LEAGUE_MATCH_STATUSES },
