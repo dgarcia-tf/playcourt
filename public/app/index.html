@@ -1448,12 +1448,23 @@
                   </div>
 
                   <form id="admin-match-form" class="form">
-                    <label>
-                      Categoría
-                      <select id="admin-match-category" name="categoryId">
-                        <option value="">Selecciona una categoría</option>
-                      </select>
-                    </label>
+                    <div class="form-grid">
+                      <label>
+                        Categoría
+                        <select id="admin-match-category" name="categoryId">
+                          <option value="">Selecciona una categoría</option>
+                        </select>
+                      </label>
+                      <label>
+                        Estado
+                        <select id="admin-match-status-select" name="status">
+                          <option value="pendiente">Pendiente</option>
+                          <option value="propuesto">Propuesto</option>
+                          <option value="programado">Programado</option>
+                          <option value="revision">En revisión</option>
+                        </select>
+                      </label>
+                    </div>
 
                     <div class="form-grid">
                       <label>
@@ -2074,7 +2085,7 @@
                         <h4>Inscripciones</h4>
                         <ul class="list" id="account-enrollments-list" hidden></ul>
                         <p class="empty-state" id="account-enrollments-empty">
-                          Todavía no te has inscrito en ninguna liga o torneo.
+                          Todavía no te has inscrito en ninguna liga.
                         </p>
                       </section>
                       <section class="account-dashboard__section">

@@ -14,6 +14,8 @@ const { MATCH_RESULT_AUTO_CONFIRM_MS } = require('../config/matchResults');
 const {
   notifyPendingResultConfirmation,
   notifyResultConfirmed,
+  notifyScheduleConfirmationRequest,
+  notifyScheduleRejected,
 } = require('../services/matchNotificationService');
 const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
 const {
@@ -25,7 +27,7 @@ const {
 } = require('../services/courtReservationService');
 const { generateCalendarMetadata } = require('../utils/calendarLinks');
 
-const MATCH_STATUSES = ['pendiente', 'programado', 'completado', 'caducado'];
+const MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado'];
 const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caducado'].includes(status));
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MIN_MATCH_DURATION_MS = 75 * 60 * 1000;
@@ -497,10 +499,21 @@ async function createMatch(req, res) {
     }
     matchPayload.scheduledAt = scheduledDate;
     matchPayload.status = 'programado';
-    matchPayload.expiresAt = undefined;
+    const confirmationMap = new Map();
+    normalizedPlayers
+      .filter(Boolean)
+      .forEach((playerId) => {
+        confirmationMap.set(playerId, { status: 'pendiente' });
+      });
+    if (confirmationMap.size) {
+      matchPayload.scheduleConfirmation = {
+        status: 'pendiente',
+        requestedAt: new Date(),
+        confirmations: confirmationMap,
+      };
+    }
   } else {
     matchPayload.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
-    matchPayload.status = 'pendiente';
   }
 
   let resolvedCourt;
@@ -554,6 +567,12 @@ async function createMatch(req, res) {
   }
 
   const match = await Match.create(matchPayload);
+
+  if (match.scheduleConfirmation?.status === 'pendiente' && match.scheduledAt) {
+    await match.populate('category', 'name');
+    await match.populate('players', 'fullName email notifyMatchRequests');
+    await notifyScheduleConfirmationRequest(match, req.user.id);
+  }
   let responseCalendarLinks = {};
   if (match.scheduledAt) {
     const reminderAt = new Date(match.scheduledAt.getTime() - 60 * 60 * 1000);
@@ -738,6 +757,7 @@ async function updateMatch(req, res) {
     players,
     scheduledAt,
     court,
+    status,
     notes,
   } = req.body;
 
@@ -803,6 +823,10 @@ async function updateMatch(req, res) {
     if (!scheduledAt) {
       match.scheduledAt = undefined;
       match.court = undefined;
+      if (status === 'programado' && !match.proposal) {
+        match.status = 'pendiente';
+        match.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
+      }
     } else {
       const updatedDate = scheduledAt instanceof Date ? scheduledAt : new Date(scheduledAt);
       if (Number.isNaN(updatedDate.getTime())) {
@@ -822,6 +846,27 @@ async function updateMatch(req, res) {
         return res
           .status(error.statusCode || 400)
           .json({ message: error.message || 'La pista seleccionada no es válida.' });
+      }
+    }
+  }
+
+  if (status) {
+    if (!MATCH_STATUSES.includes(status)) {
+      return res.status(400).json({ message: 'Estado inválido' });
+    }
+
+    if (status === 'caducado') {
+      match.status = 'caducado';
+      match.proposal = undefined;
+      match.scheduledAt = undefined;
+      match.expiresAt = undefined;
+    } else if (status !== 'completado') {
+      match.status = status;
+      if (status === 'pendiente') {
+        match.proposal = undefined;
+        match.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
+      } else if (status === 'programado') {
+        match.expiresAt = undefined;
       }
     }
   }
@@ -884,17 +929,36 @@ async function updateMatch(req, res) {
   const scheduledAtChanged = previousScheduledAtTime !== currentScheduledAtTime;
   const courtChanged = previousCourtValue !== currentCourtValue;
 
-  const shouldSyncReservation = Boolean(match.scheduledAt) && Boolean(match.court);
+  let scheduleConfirmationRequested = false;
+  if (currentScheduledAtTime && (scheduledAtChanged || courtChanged)) {
+    const playerIds = Array.isArray(match.players)
+      ? match.players
+          .map((playerId) => (playerId && typeof playerId.toString === 'function' ? playerId.toString() : null))
+          .filter(Boolean)
+      : [];
 
-  if (!['completado', 'caducado'].includes(match.status)) {
-    if (shouldSyncReservation) {
-      match.status = 'programado';
-      match.expiresAt = undefined;
-    } else if (!match.proposal || !match.proposal.requestedAt) {
-      match.status = 'pendiente';
-      match.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
+    if (playerIds.length) {
+      const confirmationMap = new Map();
+      playerIds.forEach((playerId) => {
+        confirmationMap.set(playerId, { status: 'pendiente' });
+      });
+
+      match.scheduleConfirmation = {
+        status: 'pendiente',
+        requestedAt: new Date(),
+        confirmations: confirmationMap,
+      };
+      match.markModified('scheduleConfirmation');
+      match.markModified('scheduleConfirmation.confirmations');
+      scheduleConfirmationRequested = true;
     }
+  } else if (!currentScheduledAtTime && match.scheduleConfirmation) {
+    match.scheduleConfirmation = undefined;
+    match.markModified('scheduleConfirmation');
   }
+
+  const shouldSyncReservation =
+    match.status === 'programado' && Boolean(match.scheduledAt) && Boolean(match.court);
 
   await match.save();
 
@@ -943,6 +1007,14 @@ async function updateMatch(req, res) {
       await cancelMatchReservation(match._id, { cancelledBy: req.user.id });
     } catch (error) {
       console.error('No se pudo cancelar la reserva vinculada al partido', error);
+    }
+  }
+
+  if (scheduleConfirmationRequested) {
+    try {
+      await notifyScheduleConfirmationRequest(updated, req.user.id);
+    } catch (error) {
+      console.error('No se pudo enviar la notificación de confirmación de horario', error);
     }
   }
 
@@ -1093,6 +1165,7 @@ async function reportResult(req, res) {
     match.result.autoConfirmAt = undefined;
   } else {
     match.result.status = 'en_revision';
+    match.status = 'revision';
   }
 
   await match.save();
@@ -1225,6 +1298,9 @@ async function confirmResult(req, res) {
     match.result.autoConfirmAt = undefined;
   } else {
     match.result.status = 'en_revision';
+    if (match.status !== 'revision') {
+      match.status = 'revision';
+    }
   }
 
   await match.save();
@@ -1247,6 +1323,170 @@ async function confirmResult(req, res) {
   }
 
   return res.json(populated);
+}
+
+async function respondToScheduleConfirmation(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { matchId } = req.params;
+  const { decision, reason } = req.body;
+
+  const match = await Match.findById(matchId)
+    .populate('category', 'name gender color matchFormat')
+    .populate('league', 'name year status')
+    .populate('season', 'name year')
+    .populate('players', 'fullName email gender phone');
+
+  if (!match) {
+    return res.status(404).json({ message: 'Partido no encontrado' });
+  }
+
+  await ensureMatchLeagueAllowsChanges(
+    match,
+    'La liga está cerrada y no permite confirmar horarios.'
+  );
+
+  if (!match.scheduleConfirmation || !match.scheduleConfirmation.confirmations) {
+    return res
+      .status(400)
+      .json({ message: 'No hay una programación pendiente de confirmación para este partido.' });
+  }
+
+  if (match.scheduleConfirmation.status === 'confirmado') {
+    return res.status(400).json({ message: 'La fecha del partido ya fue confirmada.' });
+  }
+
+  if (match.scheduleConfirmation.status === 'rechazado') {
+    return res.status(400).json({ message: 'Debes esperar a que el administrador reprograme el partido.' });
+  }
+
+  const playerIds = Array.isArray(match.players)
+    ? match.players
+        .map((player) => {
+          if (!player) {
+            return null;
+          }
+          if (typeof player === 'string') {
+            return player;
+          }
+          if (player._id) {
+            return player._id.toString();
+          }
+          if (typeof player.toString === 'function') {
+            return player.toString();
+          }
+          return null;
+        })
+        .filter(Boolean)
+    : [];
+
+  const userId = req.user.id;
+
+  if (!playerIds.includes(userId)) {
+    return res.status(403).json({ message: 'Solo los jugadores del partido pueden responder.' });
+  }
+
+  const now = new Date();
+  const rawConfirmations = match.scheduleConfirmation.confirmations;
+  const confirmationMap =
+    rawConfirmations instanceof Map
+      ? new Map(rawConfirmations)
+      : new Map(Object.entries(rawConfirmations || {}));
+
+  if (decision === 'accept') {
+    confirmationMap.set(userId, { status: 'aprobado', respondedAt: now });
+
+    const allApproved = playerIds.every((playerId) => {
+      const entry = confirmationMap.get(playerId);
+      return entry?.status === 'aprobado';
+    });
+
+    match.scheduleConfirmation.status = allApproved ? 'confirmado' : 'pendiente';
+    match.scheduleConfirmation.confirmedAt = allApproved ? now : undefined;
+    match.scheduleConfirmation.confirmedBy = allApproved ? userId : undefined;
+    match.scheduleConfirmation.rejectedAt = undefined;
+    match.scheduleConfirmation.rejectedBy = undefined;
+  } else {
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+    if (!trimmedReason) {
+      return res
+        .status(400)
+        .json({ message: 'Debes indicar un motivo para rechazar la fecha propuesta.' });
+    }
+
+    confirmationMap.set(userId, {
+      status: 'rechazado',
+      respondedAt: now,
+      reason: trimmedReason,
+    });
+
+    match.scheduleConfirmation.status = 'rechazado';
+    match.scheduleConfirmation.rejectedAt = now;
+    match.scheduleConfirmation.rejectedBy = userId;
+    match.scheduleConfirmation.confirmedAt = undefined;
+    match.scheduleConfirmation.confirmedBy = undefined;
+    match.status = 'pendiente';
+    match.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
+  }
+
+  match.scheduleConfirmation.confirmations = confirmationMap;
+  match.markModified('scheduleConfirmation.confirmations');
+  match.markModified('scheduleConfirmation');
+
+  await match.save();
+
+  const populated = await Match.findById(matchId)
+    .populate('category', 'name gender color matchFormat')
+    .populate('league', 'name year status')
+    .populate('season', 'name year')
+    .populate('players', 'fullName email gender phone');
+
+  let responseCalendarLinks = {};
+  if (populated?.scheduledAt) {
+    const { startsAt: eventStart, endsAt: eventEnd } = resolveEndsAt(populated.scheduledAt);
+    if (eventStart && eventEnd && eventEnd > eventStart) {
+      const opponentNames = Array.isArray(populated.players)
+        ? populated.players
+            .map((player) => player?.fullName || player?.email)
+            .filter(Boolean)
+            .join(' vs ')
+        : '';
+
+      responseCalendarLinks = generateCalendarMetadata({
+        title: opponentNames ? `Partido: ${opponentNames}` : 'Partido programado',
+        description: [
+          opponentNames ? `Partido entre ${opponentNames}.` : 'Partido programado.',
+          populated.category?.name ? `Categoría: ${populated.category.name}.` : null,
+          populated.league?.name ? `Liga: ${populated.league.name}.` : null,
+          populated.court ? `Pista: ${populated.court}.` : null,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        location: populated.court,
+        startsAt: eventStart,
+        endsAt: eventEnd,
+      });
+    }
+  }
+
+  if (decision === 'reject') {
+    try {
+      const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+      await notifyScheduleRejected(populated, userId, trimmedReason);
+    } catch (error) {
+      console.error('No se pudo notificar el rechazo de la programación', error);
+    }
+  }
+
+  const responsePayload = populated.toObject({ virtuals: true, flattenMaps: true });
+  if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
+    responsePayload.calendarLinks = responseCalendarLinks;
+  }
+
+  return res.json(responsePayload);
 }
 
 async function generateCategoryMatches(req, res) {
@@ -1415,10 +1655,9 @@ async function proposeMatch(req, res) {
     requestedAt: new Date(),
     status: 'pendiente',
   };
-  match.status = 'pendiente';
+  match.status = 'propuesto';
   match.scheduledAt = undefined;
   match.court = undefined;
-  match.expiresAt = new Date(Date.now() + MATCH_EXPIRATION_MS);
 
   const existingReservation = await CourtReservation.findOne({
     match: matchId,
@@ -1765,5 +2004,6 @@ module.exports = {
   confirmResult,
   generateCategoryMatches,
   proposeMatch,
+  respondToScheduleConfirmation,
   respondToProposal,
 };

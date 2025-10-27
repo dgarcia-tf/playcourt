@@ -15,7 +15,7 @@ const { resolveMatchScheduledAt } = require('../utils/matchSchedule');
 const { TournamentEnrollment } = require('../models/TournamentEnrollment');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 
-const UPCOMING_LEAGUE_STATUSES = ['pendiente', 'programado'];
+const UPCOMING_LEAGUE_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision'];
 const UPCOMING_TOURNAMENT_STATUSES = [
   TOURNAMENT_MATCH_STATUS.PENDING,
   TOURNAMENT_MATCH_STATUS.SCHEDULED,

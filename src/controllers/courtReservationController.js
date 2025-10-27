@@ -8,7 +8,7 @@ const {
 } = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
-const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
+const { CourtBlock } = require('../models/CourtBlock');
 const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { formatCourtBlock, buildContextLabelMap } = require('./courtBlockController');
 const {
@@ -21,8 +21,6 @@ const {
   MANUAL_RESERVATION_MAX_ADVANCE_HOURS,
   cleanupExpiredManualReservations,
 } = require('../services/courtReservationService');
-
-const MAX_AVAILABILITY_RANGE_DAYS = 31;
 
 function sanitizeNotes(notes) {
   if (typeof notes !== 'string') {
@@ -363,21 +361,6 @@ const validateListReservations = [
     .optional()
     .custom((value) => toDate(value) !== null)
     .withMessage('La fecha final no es válida.'),
-  query('reservationType')
-    .optional()
-    .isString()
-    .custom((value) => Object.values(RESERVATION_TYPES).includes(value))
-    .withMessage('El tipo de reserva indicado no es válido.'),
-  query('contextType')
-    .optional()
-    .isString()
-    .custom((value) => Object.values(COURT_BLOCK_CONTEXTS).includes(value))
-    .withMessage('El contexto indicado no es válido.'),
-  query('contextId').optional().isString().withMessage('El identificador del contexto es inválido.'),
-  query('ignoreManualLimit')
-    .optional()
-    .isString()
-    .withMessage('El indicador de límite manual es inválido.'),
 ];
 
 async function createReservation(req, res) {
@@ -665,46 +648,11 @@ async function getAvailability(req, res) {
 
   await cleanupExpiredManualReservations().catch(() => null);
 
-  const { date, start: rawStart, end: rawEnd, rangeDays: rawRangeDays, court: rawCourt } = req.query;
-
-  const startCandidate = toDate(rawStart) || toDate(date);
-  if (!startCandidate) {
+  const { date, court: rawCourt } = req.query;
+  const range = buildDayRange(date);
+  if (!range) {
     return res.status(400).json({ message: 'La fecha es obligatoria para consultar disponibilidad.' });
   }
-
-  const rangeStart = new Date(startCandidate);
-  rangeStart.setHours(0, 0, 0, 0);
-
-  const requestedRangeDays = Number.parseInt(rawRangeDays, 10);
-  const normalizedRangeDays = Number.isFinite(requestedRangeDays)
-    ? Math.min(Math.max(requestedRangeDays, 1), MAX_AVAILABILITY_RANGE_DAYS)
-    : 1;
-
-  let rangeEnd = null;
-  const endCandidate = toDate(rawEnd);
-  if (endCandidate) {
-    rangeEnd = new Date(endCandidate);
-    rangeEnd.setHours(0, 0, 0, 0);
-    rangeEnd.setDate(rangeEnd.getDate() + 1);
-  }
-
-  if (!rangeEnd) {
-    rangeEnd = new Date(rangeStart);
-    rangeEnd.setDate(rangeEnd.getDate() + normalizedRangeDays);
-  }
-
-  if (rangeEnd <= rangeStart) {
-    rangeEnd = new Date(rangeStart);
-    rangeEnd.setDate(rangeEnd.getDate() + 1);
-  }
-
-  const maxRangeEnd = new Date(rangeStart);
-  maxRangeEnd.setDate(maxRangeEnd.getDate() + MAX_AVAILABILITY_RANGE_DAYS);
-  if (rangeEnd > maxRangeEnd) {
-    rangeEnd = maxRangeEnd;
-  }
-
-  const range = { start: rangeStart, end: rangeEnd };
 
   const club = await Club.getSingleton();
   const allCourts = Array.isArray(club?.courts)
@@ -718,50 +666,16 @@ async function getAvailability(req, res) {
     selectedCourts = resolvedCourt ? [resolvedCourt] : [];
   }
 
-  const reservationTypeCandidates = Object.values(RESERVATION_TYPES);
-  const requestedReservationType =
-    typeof req.query.reservationType === 'string' ? req.query.reservationType.trim() : '';
-  const normalizedReservationType = reservationTypeCandidates.includes(requestedReservationType)
-    ? requestedReservationType
-    : RESERVATION_TYPES.MANUAL;
-
-  const contextTypeCandidates = Object.values(COURT_BLOCK_CONTEXTS);
-  const requestedContextType =
-    typeof req.query.contextType === 'string' ? req.query.contextType.trim() : '';
-  const normalizedContextType = contextTypeCandidates.includes(requestedContextType)
-    ? requestedContextType
-    : null;
-  const requestedContextId = typeof req.query.contextId === 'string' ? req.query.contextId.trim() : '';
-  const normalizedContextId = requestedContextId || null;
-
-  const ignoreManualLimit = (() => {
-    if (typeof req.query.ignoreManualLimit !== 'string') {
-      return false;
-    }
-    const normalized = req.query.ignoreManualLimit.trim().toLowerCase();
-    if (!normalized) {
-      return false;
-    }
-    return ['true', '1', 'yes', 'on'].includes(normalized);
-  })();
+  const ignoreManualLimit = req.query.ignoreManualLimit === 'true';
 
   if (!selectedCourts.length) {
-    return res.json({
-      date: range.start,
-      range,
-      court: resolvedCourt,
-      courts: [],
-      blocks: [],
-    });
+    return res.json({ date: range.start, courts: [], blocks: [] });
   }
 
   const reservations = await CourtReservation.find({
     court: { $in: selectedCourts },
     status: { $in: ACTIVE_RESERVATION_STATUSES },
-    $and: [
-      { startsAt: { $lt: range.end } },
-      { endsAt: { $gt: range.start } },
-    ],
+    startsAt: { $gte: range.start, $lt: range.end },
   })
     .sort({ startsAt: 1 })
     .populate('createdBy', 'fullName email roles')
@@ -828,21 +742,15 @@ async function getAvailability(req, res) {
     });
   });
 
-  const slots = [];
-  for (let cursor = new Date(range.start.getTime()); cursor < range.end; cursor.setDate(cursor.getDate() + 1)) {
-    const daySlots = buildDailySlots(new Date(cursor));
-    slots.push(...daySlots);
-  }
+  const slots = buildDailySlots(range.start);
   const manualReservationCutoff = new Date(
     Date.now() + MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000
   );
-  const hasManualLimitPrivileges = hasCourtManagementAccess(req.user) || ignoreManualLimit;
-  const shouldEnforceManualLimit =
-    normalizedReservationType !== RESERVATION_TYPES.MATCH && !hasManualLimitPrivileges;
-  const allowedContextKey =
-    normalizedReservationType === RESERVATION_TYPES.MATCH && normalizedContextType && normalizedContextId
-      ? `${normalizedContextType}:${normalizedContextId}`
-      : null;
+  let canBypassManualLimit = hasCourtManagementAccess(req.user);
+  if (!canBypassManualLimit && ignoreManualLimit) {
+    canBypassManualLimit =
+      userHasRole(req.user, USER_ROLES.ADMIN) || userHasRole(req.user, USER_ROLES.COURT_MANAGER);
+  }
 
   const grouped = selectedCourts.map((courtName) => ({
     court: courtName,
@@ -876,7 +784,7 @@ async function getAvailability(req, res) {
     const courtBlocks = entry.blocks || [];
 
     entry.availableSlots = slots.filter((slot) => {
-      if (shouldEnforceManualLimit && slot.startsAt > manualReservationCutoff) {
+      if (!canBypassManualLimit && slot.startsAt > manualReservationCutoff) {
         return false;
       }
 
@@ -890,37 +798,17 @@ async function getAvailability(req, res) {
       const blockedByCourtBlock = courtBlocks.some((block) => {
         const blockStart = block.startsAt instanceof Date ? block.startsAt : new Date(block.startsAt);
         const blockEnd = block.endsAt instanceof Date ? block.endsAt : new Date(block.endsAt);
-        if (!hasOverlap(slot.startsAt, slot.endsAt, blockStart, blockEnd)) {
-          return false;
-        }
-
-        if (allowedContextKey) {
-          const blockContextId = typeof block.contextId === 'string' ? block.contextId : '';
-          const blockContextKey =
-            block.contextType && blockContextId ? `${block.contextType}:${blockContextId}` : null;
-
-          if (blockContextKey === allowedContextKey) {
-            return false;
-          }
-        }
-
-        return true;
+        return hasOverlap(slot.startsAt, slot.endsAt, blockStart, blockEnd);
       });
       return !blockedByCourtBlock;
     });
   });
-
-  const rangeDays = Math.max(
-    1,
-    Math.round((range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000))
-  );
 
   return res.json({
     date: range.start,
     court: resolvedCourt,
     courts: grouped,
     blocks: serializedBlocks,
-    range: { ...range, days: rangeDays },
   });
 }
 
