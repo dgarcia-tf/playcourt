@@ -3,6 +3,10 @@ const { Match } = require('../models/Match');
 const { League } = require('../models/League');
 const { Tournament } = require('../models/Tournament');
 const { TournamentMatch, TOURNAMENT_MATCH_STATUS } = require('../models/TournamentMatch');
+const {
+  TournamentEnrollment,
+  TOURNAMENT_ENROLLMENT_STATUS,
+} = require('../models/TournamentEnrollment');
 const { resolveCategoryColor } = require('../utils/colors');
 const { resolveMatchScheduledAt } = require('../utils/matchSchedule');
 
@@ -155,7 +159,7 @@ function mapTournamentMatch(match) {
   };
 }
 
-function mapEnrollment(enrollment) {
+function mapLeagueEnrollment(enrollment) {
   const category = enrollment.category || {};
   const league = (category.league && typeof category.league === 'object'
     ? category.league
@@ -163,6 +167,7 @@ function mapEnrollment(enrollment) {
 
   return {
     id: normalizeId(enrollment),
+    scope: 'league',
     joinedAt: enrollment.joinedAt || enrollment.createdAt || null,
     category: category
       ? {
@@ -178,6 +183,40 @@ function mapEnrollment(enrollment) {
           name: league.name,
           year: league.year,
           status: league.status,
+        }
+      : null,
+    status: category?.status || null,
+  };
+}
+
+function mapTournamentEnrollment(enrollment) {
+  const category = enrollment.category || {};
+  const tournament =
+    (enrollment.tournament && typeof enrollment.tournament === 'object'
+      ? enrollment.tournament
+      : null) || (category.tournament && typeof category.tournament === 'object'
+      ? category.tournament
+      : null);
+
+  return {
+    id: normalizeId(enrollment),
+    scope: 'tournament',
+    joinedAt: enrollment.joinedAt || enrollment.createdAt || null,
+    status: enrollment.status || TOURNAMENT_ENROLLMENT_STATUS.PENDING,
+    seedNumber: enrollment.seedNumber || null,
+    category: category
+      ? {
+          id: normalizeId(category),
+          name: category.name,
+          color: resolveCategoryColor(category.color),
+          status: category.status,
+        }
+      : null,
+    tournament: tournament
+      ? {
+          id: normalizeId(tournament),
+          name: tournament.name,
+          status: tournament.status,
         }
       : null,
   };
@@ -241,8 +280,24 @@ function groupPayments(records) {
 async function getAccountSummary(req, res) {
   const userId = req.user.id;
 
+  const tournamentEnrollmentQuery = TournamentEnrollment.find({ user: userId })
+    .populate({
+      path: 'category',
+      select: 'name color status tournament',
+      populate: { path: 'tournament', select: 'name status' },
+    })
+    .populate('tournament', 'name status')
+    .sort({ createdAt: -1 })
+    .lean()
+    .catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error('No se pudieron cargar las inscripciones de torneos del usuario', error);
+      return [];
+    });
+
   const [
-    enrollmentsRaw,
+    leagueEnrollmentsRaw,
+    tournamentEnrollmentsRaw,
     upcomingLeagueMatchesRaw,
     recentLeagueMatchesRaw,
     upcomingTournamentMatchesRaw,
@@ -258,6 +313,7 @@ async function getAccountSummary(req, res) {
       })
       .sort({ joinedAt: -1, createdAt: -1 })
       .lean(),
+    tournamentEnrollmentQuery,
     Match.find({
       players: userId,
       status: { $in: UPCOMING_LEAGUE_MATCH_STATUSES },
@@ -336,7 +392,18 @@ async function getAccountSummary(req, res) {
       .lean(),
   ]);
 
-  const enrollments = enrollmentsRaw.map((enrollment) => mapEnrollment(enrollment));
+  const leagueEnrollments = leagueEnrollmentsRaw.map((enrollment) =>
+    mapLeagueEnrollment(enrollment)
+  );
+  const tournamentEnrollments = tournamentEnrollmentsRaw.map((enrollment) =>
+    mapTournamentEnrollment(enrollment)
+  );
+
+  const enrollments = [...leagueEnrollments, ...tournamentEnrollments].sort((a, b) => {
+    const dateA = a.joinedAt ? new Date(a.joinedAt).getTime() : 0;
+    const dateB = b.joinedAt ? new Date(b.joinedAt).getTime() : 0;
+    return dateB - dateA;
+  });
 
   const upcomingMatches = [
     ...upcomingLeagueMatchesRaw.map((match) => mapLeagueMatch(match)),
