@@ -29608,7 +29608,7 @@ async function loadAllData() {
       completedMatches,
       pendingReviewMatches,
     ] = await Promise.all([
-      request('/matches?statuses=programado,revision'),
+      request('/matches?status=programado'),
       request(`/matches?playerId=${userId}&includeDrafts=true`),
       request('/notifications/mine?upcoming=true').catch(() => []),
       request('/club').catch(() => null),
