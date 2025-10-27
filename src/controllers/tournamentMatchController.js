@@ -18,12 +18,15 @@ const {
   TOURNAMENT_BRACKETS,
 } = require('../models/TournamentMatch');
 const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
-const { RESERVATION_TYPES } = require('../models/CourtReservation');
+const { CourtReservation, RESERVATION_TYPES } = require('../models/CourtReservation');
+const { COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const { notifyTournamentMatchScheduled } = require('../services/tournamentNotificationService');
 const {
   autoAssignCourt,
   ensureReservationAvailability: ensureCourtReservationAvailability,
   resolveEndsAt,
+  upsertTournamentMatchReservation,
+  cancelTournamentMatchReservation,
 } = require('../services/courtReservationService');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { createOrderOfPlayPdf } = require('../services/tournamentOrderOfPlayPdfService');
@@ -905,7 +908,36 @@ async function generateTournamentMatches(req, res) {
     return res.status(400).json({ message: 'No se proporcionaron partidos válidos' });
   }
 
+  for (const sanitized of sanitizedMatches) {
+    if (sanitized.scheduledAt && sanitized.court) {
+      try {
+        const { startsAt, endsAt } = resolveEndsAt(sanitized.scheduledAt);
+        await ensureCourtReservationAvailability({
+          court: sanitized.court,
+          startsAt,
+          endsAt,
+          reservationType: RESERVATION_TYPES.MATCH,
+          contextType: COURT_BLOCK_CONTEXTS.TOURNAMENT,
+          contextId: tournamentId,
+          bypassManualAdvanceLimit: true,
+        });
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({ message: error.message });
+      }
+    }
+  }
+
   if (replaceExisting) {
+    const existingMatches = await TournamentMatch.find({
+      tournament: tournamentId,
+      category: categoryId,
+    })
+      .select('_id')
+      .lean();
+    const existingIds = existingMatches.map((entry) => entry._id).filter(Boolean);
+    if (existingIds.length) {
+      await CourtReservation.deleteMany({ tournamentMatch: { $in: existingIds } });
+    }
     await TournamentMatch.deleteMany({ tournament: tournamentId, category: categoryId });
   }
 
@@ -930,6 +962,16 @@ async function generateTournamentMatches(req, res) {
   });
 
   const createdMatches = await TournamentMatch.insertMany(payloads, { ordered: false });
+
+  try {
+    for (const createdMatch of createdMatches) {
+      if (createdMatch.scheduledAt && createdMatch.court) {
+        await upsertTournamentMatchReservation({ match: createdMatch, createdBy: req.user.id });
+      }
+    }
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
+  }
 
   await Promise.all(
     createdMatches.map((match) =>
@@ -1571,6 +1613,17 @@ async function autoGenerateTournamentBracket(req, res) {
   const mainPayloads = mainMatchesMatrix.flat().filter(Boolean);
   const payloads = [...mainPayloads, ...consolationPayloads];
 
+  const previousMatches = await TournamentMatch.find({
+    tournament: tournamentId,
+    category: categoryId,
+  })
+    .select('_id')
+    .lean();
+  const previousIds = previousMatches.map((entry) => entry._id).filter(Boolean);
+  if (previousIds.length) {
+    await CourtReservation.deleteMany({ tournamentMatch: { $in: previousIds } });
+  }
+
   await TournamentMatch.deleteMany({ tournament: tournamentId, category: categoryId });
   await TournamentMatch.insertMany(payloads);
 
@@ -1874,6 +1927,16 @@ async function updateTournamentMatch(req, res) {
     }
   } else if (scheduledAtProvided) {
     match.court = undefined;
+  }
+
+  try {
+    if (match.scheduledAt && match.court) {
+      await upsertTournamentMatchReservation({ match, createdBy: req.user.id });
+    } else if (scheduledAtProvided) {
+      await cancelTournamentMatchReservation(match._id, { cancelledBy: req.user.id });
+    }
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: error.message });
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'status')) {

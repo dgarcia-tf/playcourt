@@ -1,6 +1,7 @@
 const { CourtReservation, RESERVATION_STATUS, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
 const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
+const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { sendPushNotification } = require('./pushNotificationService');
 const { sendEmailNotification } = require('./emailService');
 
@@ -184,6 +185,99 @@ async function ensureReservationAvailability({
     error.statusCode = 409;
     throw error;
   }
+}
+
+function extractParticipantId(entry) {
+  if (!entry) {
+    return null;
+  }
+
+  if (typeof entry === 'string') {
+    return entry;
+  }
+
+  if (typeof entry === 'object') {
+    if (typeof entry.toString === 'function') {
+      const str = entry.toString();
+      if (str && str !== '[object Object]') {
+        return str;
+      }
+    }
+
+    if (entry._id) {
+      return entry._id.toString();
+    }
+
+    if (entry.id) {
+      return entry.id.toString();
+    }
+  }
+
+  return null;
+}
+
+async function resolveTournamentMatchParticipantIds(match) {
+  if (!match) {
+    return [];
+  }
+
+  const players = Array.isArray(match.players) ? match.players : [];
+  if (!players.length) {
+    return [];
+  }
+
+  const participantIds = new Set();
+  const pendingPairIds = new Set();
+  const playerType = match.playerType || 'User';
+
+  players.forEach((player) => {
+    if (!player) {
+      return;
+    }
+
+    if (playerType === 'TournamentDoublesPair') {
+      if (typeof player === 'object' && Array.isArray(player.players) && player.players.length) {
+        player.players.forEach((member) => {
+          const id = extractParticipantId(member);
+          if (id) {
+            participantIds.add(id);
+          }
+        });
+        return;
+      }
+
+      const pairId = extractParticipantId(player);
+      if (pairId) {
+        pendingPairIds.add(pairId);
+      }
+      return;
+    }
+
+    const participantId = extractParticipantId(player);
+    if (participantId) {
+      participantIds.add(participantId);
+    }
+  });
+
+  if (pendingPairIds.size) {
+    const pairs = await TournamentDoublesPair.find({ _id: { $in: Array.from(pendingPairIds) } })
+      .select('players')
+      .lean();
+
+    pairs.forEach((pair) => {
+      if (!pair || !Array.isArray(pair.players)) {
+        return;
+      }
+      pair.players.forEach((member) => {
+        const id = extractParticipantId(member);
+        if (id) {
+          participantIds.add(id);
+        }
+      });
+    });
+  }
+
+  return normalizeParticipants(Array.from(participantIds));
 }
 
 async function autoAssignCourt({ scheduledDate, excludeReservationId, preferredCourt } = {}) {
@@ -458,6 +552,81 @@ async function upsertMatchReservation({ match, createdBy }) {
   return reservation;
 }
 
+async function upsertTournamentMatchReservation({ match, createdBy }) {
+  if (!match || !match._id || !match.court || !match.scheduledAt) {
+    return null;
+  }
+
+  const { startsAt, endsAt } = resolveEndsAt(match.scheduledAt, match.endsAt);
+  if (!startsAt || !endsAt) {
+    return null;
+  }
+
+  const participants = await resolveTournamentMatchParticipantIds(match);
+  const existingReservations = await CourtReservation.find({ tournamentMatch: match._id });
+  const excludeReservationIds = existingReservations
+    .map((reservation) => reservation?._id)
+    .filter(Boolean);
+
+  await ensureReservationAvailability({
+    court: match.court,
+    startsAt,
+    endsAt,
+    excludeReservationId: excludeReservationIds,
+    reservationType: RESERVATION_TYPES.MATCH,
+    contextType: COURT_BLOCK_CONTEXTS.TOURNAMENT,
+    contextId: match.tournament,
+    bypassManualAdvanceLimit: true,
+  });
+
+  const creatorCandidate = createdBy || match.createdBy;
+  const creatorId = creatorCandidate ? creatorCandidate.toString() : participants[0];
+  if (!creatorId) {
+    const error = new Error('No se pudo determinar el creador de la reserva del partido.');
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const existing = existingReservations.find((reservation) => reservation?.court === match.court) ||
+    (existingReservations.length ? existingReservations[0] : null);
+
+  const reservationStatus = RESERVATION_STATUS.RESERVED;
+  const defaultNotes = 'Reserva automática generada por partido de torneo.';
+
+  if (existing) {
+    existing.court = match.court;
+    existing.startsAt = startsAt;
+    existing.endsAt = endsAt;
+    existing.createdBy = creatorId;
+    existing.status = reservationStatus;
+    existing.cancelledAt = undefined;
+    existing.cancelledBy = undefined;
+    existing.match = undefined;
+    existing.tournamentMatch = match._id;
+    existing.type = RESERVATION_TYPES.MATCH;
+    existing.participants = participants;
+    if (!existing.notes || existing.notes.startsWith('Reserva automática generada')) {
+      existing.notes = defaultNotes;
+    }
+    await existing.save();
+    return existing;
+  }
+
+  const reservation = await CourtReservation.create({
+    court: match.court,
+    startsAt,
+    endsAt,
+    createdBy: creatorId,
+    status: reservationStatus,
+    tournamentMatch: match._id,
+    type: RESERVATION_TYPES.MATCH,
+    participants,
+    notes: defaultNotes,
+  });
+
+  return reservation;
+}
+
 async function cancelMatchReservation(matchId, { cancelledBy } = {}) {
   if (!matchId) {
     return null;
@@ -465,6 +634,29 @@ async function cancelMatchReservation(matchId, { cancelledBy } = {}) {
 
   const reservation = await CourtReservation.findOne({
     match: matchId,
+    status: { $in: ACTIVE_RESERVATION_STATUSES },
+  });
+  if (!reservation) {
+    return null;
+  }
+
+  reservation.status = RESERVATION_STATUS.CANCELLED;
+  reservation.cancelledAt = new Date();
+  if (cancelledBy) {
+    reservation.cancelledBy = cancelledBy;
+  }
+
+  await reservation.save();
+  return reservation;
+}
+
+async function cancelTournamentMatchReservation(matchId, { cancelledBy } = {}) {
+  if (!matchId) {
+    return null;
+  }
+
+  const reservation = await CourtReservation.findOne({
+    tournamentMatch: matchId,
     status: { $in: ACTIVE_RESERVATION_STATUSES },
   });
   if (!reservation) {
@@ -494,4 +686,6 @@ module.exports = {
   normalizeParticipants,
   cleanupExpiredManualReservations,
   autoAssignCourt,
+  upsertTournamentMatchReservation,
+  cancelTournamentMatchReservation,
 };
