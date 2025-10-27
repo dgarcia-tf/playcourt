@@ -586,7 +586,7 @@ async function listReservations(req, res) {
         {
           path: 'players',
           select: 'fullName email players',
-          options: { strictPopulate: false },
+          populate: { path: 'players', select: 'fullName email' },
         },
         { path: 'tournament', select: 'name' },
         { path: 'category', select: 'name' },
@@ -693,7 +693,7 @@ async function getAvailability(req, res) {
         {
           path: 'players',
           select: 'fullName email players',
-          options: { strictPopulate: false },
+          populate: { path: 'players', select: 'fullName email' },
         },
         { path: 'tournament', select: 'name' },
         { path: 'category', select: 'name' },
