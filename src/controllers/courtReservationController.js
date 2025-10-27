@@ -8,7 +8,7 @@ const {
 } = require('../models/CourtReservation');
 const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
-const { CourtBlock } = require('../models/CourtBlock');
+const { CourtBlock, COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
 const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { formatCourtBlock, buildContextLabelMap } = require('./courtBlockController');
 const {
@@ -361,6 +361,21 @@ const validateListReservations = [
     .optional()
     .custom((value) => toDate(value) !== null)
     .withMessage('La fecha final no es válida.'),
+  query('reservationType')
+    .optional()
+    .isString()
+    .custom((value) => Object.values(RESERVATION_TYPES).includes(value))
+    .withMessage('El tipo de reserva indicado no es válido.'),
+  query('contextType')
+    .optional()
+    .isString()
+    .custom((value) => Object.values(COURT_BLOCK_CONTEXTS).includes(value))
+    .withMessage('El contexto indicado no es válido.'),
+  query('contextId').optional().isString().withMessage('El identificador del contexto es inválido.'),
+  query('ignoreManualLimit')
+    .optional()
+    .isString()
+    .withMessage('El indicador de límite manual es inválido.'),
 ];
 
 async function createReservation(req, res) {
@@ -666,7 +681,32 @@ async function getAvailability(req, res) {
     selectedCourts = resolvedCourt ? [resolvedCourt] : [];
   }
 
-  const ignoreManualLimit = req.query.ignoreManualLimit === 'true';
+  const reservationTypeCandidates = Object.values(RESERVATION_TYPES);
+  const requestedReservationType =
+    typeof req.query.reservationType === 'string' ? req.query.reservationType.trim() : '';
+  const normalizedReservationType = reservationTypeCandidates.includes(requestedReservationType)
+    ? requestedReservationType
+    : RESERVATION_TYPES.MANUAL;
+
+  const contextTypeCandidates = Object.values(COURT_BLOCK_CONTEXTS);
+  const requestedContextType =
+    typeof req.query.contextType === 'string' ? req.query.contextType.trim() : '';
+  const normalizedContextType = contextTypeCandidates.includes(requestedContextType)
+    ? requestedContextType
+    : null;
+  const requestedContextId = typeof req.query.contextId === 'string' ? req.query.contextId.trim() : '';
+  const normalizedContextId = requestedContextId || null;
+
+  const ignoreManualLimit = (() => {
+    if (typeof req.query.ignoreManualLimit !== 'string') {
+      return false;
+    }
+    const normalized = req.query.ignoreManualLimit.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return ['true', '1', 'yes', 'on'].includes(normalized);
+  })();
 
   if (!selectedCourts.length) {
     return res.json({ date: range.start, courts: [], blocks: [] });
@@ -746,11 +786,13 @@ async function getAvailability(req, res) {
   const manualReservationCutoff = new Date(
     Date.now() + MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000
   );
-  let canBypassManualLimit = hasCourtManagementAccess(req.user);
-  if (!canBypassManualLimit && ignoreManualLimit) {
-    canBypassManualLimit =
-      userHasRole(req.user, USER_ROLES.ADMIN) || userHasRole(req.user, USER_ROLES.COURT_MANAGER);
-  }
+  const hasManualLimitPrivileges = hasCourtManagementAccess(req.user) || ignoreManualLimit;
+  const shouldEnforceManualLimit =
+    normalizedReservationType !== RESERVATION_TYPES.MATCH && !hasManualLimitPrivileges;
+  const allowedContextKey =
+    normalizedReservationType === RESERVATION_TYPES.MATCH && normalizedContextType && normalizedContextId
+      ? `${normalizedContextType}:${normalizedContextId}`
+      : null;
 
   const grouped = selectedCourts.map((courtName) => ({
     court: courtName,
@@ -784,7 +826,7 @@ async function getAvailability(req, res) {
     const courtBlocks = entry.blocks || [];
 
     entry.availableSlots = slots.filter((slot) => {
-      if (!canBypassManualLimit && slot.startsAt > manualReservationCutoff) {
+      if (shouldEnforceManualLimit && slot.startsAt > manualReservationCutoff) {
         return false;
       }
 
@@ -798,7 +840,21 @@ async function getAvailability(req, res) {
       const blockedByCourtBlock = courtBlocks.some((block) => {
         const blockStart = block.startsAt instanceof Date ? block.startsAt : new Date(block.startsAt);
         const blockEnd = block.endsAt instanceof Date ? block.endsAt : new Date(block.endsAt);
-        return hasOverlap(slot.startsAt, slot.endsAt, blockStart, blockEnd);
+        if (!hasOverlap(slot.startsAt, slot.endsAt, blockStart, blockEnd)) {
+          return false;
+        }
+
+        if (allowedContextKey) {
+          const blockContextId = typeof block.contextId === 'string' ? block.contextId : '';
+          const blockContextKey =
+            block.contextType && blockContextId ? `${block.contextType}:${blockContextId}` : null;
+
+          if (blockContextKey === allowedContextKey) {
+            return false;
+          }
+        }
+
+        return true;
       });
       return !blockedByCourtBlock;
     });
