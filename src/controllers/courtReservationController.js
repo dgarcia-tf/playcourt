@@ -487,11 +487,7 @@ async function createReservation(req, res) {
 
     let conflictMessage =
       'Uno de los jugadores ya tiene una reserva activa. Cancela la reserva anterior antes de crear una nueva.';
-
-    if (conflictingId && conflictingId === requesterId) {
-      conflictMessage =
-        'Ya tienes una reserva privada en curso. Cancela la reserva anterior antes de crear una nueva.';
-    } else if (conflictingId && Array.isArray(conflictingReservation.participants)) {
+    if (conflictingId && Array.isArray(conflictingReservation.participants)) {
       const conflictingUser = conflictingReservation.participants.find((participant) => {
         const participantId =
           participant && typeof participant === 'object'
