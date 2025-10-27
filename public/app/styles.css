@@ -4640,6 +4640,10 @@ body.tournament-fullscreen-active {
   background: rgba(16, 185, 129, 0.14);
   border-color: rgba(16, 185, 129, 0.32);
 }
+.calendar-event--tournament-match {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.32);
+}
 
 .calendar-event--pre-reservation {
   border-style: dashed;
@@ -4648,6 +4652,10 @@ body.tournament-fullscreen-active {
 }
 
 .calendar-event--match.calendar-event--pre-reservation {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.32);
+}
+.calendar-event--tournament-match.calendar-event--pre-reservation {
   background: rgba(16, 185, 129, 0.12);
   border-color: rgba(16, 185, 129, 0.32);
 }

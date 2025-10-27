@@ -412,6 +412,21 @@ async function listReservations(req, res) {
         { path: 'league', select: 'name year status' },
         { path: 'season', select: 'name year' },
       ],
+    })
+    .populate({
+      path: 'tournamentMatch',
+      select:
+        'players playerType tournament category status scheduledAt court round matchNumber bracketType',
+      populate: [
+        {
+          path: 'players',
+          select: 'fullName email players',
+          options: { strictPopulate: false },
+          populate: { path: 'players', select: 'fullName email', options: { strictPopulate: false } },
+        },
+        { path: 'tournament', select: 'name' },
+        { path: 'category', select: 'name' },
+      ],
     });
 
   return res.json(reservations);
@@ -434,9 +449,10 @@ async function cancelReservation(req, res) {
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
   const isCourtManager = userHasRole(req.user, USER_ROLES.COURT_MANAGER);
 
-  if (reservation.match) {
+  if (reservation.match || reservation.tournamentMatch) {
     return res.status(409).json({
-      message: 'La reserva está asociada a un partido de liga. Actualiza el partido para modificar la pista.',
+      message:
+        'La reserva está asociada a un partido oficial. Actualiza el partido para modificar la pista.',
     });
   }
 
@@ -501,6 +517,21 @@ async function getAvailability(req, res) {
         { path: 'category', select: 'name color' },
         { path: 'league', select: 'name year status' },
         { path: 'season', select: 'name year' },
+      ],
+    })
+    .populate({
+      path: 'tournamentMatch',
+      select:
+        'players playerType tournament category status scheduledAt court round matchNumber bracketType',
+      populate: [
+        {
+          path: 'players',
+          select: 'fullName email players',
+          options: { strictPopulate: false },
+          populate: { path: 'players', select: 'fullName email', options: { strictPopulate: false } },
+        },
+        { path: 'tournament', select: 'name' },
+        { path: 'category', select: 'name' },
       ],
     });
 
