@@ -65,6 +65,10 @@ const courtReservationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Match',
     },
+    tournamentMatch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TournamentMatch',
+    },
     type: {
       type: String,
       enum: Object.values(RESERVATION_TYPES),
@@ -91,6 +95,7 @@ const courtReservationSchema = new mongoose.Schema(
 courtReservationSchema.index({ court: 1, startsAt: 1 }, { background: true });
 courtReservationSchema.index({ createdBy: 1, startsAt: 1 }, { background: true });
 courtReservationSchema.index({ match: 1 }, { background: true });
+courtReservationSchema.index({ tournamentMatch: 1 }, { background: true });
 
 module.exports = {
   CourtReservation: mongoose.model('CourtReservation', courtReservationSchema),

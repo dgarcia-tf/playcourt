@@ -9,6 +9,7 @@ const {
 const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { CourtBlock } = require('../models/CourtBlock');
+const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { formatCourtBlock, buildContextLabelMap } = require('./courtBlockController');
 const {
   ensureReservationAvailability,
@@ -117,6 +118,170 @@ function hasOverlap(startA, endA, startB, endB) {
 
 function hasCourtManagementAccess(user) {
   return userHasRole(user, USER_ROLES.ADMIN) || userHasRole(user, USER_ROLES.COURT_MANAGER);
+}
+
+
+function getTournamentMatchPlayerType(match) {
+  return match?.playerType === 'TournamentDoublesPair' ? 'TournamentDoublesPair' : 'User';
+}
+
+function extractTournamentParticipantId(value) {
+  if (!value) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (typeof value === 'object') {
+    if (typeof value.toString === 'function' && value.toString !== Object.prototype.toString) {
+      const stringValue = value.toString();
+      if (stringValue && stringValue !== '[object Object]') {
+        return stringValue;
+      }
+    }
+
+    if (value._id) {
+      return value._id.toString();
+    }
+
+    if (value.id) {
+      return value.id.toString();
+    }
+  }
+
+  return '';
+}
+
+function ensureDoublesPairDisplayName(pair) {
+  if (!pair || typeof pair !== 'object') {
+    return;
+  }
+
+  const currentName = typeof pair.fullName === 'string' ? pair.fullName.trim() : '';
+  if (currentName) {
+    return;
+  }
+
+  const names = Array.isArray(pair.players)
+    ? pair.players
+        .map((member) => {
+          if (member && typeof member === 'object' && typeof member.fullName === 'string') {
+            return member.fullName;
+          }
+          if (member && typeof member === 'object' && typeof member.email === 'string') {
+            return member.email;
+          }
+          if (typeof member === 'string') {
+            return member;
+          }
+          return '';
+        })
+        .filter((name) => Boolean(name && name.trim()))
+    : [];
+
+  if (!names.length) {
+    return;
+  }
+
+  pair.fullName = names.join(' / ');
+}
+
+async function hydrateTournamentMatchPlayers(matches) {
+  if (!matches) {
+    return;
+  }
+
+  const docs = Array.isArray(matches) ? matches : [matches];
+  const pairIds = new Set();
+
+  docs.forEach((match) => {
+    if (!match || getTournamentMatchPlayerType(match) !== 'TournamentDoublesPair') {
+      return;
+    }
+
+    const players = Array.isArray(match.players) ? match.players : [];
+    players.forEach((player) => {
+      const id = extractTournamentParticipantId(player);
+      if (id) {
+        pairIds.add(id);
+      }
+    });
+  });
+
+  let pairMap;
+
+  if (pairIds.size) {
+    const objectIds = Array.from(pairIds)
+      .map((id) => {
+        try {
+          return new mongoose.Types.ObjectId(id);
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    if (objectIds.length) {
+      const pairs = await TournamentDoublesPair.find({ _id: { $in: objectIds } })
+        .populate({ path: 'players', select: 'fullName email gender rating photo' })
+        .exec();
+
+      pairMap = new Map();
+      pairs.forEach((pair) => {
+        pairMap.set(pair._id.toString(), pair);
+      });
+    }
+  }
+
+  docs.forEach((match) => {
+    if (!match || getTournamentMatchPlayerType(match) !== 'TournamentDoublesPair') {
+      return;
+    }
+
+    const players = Array.isArray(match.players) ? match.players : [];
+    const resolvedPlayers = players.map((player) => {
+      const id = extractTournamentParticipantId(player);
+      if (id && pairMap && pairMap.has(id)) {
+        const resolvedPair = pairMap.get(id);
+        ensureDoublesPairDisplayName(resolvedPair);
+        return resolvedPair;
+      }
+
+      if (player && typeof player === 'object') {
+        ensureDoublesPairDisplayName(player);
+      }
+
+      return player;
+    });
+
+    if (typeof match.set === 'function') {
+      match.set('players', resolvedPlayers);
+    } else {
+      match.players = resolvedPlayers;
+    }
+  });
+}
+
+async function hydrateReservationsTournamentMatches(reservations) {
+  if (!Array.isArray(reservations) || !reservations.length) {
+    return;
+  }
+
+  const matches = reservations
+    .map((reservation) => reservation?.tournamentMatch)
+    .filter(Boolean);
+
+  if (!matches.length) {
+    return;
+  }
+
+  await hydrateTournamentMatchPlayers(matches);
 }
 
 async function ensureCourtExists(courtName) {
@@ -412,7 +577,23 @@ async function listReservations(req, res) {
         { path: 'league', select: 'name year status' },
         { path: 'season', select: 'name year' },
       ],
+    })
+    .populate({
+      path: 'tournamentMatch',
+      select:
+        'players playerType tournament category status scheduledAt court round matchNumber bracketType',
+      populate: [
+        {
+          path: 'players',
+          select: 'fullName email players',
+          options: { strictPopulate: false },
+        },
+        { path: 'tournament', select: 'name' },
+        { path: 'category', select: 'name' },
+      ],
     });
+
+  await hydrateReservationsTournamentMatches(reservations);
 
   return res.json(reservations);
 }
@@ -434,9 +615,10 @@ async function cancelReservation(req, res) {
   const isAdmin = userHasRole(req.user, USER_ROLES.ADMIN);
   const isCourtManager = userHasRole(req.user, USER_ROLES.COURT_MANAGER);
 
-  if (reservation.match) {
+  if (reservation.match || reservation.tournamentMatch) {
     return res.status(409).json({
-      message: 'La reserva está asociada a un partido de liga. Actualiza el partido para modificar la pista.',
+      message:
+        'La reserva está asociada a un partido oficial. Actualiza el partido para modificar la pista.',
     });
   }
 
@@ -502,7 +684,23 @@ async function getAvailability(req, res) {
         { path: 'league', select: 'name year status' },
         { path: 'season', select: 'name year' },
       ],
+    })
+    .populate({
+      path: 'tournamentMatch',
+      select:
+        'players playerType tournament category status scheduledAt court round matchNumber bracketType',
+      populate: [
+        {
+          path: 'players',
+          select: 'fullName email players',
+          options: { strictPopulate: false },
+        },
+        { path: 'tournament', select: 'name' },
+        { path: 'category', select: 'name' },
+      ],
     });
+
+  await hydrateReservationsTournamentMatches(reservations);
 
   const blocks = await CourtBlock.find({
     startsAt: { $lt: range.end },

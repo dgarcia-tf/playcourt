@@ -17888,6 +17888,41 @@ function handleMatchPagination(dataset = {}) {
   rerenderMatchList(listKey);
 }
 
+function getReservationMatch(reservation) {
+  if (!reservation) {
+    return null;
+  }
+  if (reservation.tournamentMatch) {
+    return reservation.tournamentMatch;
+  }
+  if (reservation.match) {
+    return reservation.match;
+  }
+  return null;
+}
+
+function getReservationContext(reservation) {
+  const match = getReservationMatch(reservation);
+  if (match && reservation && reservation.tournamentMatch) {
+    return 'tournament';
+  }
+  if (match) {
+    return 'league';
+  }
+  return 'private';
+}
+
+function getReservationContextLabel(reservation) {
+  const context = getReservationContext(reservation);
+  if (context === 'tournament') {
+    return 'Partido de torneo';
+  }
+  if (context === 'league') {
+    return 'Partido de liga';
+  }
+  return 'Partido privado';
+}
+
 function getReservationParticipants(reservation) {
   if (!reservation) {
     return [];
@@ -17895,8 +17930,9 @@ function getReservationParticipants(reservation) {
   if (Array.isArray(reservation.participants) && reservation.participants.length) {
     return reservation.participants;
   }
-  if (reservation.match && Array.isArray(reservation.match.players) && reservation.match.players.length) {
-    return reservation.match.players;
+  const match = getReservationMatch(reservation);
+  if (match && Array.isArray(match.players) && match.players.length) {
+    return match.players;
   }
   if (reservation.createdBy) {
     return [reservation.createdBy];
@@ -17981,51 +18017,75 @@ function buildPlayerCourtCalendarEvents(availability = []) {
 
       const participantsLabel = formatReservationParticipantsLabel(reservation);
       const reservationCourtLabel = formatCourtDisplay(reservation.court) || courtLabel;
-
-      if (reservation.match) {
-        const playersLabel = Array.isArray(reservation.match.players)
-          ? reservation.match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
+      const match = getReservationMatch(reservation);
+      if (match) {
+        const playersLabel = Array.isArray(match.players)
+          ? match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
           : participantsLabel || 'Partido programado';
-        const subtitleParts = ['Partido oficial'];
+        const subtitleParts = [getReservationContextLabel(reservation)];
         const isPreReserved = reservation.status === 'pre_reservada';
         if (isPreReserved) {
           subtitleParts.push('Pre-reserva pendiente de confirmación');
         }
-        if (reservation.match.league?.name) {
-          subtitleParts.push(reservation.match.league.name);
-        }
-        if (reservation.match.tournament?.name) {
-          subtitleParts.push(reservation.match.tournament.name);
+        if (reservation.tournamentMatch) {
+          if (match.tournament?.name) {
+            subtitleParts.push(match.tournament.name);
+          }
+          if (match.category?.name) {
+            subtitleParts.push(match.category.name);
+          }
+        } else {
+          if (match.league?.name) {
+            subtitleParts.push(match.league.name);
+          }
+          if (match.tournament?.name) {
+            subtitleParts.push(match.tournament.name);
+          }
         }
 
-        events.push({
+        const isTournament = Boolean(reservation.tournamentMatch);
+        const eventPayload = {
           id: reservation._id || reservation.id,
-          type: 'match',
+          type: isTournament ? 'tournament-match' : 'match',
           startsAt,
           endsAt,
           title: playersLabel,
           subtitle: subtitleParts.join(' · '),
           court: reservation.court || courtName,
           courtLabel: reservationCourtLabel,
-          matchId: reservation.match._id || reservation.match.id,
           status: reservation.status || 'reservada',
           preReserved: isPreReserved,
-        });
+        };
+
+        if (isTournament) {
+          eventPayload.tournamentMatchId = match._id || match.id;
+          eventPayload.tournamentId = normalizeId(match.tournament);
+          eventPayload.categoryId = normalizeId(match.category);
+        } else {
+          eventPayload.matchId = match._id || match.id;
+        }
+
+        events.push(eventPayload);
         return;
       }
 
-      const createdByLabel = reservation.createdBy
-        ? getPlayerDisplayName(reservation.createdBy)
-        : 'Reserva manual';
-      const subtitle = participantsLabel ? `Participantes: ${participantsLabel}` : '';
+      const contextLabel = getReservationContextLabel(reservation);
+      const ownerLabel = reservation.createdBy ? getPlayerDisplayName(reservation.createdBy) : '';
+      const subtitleParts = [];
+      if (ownerLabel) {
+        subtitleParts.push(`Reserva de ${ownerLabel}`);
+      }
+      if (participantsLabel) {
+        subtitleParts.push(`Jugadores: ${participantsLabel}`);
+      }
 
       events.push({
         id: reservation._id || reservation.id,
         type: 'reservation',
         startsAt,
         endsAt,
-        title: `Reserva de ${createdByLabel}`,
-        subtitle,
+        title: contextLabel,
+        subtitle: subtitleParts.join(' · '),
         notes: reservation.notes || '',
         court: reservation.court || courtName,
         courtLabel: reservationCourtLabel,
@@ -18186,17 +18246,10 @@ function renderCourtReservations() {
       reservation.startsAt,
       reservation.endsAt
     );
-    if (reservation.type === 'partido' || reservation.match) {
-      const matchTag = document.createElement('span');
-      matchTag.className = 'tag';
-      matchTag.textContent = 'Partido';
-      scheduleRow.appendChild(matchTag);
-    } else {
-      const manualTag = document.createElement('span');
-      manualTag.className = 'tag';
-      manualTag.textContent = 'Reserva';
-      scheduleRow.appendChild(manualTag);
-    }
+    const contextTag = document.createElement('span');
+    contextTag.className = 'tag';
+    contextTag.textContent = getReservationContextLabel(reservation);
+    scheduleRow.appendChild(contextTag);
     if (reservation.status === 'pre_reservada') {
       const pendingTag = document.createElement('span');
       pendingTag.className = 'tag';
@@ -18222,15 +18275,15 @@ function renderCourtReservations() {
       item.appendChild(participantsRow);
     }
 
-    if (reservation.notes && reservation.type !== 'partido') {
+    if (reservation.notes && getReservationContext(reservation) === 'private') {
       const notesRow = document.createElement('p');
       notesRow.className = 'reservation-notes';
       notesRow.textContent = reservation.notes;
       item.appendChild(notesRow);
     }
 
-    const canCancel =
-      reservation.status === 'reservada' && (!reservation.match || reservation.type !== 'partido');
+    const hasOfficialMatch = Boolean(getReservationMatch(reservation));
+    const canCancel = reservation.status === 'reservada' && !hasOfficialMatch;
     if (canCancel && reservationId) {
       const actions = document.createElement('div');
       actions.className = 'reservation-actions';
@@ -18319,10 +18372,11 @@ function renderCourtAvailability() {
             .map((participant) => getPlayerDisplayName(participant))
             .join(' · ');
         }
-        if (reservation.type === 'partido' || reservation.match) {
+        const contextLabel = getReservationContextLabel(reservation);
+        if (contextLabel) {
           const tag = document.createElement('span');
           tag.className = 'tag';
-          tag.textContent = 'Partido';
+          tag.textContent = contextLabel;
           slot.appendChild(tag);
         }
         if (reservation.status === 'pre_reservada') {
@@ -18332,7 +18386,7 @@ function renderCourtAvailability() {
           pendingTag.textContent = 'Pre-reserva';
           slot.appendChild(pendingTag);
         }
-        if (reservation.createdBy && reservation.type !== 'partido') {
+        if (reservation.createdBy && getReservationContext(reservation) === 'private') {
           slot.appendChild(document.createElement('span')).textContent = `Reserva de ${getPlayerDisplayName(
             reservation.createdBy
           )}`;
@@ -18472,9 +18526,9 @@ function renderCourtAdminSchedule() {
             .map((participant) => getPlayerDisplayName(participant))
             .join(' · ');
         }
-        if (reservation.type === 'partido' || reservation.match) {
-          info.appendChild(document.createElement('span')).textContent = 'Partido de liga';
-        } else if (reservation.createdBy) {
+        const context = getReservationContext(reservation);
+        info.appendChild(document.createElement('span')).textContent = getReservationContextLabel(reservation);
+        if (context === 'private' && reservation.createdBy) {
           info.appendChild(document.createElement('span')).textContent = `Reserva de ${getPlayerDisplayName(
             reservation.createdBy
           )}`;
@@ -18482,7 +18536,7 @@ function renderCourtAdminSchedule() {
         if (reservation.status === 'pre_reservada') {
           info.appendChild(document.createElement('span')).textContent = 'Pre-reserva pendiente de confirmación';
         }
-        if (reservation.notes && reservation.type !== 'partido') {
+        if (reservation.notes && context === 'private') {
           info.appendChild(document.createElement('span')).textContent = reservation.notes;
         }
         row.appendChild(info);
@@ -18490,7 +18544,7 @@ function renderCourtAdminSchedule() {
         const actions = document.createElement('div');
         actions.className = 'court-schedule-actions';
         const reservationId = reservation._id || reservation.id;
-        if (reservationId && reservation.status === 'reservada' && (!reservation.match || reservation.type !== 'partido')) {
+        if (reservationId && reservation.status === 'reservada' && context === 'private') {
           const cancelButton = document.createElement('button');
           cancelButton.type = 'button';
           cancelButton.className = 'ghost';
@@ -18618,6 +18672,30 @@ function createCourtCalendarEvent(event) {
 
   if (type === 'match' && event.matchId) {
     bindCalendarEvent(container, event.matchId);
+  } else if (type === 'tournament-match' && event.tournamentMatchId) {
+    container.dataset.tournamentMatchId = event.tournamentMatchId;
+    if (event.tournamentId) {
+      container.dataset.tournamentId = event.tournamentId;
+    }
+    if (event.categoryId) {
+      container.dataset.categoryId = event.categoryId;
+    }
+    container.classList.add('calendar-event--actionable');
+    container.tabIndex = 0;
+    container.setAttribute('role', 'button');
+    const openTournamentMatch = () => {
+      openTournamentMatchScheduleModal(event.tournamentMatchId, {
+        tournamentId: event.tournamentId,
+        categoryId: event.categoryId,
+      });
+    };
+    container.addEventListener('click', openTournamentMatch);
+    container.addEventListener('keydown', (keyboardEvent) => {
+      if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+        keyboardEvent.preventDefault();
+        openTournamentMatch();
+      }
+    });
   } else if (type === 'reservation') {
     container.dataset.calendarAction = 'open-reservation';
     container.dataset.startsAt = event.startsAt ? new Date(event.startsAt).toISOString() : '';
@@ -19175,51 +19253,76 @@ async function loadCourtCalendarData() {
 
       const participantsLabel = formatReservationParticipantsLabel(reservation);
       const courtLabel = reservation.court || 'Pista por definir';
+      const match = getReservationMatch(reservation);
 
-      if (reservation.match) {
-        const players = Array.isArray(reservation.match.players)
-          ? reservation.match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
+      if (match) {
+        const players = Array.isArray(match.players)
+          ? match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
           : participantsLabel || 'Partido programado';
-        const subtitleParts = ['Partido oficial'];
+        const subtitleParts = [getReservationContextLabel(reservation)];
         const isPreReserved = reservation.status === 'pre_reservada';
         if (isPreReserved) {
           subtitleParts.push('Pre-reserva pendiente de confirmación');
         }
-        if (reservation.match.league?.name) {
-          subtitleParts.push(reservation.match.league.name);
-        }
-        if (reservation.match.tournament?.name) {
-          subtitleParts.push(reservation.match.tournament.name);
+        if (reservation.tournamentMatch) {
+          if (match.tournament?.name) {
+            subtitleParts.push(match.tournament.name);
+          }
+          if (match.category?.name) {
+            subtitleParts.push(match.category.name);
+          }
+        } else {
+          if (match.league?.name) {
+            subtitleParts.push(match.league.name);
+          }
+          if (match.tournament?.name) {
+            subtitleParts.push(match.tournament.name);
+          }
         }
 
-        events.push({
+        const isTournament = Boolean(reservation.tournamentMatch);
+        const eventPayload = {
           id: reservation._id || reservation.id,
-          type: 'match',
+          type: isTournament ? 'tournament-match' : 'match',
           startsAt,
           endsAt,
           title: players,
           subtitle: subtitleParts.join(' · '),
           court: reservation.court,
           courtLabel,
-          matchId: reservation.match._id || reservation.match.id,
           status: reservation.status || 'reservada',
           preReserved: isPreReserved,
-        });
+        };
+
+        if (isTournament) {
+          eventPayload.tournamentMatchId = match._id || match.id;
+          eventPayload.tournamentId = normalizeId(match.tournament);
+          eventPayload.categoryId = normalizeId(match.category);
+        } else {
+          eventPayload.matchId = match._id || match.id;
+        }
+
+        events.push(eventPayload);
         return;
       }
 
-      const createdByLabel = reservation.createdBy
-        ? getPlayerDisplayName(reservation.createdBy)
-        : 'Reserva manual';
-      const subtitle = participantsLabel ? `Participantes: ${participantsLabel}` : '';
+      const contextLabel = getReservationContextLabel(reservation);
+      const ownerLabel = reservation.createdBy ? getPlayerDisplayName(reservation.createdBy) : '';
+      const subtitleParts = [];
+      if (ownerLabel) {
+        subtitleParts.push(`Reserva de ${ownerLabel}`);
+      }
+      if (participantsLabel) {
+        subtitleParts.push(`Jugadores: ${participantsLabel}`);
+      }
 
       events.push({
         id: reservation._id || reservation.id,
         type: 'reservation',
         startsAt,
         endsAt,
-        title: `Reserva de ${createdByLabel}`,
-        subtitle,
+        title: contextLabel,
+        subtitle: subtitleParts.join(' · '),
         notes: reservation.notes || '',
         court: reservation.court,
         courtLabel,
