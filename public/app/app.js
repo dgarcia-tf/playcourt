@@ -69,8 +69,8 @@ const MATCH_CALENDAR_DEFAULT_DURATION_MINUTES = 90;
 const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 const UNCATEGORIZED_CATEGORY_LABEL = 'Sin categoría';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const TOURNAMENT_BRACKET_SIZES = [8, 16, 24, 32];
-const TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS = [8, 16, 24, 32];
+const TOURNAMENT_BRACKET_SIZES = [8, 16, 32];
+const TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS = [8, 16, 32];
 const TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION =
   'El cuadro actual desaparecerá y se generará uno nuevo. ¿Deseas continuar?';
 const TOURNAMENT_BRACKET_REPLACEMENT_TOOLTIP =
@@ -14968,7 +14968,7 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
   nav.appendChild(nextButton);
 
   const totalRounds = sections.length;
-  const useFocusMode = totalRounds > 3;
+  const useFocusMode = totalRounds > 5;
   grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -24455,7 +24455,7 @@ async function submitTournamentCategoryForm({
     setStatusMessage(
       statusElement,
       'error',
-      'Selecciona un tamaño de cuadro válido (8, 16, 24 o 32).'
+      'Selecciona un tamaño de cuadro válido (8, 16 o 32).'
     );
     return { success: false };
   }

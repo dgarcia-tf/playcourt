@@ -213,7 +213,7 @@ async function createTournamentCategory(req, res) {
   });
   if (drawSizeError) {
     return res.status(400).json({
-      message: 'El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.',
+      message: 'El máximo de jugadores por categoría debe ser 8, 16 o 32.',
     });
   }
 
@@ -352,7 +352,7 @@ async function updateTournamentCategory(req, res) {
     if (drawSizeError) {
       return res
         .status(400)
-        .json({ message: 'El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.' });
+        .json({ message: 'El máximo de jugadores por categoría debe ser 8, 16 o 32.' });
     }
 
     category.drawSize = normalizedDrawSize;
