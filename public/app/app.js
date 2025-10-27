@@ -20143,14 +20143,10 @@ function openProposalForm(matchId, triggerButton) {
 
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = `
-    <input
-      type="date"
-      id="${dayInputId}"
-      name="proposedDay"
-      class="sr-only"
-      aria-label="Día del partido"
-      required
-    />
+    <div class="proposal-form__field">
+      <label for="${dayInputId}">Día del partido</label>
+      <input type="date" id="${dayInputId}" name="proposedDay" required />
+    </div>
     <input type="hidden" name="proposedAt" />
     <input type="hidden" name="proposedCourt" />
     <div class="proposal-form__field proposal-form__field--slots">
