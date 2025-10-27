@@ -20003,14 +20003,10 @@ function openProposalForm(matchId, triggerButton) {
 
   const dateInputId = `proposal-${matchId}-datetime`;
   const dayInputId = `${dateInputId}-day`;
-  const slotInputId = `${dateInputId}-slot`;
   const messageInputId = `proposal-${matchId}-message`;
 
   const scheduleTemplates = getClubMatchScheduleTemplates();
-  const hasScheduleTemplates = Array.isArray(scheduleTemplates) && scheduleTemplates.length > 0;
-  const canUseSchedulePicker = hasScheduleTemplates || getClubCourtNames().length > 0;
-  const scheduleFieldMarkup = canUseSchedulePicker
-    ? `
+  const scheduleFieldMarkup = `
     <div class="proposal-form__field">
       <label for="${dayInputId}">Día del partido</label>
       <input type="date" id="${dayInputId}" name="proposedDay" required />
@@ -20020,12 +20016,6 @@ function openProposalForm(matchId, triggerButton) {
     <div class="proposal-form__field proposal-form__field--slots">
       <div class="match-schedule-picker" data-proposal-schedule-picker></div>
       <span class="form-hint">Selecciona una franja disponible.</span>
-    </div>
-  `
-    : `
-    <div class="proposal-form__field">
-      <label for="${dateInputId}">Fecha y hora</label>
-      <input type="datetime-local" id="${dateInputId}" name="proposedFor" required step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
     </div>
   `;
 
@@ -20043,13 +20033,10 @@ function openProposalForm(matchId, triggerButton) {
     </div>
   `;
 
-  const proposedInput = canUseSchedulePicker ? null : form.querySelector('input[name="proposedFor"]');
-  const proposedDayInput = canUseSchedulePicker ? form.querySelector('input[name="proposedDay"]') : null;
-  const proposedAtField = canUseSchedulePicker ? form.querySelector('input[name="proposedAt"]') : null;
-  const proposedCourtField = canUseSchedulePicker ? form.querySelector('input[name="proposedCourt"]') : null;
-  const schedulePickerContainer = canUseSchedulePicker
-    ? form.querySelector('[data-proposal-schedule-picker]')
-    : null;
+  const proposedDayInput = form.querySelector('input[name="proposedDay"]');
+  const proposedAtField = form.querySelector('input[name="proposedAt"]');
+  const proposedCourtField = form.querySelector('input[name="proposedCourt"]');
+  const schedulePickerContainer = form.querySelector('[data-proposal-schedule-picker]');
   const messageInput = form.querySelector('textarea[name="message"]');
   const cancelButton = form.querySelector('button[data-action="cancel"]');
   const submitButton = form.querySelector('button[type="submit"]');
@@ -20067,52 +20054,44 @@ function openProposalForm(matchId, triggerButton) {
     new Date(minDateValue.getTime() + 2 * 60 * 60 * 1000),
     CALENDAR_TIME_SLOT_MINUTES
   );
-  if (proposedInput) {
-    proposedInput.step = String(CALENDAR_TIME_SLOT_STEP_SECONDS);
-    if (!Number.isNaN(defaultDateValue.getTime())) {
-      proposedInput.value = formatDateTimeLocal(defaultDateValue);
+  const defaultDateString = !Number.isNaN(defaultDateValue.getTime())
+    ? formatDateInput(defaultDateValue)
+    : '';
+  const minDateString = !Number.isNaN(minDateValue.getTime()) ? formatDateInput(minDateValue) : '';
+  const defaultTimeValue = !Number.isNaN(defaultDateValue.getTime())
+    ? formatTimeInputValue(defaultDateValue)
+    : '';
+  const defaultSelectionValue = defaultDateString && defaultTimeValue
+    ? `${defaultDateString}T${defaultTimeValue}`
+    : '';
+
+  if (proposedDayInput) {
+    if (minDateString) {
+      proposedDayInput.min = minDateString;
     }
-    if (!Number.isNaN(minDateValue.getTime())) {
-      proposedInput.min = formatDateTimeLocal(minDateValue);
+    if (defaultDateString) {
+      proposedDayInput.value = defaultDateString;
     }
   }
 
-  if (canUseSchedulePicker) {
-    const defaultDateString = !Number.isNaN(defaultDateValue.getTime())
-      ? formatDateInput(defaultDateValue)
-      : '';
-    const minDateString = !Number.isNaN(minDateValue.getTime()) ? formatDateInput(minDateValue) : '';
-    const defaultTimeValue = !Number.isNaN(defaultDateValue.getTime())
-      ? formatTimeInputValue(defaultDateValue)
-      : '';
-    const defaultSelectionValue = defaultDateString && defaultTimeValue
-      ? `${defaultDateString}T${defaultTimeValue}`
-      : '';
+  if (schedulePickerContainer && proposedDayInput && proposedAtField) {
+    const schedulePicker = createMatchScheduleSlotPicker({
+      container: schedulePickerContainer,
+      dateField: proposedDayInput,
+      scheduledField: proposedAtField,
+      courtField: proposedCourtField,
+      templates: scheduleTemplates,
+      scope: 'player',
+      existingValue: defaultSelectionValue,
+      ignoreMatchId: matchId,
+      onChange: () => {
+        updateError();
+      },
+    });
+    form._schedulePicker = schedulePicker;
 
-    if (proposedDayInput) {
-      if (minDateString) {
-        proposedDayInput.min = minDateString;
-      }
-      if (defaultDateString) {
-        proposedDayInput.value = defaultDateString;
-      }
-    }
-
-    if (schedulePickerContainer && proposedDayInput && proposedAtField) {
-      const schedulePicker = createMatchScheduleSlotPicker({
-        container: schedulePickerContainer,
-        dateField: proposedDayInput,
-        scheduledField: proposedAtField,
-        courtField: proposedCourtField,
-        templates: scheduleTemplates,
-        scope: 'player',
-        existingValue: defaultSelectionValue,
-        ignoreMatchId: matchId,
-        onChange: () => {
-          updateError();
-        },
-      });
-      form._schedulePicker = schedulePicker;
+    if (defaultSelectionValue) {
+      schedulePicker.setSelection({ scheduledAt: defaultSelectionValue });
     }
   }
 
@@ -20130,67 +20109,38 @@ function openProposalForm(matchId, triggerButton) {
 
     const schedulePicker = form._schedulePicker;
 
-    if (canUseSchedulePicker) {
-      const dayValue = proposedDayInput?.value || '';
-      if (!dayValue) {
-        updateError('Selecciona el día del partido.');
-        proposedDayInput?.focus();
-        return;
-      }
-
-      const scheduledAtValue = schedulePicker?.getSelection().scheduledAt || proposedAtField?.value || '';
-      if (!scheduledAtValue) {
-        updateError('Selecciona una franja horaria.');
-        schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        return;
-      }
-
-      proposedDate = new Date(scheduledAtValue);
-      if (!(proposedDate instanceof Date) || Number.isNaN(proposedDate.getTime())) {
-        updateError('La combinación de día y franja no es válida.');
-        schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        return;
-      }
-
-      selectedCourt = schedulePicker?.getSelection().court || proposedCourtField?.value || '';
-    } else {
-      if (!proposedInput) {
-        updateError('Indica la fecha y hora de la propuesta.');
-        return;
-      }
-
-      const proposedValue = proposedInput.value;
-      if (!proposedValue) {
-        updateError('Indica la fecha y hora de la propuesta.');
-        proposedInput.focus();
-        return;
-      }
-
-      proposedDate = new Date(proposedValue);
-      if (Number.isNaN(proposedDate.getTime())) {
-        updateError('La fecha indicada no es válida.');
-        proposedInput.focus();
-        return;
-      }
+    const dayValue = proposedDayInput?.value || '';
+    if (!dayValue) {
+      updateError('Selecciona el día del partido.');
+      proposedDayInput?.focus();
+      return;
     }
+
+    const scheduledAtValue = schedulePicker?.getSelection().scheduledAt || proposedAtField?.value || '';
+    if (!scheduledAtValue) {
+      updateError('Selecciona una franja horaria.');
+      schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+
+    proposedDate = new Date(scheduledAtValue);
+    if (!(proposedDate instanceof Date) || Number.isNaN(proposedDate.getTime())) {
+      updateError('La combinación de día y franja no es válida.');
+      schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+
+    selectedCourt = schedulePicker?.getSelection().court || proposedCourtField?.value || '';
 
     if (proposedDate && !Number.isNaN(minDateValue.getTime()) && proposedDate < minDateValue) {
       updateError('Selecciona una fecha futura.');
-      if (canUseSchedulePicker) {
-        proposedDayInput?.focus();
-      } else {
-        proposedInput?.focus();
-      }
+      proposedDayInput?.focus();
       return;
     }
 
     if (!isValidReservationSlotStart(proposedDate)) {
       updateError('Selecciona un horario válido entre las 08:30 y las 22:15.');
-      if (canUseSchedulePicker) {
-        schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      } else {
-        proposedInput?.focus();
-      }
+      schedulePickerContainer?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       return;
     }
 
@@ -20227,11 +20177,7 @@ function openProposalForm(matchId, triggerButton) {
   activeProposalMatchId = matchId;
 
   listItem.appendChild(form);
-  if (canUseSchedulePicker) {
-    (proposedDayInput || schedulePickerContainer)?.focus();
-  } else {
-    proposedInput?.focus();
-  }
+  (proposedDayInput || schedulePickerContainer)?.focus();
 }
 
 function renderMyMatches(matches = []) {
@@ -27378,9 +27324,7 @@ function openMatchModal(matchId = '') {
     .join('');
 
   const scheduleTemplates = getClubMatchScheduleTemplates();
-  const canUseSchedulePicker = scheduleTemplates.length > 0 || getClubCourtNames().length > 0;
-  const scheduleFieldMarkup = canUseSchedulePicker
-    ? `
+  const scheduleFieldMarkup = `
     <div class="match-schedule-field">
       <label>
         Día del partido
@@ -27394,13 +27338,6 @@ function openMatchModal(matchId = '') {
         <span class="form-hint">Selecciona una franja para reservar la pista automáticamente.</span>
       </div>
     </div>
-  `
-    : `
-    <label>
-      Fecha y hora
-      <input type="datetime-local" name="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
-      <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
-    </label>
   `;
 
   const form = document.createElement('form');
@@ -27641,7 +27578,7 @@ function openMatchModal(matchId = '') {
   }
 
   let schedulePicker = null;
-  if (canUseSchedulePicker && schedulePickerContainer && scheduleDateField && scheduledField) {
+  if (schedulePickerContainer && scheduleDateField && scheduledField) {
     const updateStatusForSchedule = () => {
       if (!statusField) {
         return;
@@ -27951,9 +27888,7 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   }
 
   const scheduleTemplates = getClubMatchScheduleTemplates();
-  const canUseSchedulePicker = scheduleTemplates.length > 0 || getClubCourtNames().length > 0;
-  const scheduleFieldMarkup = canUseSchedulePicker
-    ? `
+  const scheduleFieldMarkup = `
     <div class="match-schedule-field">
       <label>
         Día del partido
@@ -27967,13 +27902,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
         <span class="form-hint">Selecciona una franja para reservar la pista automáticamente.</span>
       </div>
     </div>
-  `
-    : `
-    <label>
-      Fecha y hora
-      <input type="datetime-local" name="scheduledAt" step="${CALENDAR_TIME_SLOT_STEP_SECONDS}" />
-      <span class="form-hint">Déjalo vacío para mantener el partido pendiente.</span>
-    </label>
   `;
 
   const statusOptions = Object.entries(TOURNAMENT_MATCH_STATUS_LABELS)
@@ -28125,7 +28053,7 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   }
 
   let schedulePicker = null;
-  if (canUseSchedulePicker && schedulePickerContainer && scheduleDateField && scheduledField) {
+  if (schedulePickerContainer && scheduleDateField && scheduledField) {
     schedulePicker = createMatchScheduleSlotPicker({
       container: schedulePickerContainer,
       dateField: scheduleDateField,
