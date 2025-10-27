@@ -1469,7 +1469,7 @@ function createMatchScheduleSlotPicker({
   ignoreManualLimit,
 } = {}) {
   const resolvedTemplates = Array.isArray(templates) ? templates : [];
-  if (!container || !dateField || !scheduledField) {
+  if (!container || !scheduledField) {
     return {
       clear: () => {},
       refresh: () => {},
@@ -1479,15 +1479,81 @@ function createMatchScheduleSlotPicker({
     };
   }
 
+  let activeDateField = dateField;
+  let createdDateField = false;
+
+  if (!activeDateField) {
+    activeDateField = document.createElement('input');
+    activeDateField.type = 'date';
+    activeDateField.name = 'scheduledDate';
+    activeDateField.className = 'sr-only';
+    activeDateField.setAttribute('aria-hidden', 'true');
+    const targetForm = scheduledField.form || container.closest('form');
+    if (targetForm) {
+      targetForm.appendChild(activeDateField);
+    } else {
+      container.appendChild(activeDateField);
+    }
+    createdDateField = true;
+  }
+
   container.classList.add('match-schedule-picker');
   container.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'match-schedule-picker__header';
+
+  const nav = document.createElement('div');
+  nav.className = 'calendar-nav';
+
+  const prevButton = document.createElement('button');
+  prevButton.type = 'button';
+  prevButton.className = 'ghost';
+  prevButton.setAttribute('aria-label', 'Ver día anterior');
+  prevButton.textContent = '◀';
+  nav.appendChild(prevButton);
+
+  const dateLabel = document.createElement('span');
+  dateLabel.className = 'calendar-label match-schedule-picker__label';
+  nav.appendChild(dateLabel);
+
+  const nextButton = document.createElement('button');
+  nextButton.type = 'button';
+  nextButton.className = 'ghost';
+  nextButton.setAttribute('aria-label', 'Ver día siguiente');
+  nextButton.textContent = '▶';
+  nav.appendChild(nextButton);
+
+  header.appendChild(nav);
+
+  if (activeDateField) {
+    if (activeDateField.parentElement) {
+      activeDateField.parentElement.removeChild(activeDateField);
+    }
+    activeDateField.classList.remove('sr-only');
+    activeDateField.removeAttribute('aria-hidden');
+    activeDateField.classList.add('match-schedule-picker__date-input');
+    if (!activeDateField.getAttribute('aria-label')) {
+      activeDateField.setAttribute('aria-label', 'Seleccionar fecha');
+    }
+    const datePicker = document.createElement('label');
+    datePicker.className = 'inline-field calendar-date-picker match-schedule-picker__date-picker';
+    const srLabel = document.createElement('span');
+    srLabel.className = 'sr-only';
+    srLabel.textContent = 'Seleccionar fecha';
+    datePicker.appendChild(srLabel);
+    datePicker.appendChild(activeDateField);
+    header.appendChild(datePicker);
+  }
+
+  container.appendChild(header);
 
   const statusMessage = document.createElement('p');
   statusMessage.className = 'match-schedule-picker__status';
   container.appendChild(statusMessage);
 
   const gridWrapper = document.createElement('div');
-  gridWrapper.className = 'match-schedule-picker__grid';
+  gridWrapper.className = 'match-schedule-picker__grid calendar-container';
   container.appendChild(gridWrapper);
 
   const state = {
@@ -1496,6 +1562,7 @@ function createMatchScheduleSlotPicker({
     courtValue: '',
     availability: [],
     availabilityDate: null,
+    ignoredMatchId: normalizeId(ignoreMatchId) || '',
     ignoreManualLimit:
       typeof ignoreManualLimit === 'boolean'
         ? ignoreManualLimit
@@ -1510,6 +1577,22 @@ function createMatchScheduleSlotPicker({
     if (type === 'error') {
       statusMessage.classList.add('match-schedule-picker__status--error');
     }
+  };
+
+  const updateDateLabel = () => {
+    if (!dateLabel) {
+      return;
+    }
+    if (!state.dateValue) {
+      dateLabel.textContent = 'Selecciona un día';
+      return;
+    }
+    const reference = new Date(`${state.dateValue}T00:00:00`);
+    if (!(reference instanceof Date) || Number.isNaN(reference.getTime())) {
+      dateLabel.textContent = 'Selecciona un día';
+      return;
+    }
+    dateLabel.textContent = formatDayLabel(reference);
   };
 
   const emitChange = () => {
@@ -1688,6 +1771,7 @@ function createMatchScheduleSlotPicker({
 
   const renderGrid = () => {
     gridWrapper.innerHTML = '';
+    updateDateLabel();
 
     if (!state.dateValue) {
       setStatus('Selecciona un día para ver la disponibilidad.');
@@ -1770,18 +1854,18 @@ function createMatchScheduleSlotPicker({
           cell.classList.add('calendar-day-schedule__cell--last-column');
         }
 
-    const slotEvents = normalizedEvents
-      .filter(
-        (entry) =>
-          isCourtCalendarEventForCourt(entry.event, court.name) &&
-          doesCourtCalendarEventOverlapSlot(entry, slotStart, slotEnd)
-      )
-      .filter((entry) => !eventMatchesIgnoredMatch(entry.event));
+        const slotEvents = normalizedEvents
+          .filter(
+            (entry) =>
+              isCourtCalendarEventForCourt(entry.event, court.name) &&
+              doesCourtCalendarEventOverlapSlot(entry, slotStart, slotEnd)
+          )
+          .filter((entry) => !eventMatchesIgnoredMatch(entry.event));
 
-    if (slotEvents.length) {
-      cell.classList.add('calendar-day-schedule__cell--busy');
-      slotEvents
-        .sort((a, b) => a.start - b.start)
+        if (slotEvents.length) {
+          cell.classList.add('calendar-day-schedule__cell--busy');
+          slotEvents
+            .sort((a, b) => a.start - b.start)
             .forEach((entry) => {
               const eventElement = createCourtCalendarEvent(entry.event);
               eventElement.classList.add('calendar-schedule-event');
@@ -1829,6 +1913,7 @@ function createMatchScheduleSlotPicker({
   const loadAvailabilityForDate = async (dateValue) => {
     const normalizedDate = typeof dateValue === 'string' ? dateValue : '';
     state.dateValue = normalizedDate;
+    updateDateLabel();
 
     if (!normalizedDate) {
       state.availability = [];
@@ -1851,9 +1936,10 @@ function createMatchScheduleSlotPicker({
       }
       const resolvedDateValue = formatDateInput(date) || normalizedDate;
       state.dateValue = resolvedDateValue;
-      if (dateField && dateField.value !== resolvedDateValue) {
-        dateField.value = resolvedDateValue;
+      if (activeDateField && activeDateField.value !== resolvedDateValue) {
+        activeDateField.value = resolvedDateValue;
       }
+      updateDateLabel();
       state.availability = Array.isArray(availability) ? availability : [];
       state.availabilityDate = date || null;
       setStatus('');
@@ -1864,20 +1950,52 @@ function createMatchScheduleSlotPicker({
       }
       state.availability = [];
       state.availabilityDate = null;
+      updateDateLabel();
       renderGrid();
       setStatus(error.message || 'No fue posible cargar la disponibilidad.', 'error');
     }
   };
 
   const handleDateChange = () => {
-    const value = dateField.value || '';
+    const value = activeDateField?.value || '';
     loadAvailabilityForDate(value).catch((error) => {
       console.warn('No se pudo actualizar la disponibilidad de pistas', error);
     });
   };
 
-  dateField.addEventListener('change', handleDateChange);
-  dateField.addEventListener('input', handleDateChange);
+  const changeDateBy = (deltaDays) => {
+    const baseValue =
+      state.dateValue ||
+      (activeDateField?.value ? activeDateField.value : '') ||
+      (state.availabilityDate ? formatDateInput(state.availabilityDate) : '');
+    let reference = baseValue ? new Date(`${baseValue}T00:00:00`) : startOfDay(new Date());
+    if (!(reference instanceof Date) || Number.isNaN(reference.getTime())) {
+      reference = startOfDay(new Date());
+    }
+    const nextDate = addDays(reference, deltaDays);
+    const nextValue = formatDateInput(nextDate);
+    if (!nextValue) {
+      return;
+    }
+    if (activeDateField) {
+      if (activeDateField.value !== nextValue) {
+        activeDateField.value = nextValue;
+      }
+      handleDateChange();
+    } else {
+      loadAvailabilityForDate(nextValue).catch((error) => {
+        console.warn('No se pudo actualizar la disponibilidad de pistas', error);
+      });
+    }
+  };
+
+  const handlePrevClick = () => changeDateBy(-1);
+  const handleNextClick = () => changeDateBy(1);
+
+  prevButton.addEventListener('click', handlePrevClick);
+  nextButton.addEventListener('click', handleNextClick);
+  activeDateField?.addEventListener('change', handleDateChange);
+  activeDateField?.addEventListener('input', handleDateChange);
 
   const normalizedExisting = typeof existingValue === 'string' ? existingValue.trim() : '';
   if (normalizedExisting) {
@@ -1885,15 +2003,26 @@ function createMatchScheduleSlotPicker({
     state.dateValue = existingDate || '';
     state.timeValue = existingTime || '';
     state.courtValue = existingCourt || '';
-    if (dateField && existingDate) {
-      dateField.value = existingDate;
+    if (activeDateField && existingDate) {
+      activeDateField.value = existingDate;
     }
+    updateDateLabel();
     emitChange();
     loadAvailabilityForDate(existingDate || '').catch((error) => {
       console.warn('No se pudo inicializar la disponibilidad de pistas', error);
     });
   } else {
-    state.dateValue = dateField?.value || '';
+    state.dateValue = activeDateField?.value || '';
+    if (!state.dateValue) {
+      const todayValue = formatDateInput(startOfDay(new Date()));
+      if (todayValue) {
+        state.dateValue = todayValue;
+        if (activeDateField) {
+          activeDateField.value = todayValue;
+        }
+      }
+    }
+    updateDateLabel();
     emitChange();
     if (state.dateValue) {
       loadAvailabilityForDate(state.dateValue).catch((error) => {
@@ -1910,13 +2039,18 @@ function createMatchScheduleSlotPicker({
       highlightSelectedButtons();
     },
     refresh() {
-      loadAvailabilityForDate(state.dateValue || dateField.value || '').catch((error) => {
+      loadAvailabilityForDate(state.dateValue || activeDateField?.value || '').catch((error) => {
         console.warn('No se pudo actualizar la disponibilidad de pistas', error);
       });
     },
     destroy() {
-      dateField.removeEventListener('change', handleDateChange);
-      dateField.removeEventListener('input', handleDateChange);
+      activeDateField?.removeEventListener('change', handleDateChange);
+      activeDateField?.removeEventListener('input', handleDateChange);
+      prevButton.removeEventListener('click', handlePrevClick);
+      nextButton.removeEventListener('click', handleNextClick);
+      if (createdDateField && activeDateField?.parentElement) {
+        activeDateField.parentElement.removeChild(activeDateField);
+      }
     },
     getSelection() {
       return {
@@ -1940,9 +2074,10 @@ function createMatchScheduleSlotPicker({
 
       if (nextDate) {
         state.dateValue = nextDate;
-        if (dateField) {
-          dateField.value = nextDate;
+        if (activeDateField) {
+          activeDateField.value = nextDate;
         }
+        updateDateLabel();
         state.timeValue = nextTime || '';
         state.courtValue = nextCourt || '';
         emitChange();
@@ -1953,6 +2088,7 @@ function createMatchScheduleSlotPicker({
         state.dateValue = '';
         state.timeValue = '';
         state.courtValue = '';
+        updateDateLabel();
         emitChange();
         renderGrid();
       }
@@ -27326,10 +27462,13 @@ function openMatchModal(matchId = '') {
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = `
     <div class="match-schedule-field">
-      <label>
-        Día del partido
-        <input type="date" name="scheduledDate" data-match-schedule="date" />
-      </label>
+      <input
+        type="date"
+        name="scheduledDate"
+        data-match-schedule="date"
+        class="sr-only"
+        aria-label="Día del partido"
+      />
       <input type="hidden" name="scheduledAt" />
       <input type="hidden" name="court" />
       <div class="match-schedule-picker" data-match-schedule="picker"></div>
@@ -27890,10 +28029,13 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   const scheduleTemplates = getClubMatchScheduleTemplates();
   const scheduleFieldMarkup = `
     <div class="match-schedule-field">
-      <label>
-        Día del partido
-        <input type="date" name="scheduledDate" data-match-schedule="date" />
-      </label>
+      <input
+        type="date"
+        name="scheduledDate"
+        data-match-schedule="date"
+        class="sr-only"
+        aria-label="Día del partido"
+      />
       <input type="hidden" name="scheduledAt" />
       <input type="hidden" name="court" />
       <div class="match-schedule-picker" data-match-schedule="picker"></div>
