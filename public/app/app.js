@@ -46,21 +46,12 @@ const WEEKDAY_LABEL_BY_VALUE = WEEKDAY_OPTIONS.reduce((map, option) => {
 
 const STATUS_LABELS = {
   pendiente: 'Pendiente',
-  propuesto: 'Propuesto',
   programado: 'Programado',
-  revision: 'Resultado pendiente',
   completado: 'Completado',
   caducado: 'Caducado',
 };
 
-const CALENDAR_MATCH_STATUSES = [
-  'pendiente',
-  'propuesto',
-  'programado',
-  'revision',
-  'completado',
-  'finalizado',
-];
+const CALENDAR_MATCH_STATUSES = ['pendiente', 'programado', 'completado'];
 
 const MATCH_EXPIRATION_DAYS = 15;
 const MATCHES_PER_PAGE = 10;
@@ -3398,7 +3389,6 @@ const adminEnrollmentStatus = document.getElementById('admin-enrollment-status')
 const adminMatchForm = document.getElementById('admin-match-form');
 const adminMatchSelect = document.getElementById('admin-match-select');
 const adminMatchCategory = document.getElementById('admin-match-category');
-const adminMatchStatus = document.getElementById('admin-match-status-select');
 const adminMatchPlayer1 = document.getElementById('admin-match-player1');
 const adminMatchPlayer2 = document.getElementById('admin-match-player2');
 const adminMatchScheduleContainer = document.getElementById('admin-match-schedule-container');
@@ -16061,11 +16051,7 @@ function getResultConfirmation(match, userId) {
 }
 
 function getProposalCalendarDate(match) {
-  if (!match || match.status !== 'propuesto') {
-    return null;
-  }
-
-  const proposal = match.proposal || {};
+  const proposal = match?.proposal || {};
   const proposalStatus = proposal.status || 'pendiente';
   if (proposalStatus !== 'pendiente') {
     return null;
@@ -16333,24 +16319,26 @@ function collectMatchDetailMessages(match) {
       }
     }
   } else if (match.status === 'pendiente') {
-    messages.push('A la espera de que alguien proponga fecha y hora.');
-  } else if (match.status === 'propuesto' && match.proposal) {
-    const proposer = getPlayerDisplayName(match.proposal.requestedBy) || 'Un jugador';
-    if (match.proposal.proposedFor) {
-      messages.push(`${proposer} propuso ${formatDate(match.proposal.proposedFor)}.`);
-    } else {
-      messages.push(`${proposer} ha propuesto disputar el partido.`);
-    }
-    if (match.court) {
-      const courtLabel = formatCourtDisplay(match.court);
-      if (courtLabel) {
-        messages.push(`Pista sugerida: ${courtLabel}.`);
+    if (match.proposal?.status === 'pendiente') {
+      const proposer = getPlayerDisplayName(match.proposal.requestedBy) || 'Un jugador';
+      if (match.proposal.proposedFor) {
+        messages.push(`${proposer} propuso ${formatDate(match.proposal.proposedFor)}.`);
+      } else {
+        messages.push(`${proposer} ha propuesto disputar el partido.`);
       }
+      if (match.court) {
+        const courtLabel = formatCourtDisplay(match.court);
+        if (courtLabel) {
+          messages.push(`Pista sugerida: ${courtLabel}.`);
+        }
+      }
+      if (match.proposal.message) {
+        messages.push(`Mensaje: ${match.proposal.message}`);
+      }
+    } else {
+      messages.push('A la espera de que alguien proponga fecha y hora.');
     }
-    if (match.proposal.message) {
-      messages.push(`Mensaje: ${match.proposal.message}`);
-    }
-  } else if (match.status === 'revision' || resultStatus === 'en_revision') {
+  } else if (resultStatus === 'en_revision') {
     messages.push('Resultado pendiente de confirmación.');
   } else if (match.status === 'caducado') {
     messages.push('El plazo para disputar el partido venció sin puntos.');
@@ -16612,7 +16600,7 @@ function openMatchViewer(match, { allowResultEdit = false, allowMatchEdit = fals
     actions.className = 'match-viewer__actions';
 
     if (allowResultEdit && matchId) {
-      const needsReview = match.status === 'revision' || match.result?.status === 'en_revision';
+      const needsReview = match.result?.status === 'en_revision';
       const resultButton = document.createElement('button');
       resultButton.type = 'button';
       resultButton.className = 'primary';
@@ -17592,7 +17580,7 @@ function createMatchListItem(match, { isResultManagementList = false } = {}) {
     applyCategoryColorStyles(item, categoryColor, { shadowAlpha: 0.18 });
   }
 
-  if (match?.status === 'pendiente' || match?.status === 'propuesto') {
+  if (match?.status === 'pendiente') {
     const warningMessage = getExpirationWarningMessage(match);
     if (warningMessage) {
       const warning = document.createElement('p');
@@ -17611,7 +17599,7 @@ function createMatchListItem(match, { isResultManagementList = false } = {}) {
     item.appendChild(warning);
   }
 
-  if (match?.status === 'revision' || match?.result?.status === 'en_revision') {
+  if (match?.result?.status === 'en_revision') {
     const pending = document.createElement('div');
     pending.className = 'meta warning';
     pending.textContent = 'Resultado pendiente de validación.';
@@ -17665,9 +17653,7 @@ function createMatchListItem(match, { isResultManagementList = false } = {}) {
     if (isResultManagementList) {
       editButton.dataset.action = 'edit-result';
       editButton.textContent =
-        match?.status === 'revision' || match?.result?.status === 'en_revision'
-          ? 'Revisar resultado'
-          : 'Editar resultado';
+        match?.result?.status === 'en_revision' ? 'Revisar resultado' : 'Editar resultado';
     } else {
       editButton.dataset.action = 'edit-match';
       editButton.textContent = 'Editar';
@@ -17689,9 +17675,7 @@ function createMatchListItem(match, { isResultManagementList = false } = {}) {
       resultButton.dataset.matchId = matchId;
       resultButton.dataset.action = 'report-result';
       resultButton.textContent =
-        match?.status === 'revision' || match?.result?.status === 'en_revision'
-          ? 'Revisar resultado'
-          : 'Registrar resultado';
+        match?.result?.status === 'en_revision' ? 'Revisar resultado' : 'Registrar resultado';
       actions.appendChild(resultButton);
     }
     item.appendChild(actions);
@@ -20305,7 +20289,7 @@ function renderMyMatches(matches = []) {
       if (match.court) {
         detailRow.appendChild(document.createElement('span')).textContent = `Pista ${match.court}`;
       }
-    } else if (match.status === 'propuesto' && match.proposal) {
+    } else if (match.status === 'pendiente' && match.proposal?.status === 'pendiente') {
       const proposer = match.proposal.requestedBy?.fullName || 'Un jugador';
       detailRow.appendChild(document.createElement('span')).textContent = `${proposer} propuso ${formatDate(
         match.proposal.proposedFor
@@ -20319,7 +20303,7 @@ function renderMyMatches(matches = []) {
     } else if (match.status === 'caducado') {
       detailRow.appendChild(document.createElement('span')).textContent =
         'El plazo de 15 días expiró y el partido no otorgó puntos.';
-    } else if (match.status === 'revision' || resultStatus === 'en_revision') {
+    } else if (resultStatus === 'en_revision') {
       detailRow.appendChild(document.createElement('span')).textContent =
         'Resultado pendiente de confirmación.';
     } else if (match.status === 'completado' || resultStatus === 'confirmado') {
@@ -20337,7 +20321,7 @@ function renderMyMatches(matches = []) {
       item.appendChild(detailRow);
     }
 
-    if (!isExpired && (match.status === 'pendiente' || match.status === 'propuesto')) {
+    if (!isExpired && match.status === 'pendiente') {
       const warningMessage = getExpirationWarningMessage(match);
       if (warningMessage) {
         const warning = document.createElement('p');
@@ -20409,7 +20393,7 @@ function renderMyMatches(matches = []) {
       proposeButton.dataset.matchId = matchId;
       proposeButton.textContent = 'Proponer fecha';
       actions.appendChild(proposeButton);
-    } else if (match.status === 'propuesto' && match.proposal) {
+    } else if (match.status === 'pendiente' && match.proposal?.status === 'pendiente') {
       if (match.proposal.requestedTo?._id === currentUserId || match.proposal.requestedTo === currentUserId) {
         const acceptButton = document.createElement('button');
         acceptButton.type = 'button';
@@ -23500,9 +23484,6 @@ function setAdminMatchEditing(matchId) {
     adminMatchPlayer2.value = secondPlayer || '';
   }
 
-  if (adminMatchStatus) {
-    adminMatchStatus.value = match.status || 'pendiente';
-  }
   const scheduledValue = formatDateTimeLocal(match.scheduledAt);
   if (adminMatchDate) {
     adminMatchDate.value = scheduledValue;
@@ -26216,11 +26197,6 @@ function buildMatchPayload(formData, isEditing = false) {
     payload.court = null;
   }
 
-  const status = formData.get('status');
-  if (status) {
-    payload.status = status;
-  }
-
   const notes = (formData.get('notes') || '').trim();
   if (notes) {
     payload.notes = notes;
@@ -26324,7 +26300,6 @@ async function submitTournamentMatchSchedule({
 
   const formData = new FormData(form);
   const scheduledAtRaw = (formData.get('scheduledAt') || '').toString();
-  const statusValue = (formData.get('status') || '').toString();
   const notifyPlayers = formData.get('notifyPlayers') === 'true';
   const courtValue = (formData.get('court') || '').toString().trim();
 
@@ -26344,22 +26319,9 @@ async function submitTournamentMatchSchedule({
     }
   }
 
-  if (!scheduledAtRaw && ['programado', 'confirmado'].includes(statusValue)) {
-    setStatusMessage(
-      statusElement,
-      'error',
-      'Asigna día y hora antes de marcar el partido como programado o confirmado.'
-    );
-    return false;
-  }
-
   const payload = {
     scheduledAt: scheduledAtRaw || null,
   };
-
-  if (statusValue) {
-    payload.status = statusValue;
-  }
 
   payload.court = courtValue || null;
 
@@ -27976,10 +27938,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
     </label>
   `;
 
-  const statusOptions = Object.entries(TOURNAMENT_MATCH_STATUS_LABELS)
-    .map(([value, label]) => `<option value="${value}">${escapeHtml(label)}</option>`)
-    .join('');
-
   const form = document.createElement('form');
   form.className = 'form';
   form.innerHTML = `
@@ -28001,12 +27959,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
         <input type="text" name="playerLabel2" readonly />
       </label>
     </div>
-    <label>
-      Estado
-      <select name="status" required>
-        ${statusOptions}
-      </select>
-    </label>
     ${scheduleFieldMarkup}
     <p class="form-hint" data-match-court-info></p>
     <label class="checkbox-option">
@@ -28027,7 +27979,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
   const categoryField = form.elements.categoryLabel;
   const playerOneField = form.elements.playerLabel1;
   const playerTwoField = form.elements.playerLabel2;
-  const statusField = form.elements.status;
   const scheduledField = form.elements.scheduledAt;
   const courtField = form.elements.court;
   const scheduleDateField = form.elements.scheduledDate;
@@ -28089,15 +28040,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
     courtField.value = match?.court || '';
   }
 
-  if (statusField) {
-    const currentStatus = match?.status && TOURNAMENT_MATCH_STATUS_LABELS[match.status]
-      ? match.status
-      : scheduledValue
-      ? 'programado'
-      : 'pendiente';
-    statusField.value = currentStatus;
-  }
-
   const updateCourtInfoDisplay = () => {
     if (!courtInfoElement) {
       return;
@@ -28139,14 +28081,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       ignoreManualLimit: hasCourtManagementAccess(),
       onChange: () => {
         updateCourtInfoDisplay();
-        if (statusField) {
-          const hasSchedule = Boolean(scheduledField.value);
-          if (hasSchedule && statusField.value === 'pendiente') {
-            statusField.value = 'programado';
-          } else if (!hasSchedule && statusField.value === 'programado') {
-            statusField.value = 'pendiente';
-          }
-        }
       },
     });
 
@@ -28155,20 +28089,6 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       schedulePicker.clear();
       updateCourtInfoDisplay();
     });
-  }
-
-  if (!schedulePicker && scheduledField && statusField) {
-    const updateStatusForSchedule = () => {
-      const hasSchedule = Boolean(scheduledField.value);
-      if (hasSchedule && statusField.value === 'pendiente') {
-        statusField.value = 'programado';
-      } else if (!hasSchedule && statusField.value === 'programado') {
-        statusField.value = 'pendiente';
-      }
-    };
-    scheduledField.addEventListener('input', updateStatusForSchedule);
-    scheduledField.addEventListener('change', updateStatusForSchedule);
-    updateStatusForSchedule();
   }
 
   cancelButton?.addEventListener('click', (event) => {
@@ -29688,12 +29608,12 @@ async function loadAllData() {
       completedMatches,
       pendingReviewMatches,
     ] = await Promise.all([
-      request('/matches?statuses=programado,revision'),
+      request('/matches?status=programado'),
       request(`/matches?playerId=${userId}&includeDrafts=true`),
       request('/notifications/mine?upcoming=true').catch(() => []),
       request('/club').catch(() => null),
       request('/seasons').catch(() => []),
-      request('/matches?statuses=pendiente,propuesto,programado,revision,completado,finalizado'),
+      request('/matches?statuses=pendiente,programado,completado,caducado'),
       request('/matches?status=completado').catch(() => []),
       request('/matches?resultStatus=en_revision').catch(() => []),
     ]);

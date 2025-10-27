@@ -208,7 +208,7 @@ async function markMatchAsExpiredWithoutWinner(match) {
 async function processExpiredMatches() {
   const now = new Date();
   const expiredMatches = await Match.find({
-    status: { $in: ['pendiente', 'propuesto', 'programado'] },
+    status: { $in: ['pendiente', 'programado'] },
     expiresAt: { $lte: now },
     $or: [{ 'result.status': { $exists: false } }, { 'result.status': 'pendiente' }],
   });
