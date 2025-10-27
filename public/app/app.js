@@ -2320,28 +2320,60 @@ function resetCourtReservationForm() {
   setStatusMessage(courtReservationStatus, '', '');
 }
 
-function getPlayerDisplayName(player) {
-  if (!player) return 'Jugador';
+function resolvePlayerDisplayName(player, visited = new Set()) {
+  if (!player || visited.has(player)) {
+    return '';
+  }
+
+  if (typeof player === 'string') {
+    const trimmed = player.trim();
+    return trimmed;
+  }
+
+  if (typeof player !== 'object') {
+    return '';
+  }
+
+  visited.add(player);
+
   if (Array.isArray(player.players) && player.players.length) {
     const names = player.players
-      .map((member) => {
-        if (!member) return '';
-        if (typeof member === 'object') {
-          if (member.fullName) return member.fullName;
-          return '';
-        }
-        if (typeof member === 'string') {
-          return member;
-        }
-        return '';
-      })
+      .map((member) => resolvePlayerDisplayName(member, visited))
       .filter((name) => Boolean(name && name.trim()));
     if (names.length) {
       return names.join(' / ');
     }
   }
-  if (player.fullName) return player.fullName;
-  return 'Jugador';
+
+  const directFields = ['fullName', 'name', 'label', 'displayName'];
+  for (const field of directFields) {
+    const value = player[field];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  if (typeof player.email === 'string' && player.email.trim()) {
+    return player.email.trim();
+  }
+
+  const nestedFields = ['player', 'user', 'member', 'participant'];
+  for (const field of nestedFields) {
+    if (player[field]) {
+      const nestedName = resolvePlayerDisplayName(player[field], visited);
+      if (nestedName && nestedName.trim()) {
+        return nestedName;
+      }
+    }
+  }
+
+  visited.delete(player);
+  return '';
+}
+
+function getPlayerDisplayName(player) {
+  const name = resolvePlayerDisplayName(player);
+  return name && name.trim() ? name.trim() : 'Jugador';
 }
 
 function getPlayerInitial(player) {
@@ -10645,19 +10677,28 @@ function buildMatchTeams(players = []) {
         return [];
       }
 
+      const normalizedEntry = normalizeMatchPlayer(entry) || entry;
+
       if (Array.isArray(entry.players) && entry.players.length) {
         const members = entry.players
           .map((member) => normalizeMatchPlayer(member))
           .filter(Boolean);
         if (members.length) {
+          members.originalEntry = normalizedEntry;
           return members;
         }
       }
 
       const normalized = normalizeMatchPlayer(entry);
-      return normalized ? [normalized] : [];
+      if (normalized) {
+        const team = [normalized];
+        team.originalEntry = normalizedEntry;
+        return team;
+      }
+
+      return [];
     })
-    .filter((team) => team.length);
+    .filter((team) => Array.isArray(team) && team.length);
 }
 
 function renderDashboardMatchList(
@@ -18099,6 +18140,51 @@ function formatReservationParticipantsLabel(reservation) {
   return participants.map((participant) => getPlayerDisplayName(participant)).join(' · ');
 }
 
+function formatMatchPlayersLabel(players = []) {
+  if (!Array.isArray(players)) {
+    return '';
+  }
+
+  const teams = buildMatchTeams(players);
+  if (teams.length) {
+    const teamLabels = teams
+      .map((team) => {
+        const baseLabel = team.originalEntry
+          ? resolvePlayerDisplayName(team.originalEntry)
+          : '';
+        const normalizedBaseLabel = typeof baseLabel === 'string' ? baseLabel.trim() : '';
+
+        const memberNames = team
+          .map((player) => {
+            const name = getPlayerDisplayName(player);
+            return typeof name === 'string' ? name.trim() : '';
+          })
+          .filter(Boolean);
+        const membersLabel = memberNames.join(' / ');
+
+        if (normalizedBaseLabel && normalizedBaseLabel !== 'Jugador') {
+          return normalizedBaseLabel;
+        }
+
+        return membersLabel;
+      })
+      .filter(Boolean);
+
+    if (teamLabels.length) {
+      return teamLabels.join(' vs ');
+    }
+  }
+
+  const playerLabels = players
+    .map((player) => {
+      const name = getPlayerDisplayName(player);
+      return typeof name === 'string' ? name.trim() : '';
+    })
+    .filter(Boolean);
+
+  return playerLabels.join(' vs ');
+}
+
 function formatReservationPlayerOptionLabel(player) {
   if (!player) {
     return 'Jugador';
@@ -18170,9 +18256,8 @@ function buildPlayerCourtCalendarEvents(availability = []) {
       const reservationCourtLabel = formatCourtDisplay(reservation.court) || courtLabel;
       const match = getReservationMatch(reservation);
       if (match) {
-        const playersLabel = Array.isArray(match.players)
-          ? match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
-          : participantsLabel || 'Partido programado';
+        const playersLabel =
+          formatMatchPlayersLabel(match.players) || participantsLabel || 'Partido programado';
         const subtitleParts = [getReservationContextLabel(reservation)];
         const isPreReserved = reservation.status === 'pre_reservada';
         if (isPreReserved) {
