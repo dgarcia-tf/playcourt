@@ -110,7 +110,9 @@ async function ensureReservationAvailability({
     throw error;
   }
 
-  if (!isValidReservationSlot(startDate, endDate)) {
+  const shouldEnforceStandardSlots = reservationType !== RESERVATION_TYPES.MATCH;
+
+  if (shouldEnforceStandardSlots && !isValidReservationSlot(startDate, endDate)) {
     const error = new Error(INVALID_RESERVATION_SLOT_MESSAGE);
     error.statusCode = 400;
     throw error;
