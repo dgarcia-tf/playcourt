@@ -47,6 +47,142 @@ const MAX_CATEGORY_PARTICIPANTS =
 
 const MAX_BRACKET_SLOTS = 32;
 
+function toPlainMatch(match) {
+  if (!match) {
+    return match;
+  }
+
+  if (typeof match.toObject === 'function') {
+    return match.toObject({ virtuals: true, flattenMaps: true });
+  }
+
+  return { ...match };
+}
+
+function buildDrawMatchLookup(drawRounds = []) {
+  const lookup = new Map();
+  if (!Array.isArray(drawRounds)) {
+    return lookup;
+  }
+
+  drawRounds.forEach((round) => {
+    const order = Number(round?.order) || 0;
+    const matches = Array.isArray(round?.matches) ? round.matches : [];
+    if (!order || !matches.length) {
+      return;
+    }
+
+    matches.forEach((entry) => {
+      const matchNumber = Number(entry?.matchNumber) || 0;
+      if (!matchNumber) {
+        return;
+      }
+      const key = `${order}:${matchNumber}`;
+      lookup.set(key, {
+        placeholderA: entry?.placeholderA,
+        placeholderB: entry?.placeholderB,
+      });
+    });
+  });
+
+  return lookup;
+}
+
+function assignDrawPlaceholders(drawRounds = []) {
+  if (!Array.isArray(drawRounds) || drawRounds.length <= 1) {
+    return;
+  }
+
+  for (let roundIndex = 1; roundIndex < drawRounds.length; roundIndex += 1) {
+    const previousMatches = Array.isArray(drawRounds[roundIndex - 1]?.matches)
+      ? drawRounds[roundIndex - 1].matches
+      : [];
+    const currentMatches = Array.isArray(drawRounds[roundIndex]?.matches)
+      ? drawRounds[roundIndex].matches
+      : [];
+
+    currentMatches.forEach((drawMatch, matchIndex) => {
+      if (!drawMatch || typeof drawMatch !== 'object') {
+        return;
+      }
+
+      if (!drawMatch.playerA && !drawMatch.placeholderA) {
+        const feeder = previousMatches[matchIndex * 2];
+        const feederNumber = Number(feeder?.matchNumber) || 0;
+        if (feederNumber) {
+          drawMatch.placeholderA = `Ganador partido ${feederNumber}`;
+        }
+      }
+
+      if (!drawMatch.playerB && !drawMatch.placeholderB) {
+        const feeder = previousMatches[matchIndex * 2 + 1];
+        const feederNumber = Number(feeder?.matchNumber) || 0;
+        if (feederNumber) {
+          drawMatch.placeholderB = `Ganador partido ${feederNumber}`;
+        }
+      }
+    });
+  }
+}
+
+function mapMatchesWithDrawLookups(matches, { mainLookup = new Map(), consolationLookup = new Map() } = {}) {
+  return matches.map((match) => {
+    if (!match) {
+      return match;
+    }
+
+    const plain = toPlainMatch(match);
+    const roundOrder = Number(plain?.roundOrder) || 0;
+    const matchNumber = Number(plain?.matchNumber) || 0;
+    if (!roundOrder || !matchNumber) {
+      return plain;
+    }
+
+    const key = `${roundOrder}:${matchNumber}`;
+    const lookup =
+      plain.bracketType === TOURNAMENT_BRACKETS.CONSOLATION ? consolationLookup : mainLookup;
+    const entry = lookup.get(key);
+
+    if (entry) {
+      if (entry.placeholderA) {
+        plain.placeholderA = entry.placeholderA;
+      }
+      if (entry.placeholderB) {
+        plain.placeholderB = entry.placeholderB;
+      }
+    }
+
+    return plain;
+  });
+}
+
+async function serializeMatchesForResponse(matches, { tournamentId, categoryId, categoryDoc } = {}) {
+  const isArray = Array.isArray(matches);
+  const list = isArray ? matches : [matches];
+
+  if (!list.length) {
+    return isArray ? [] : null;
+  }
+
+  let category = categoryDoc;
+
+  if (!category && categoryId) {
+    const query = { _id: categoryId };
+    if (tournamentId) {
+      query.tournament = tournamentId;
+    }
+    category = await TournamentCategory.findOne(query).select('draw consolationDraw');
+  }
+
+  const lookups = {
+    mainLookup: buildDrawMatchLookup(category?.draw),
+    consolationLookup: buildDrawMatchLookup(category?.consolationDraw),
+  };
+
+  const serialized = mapMatchesWithDrawLookups(list, lookups);
+  return isArray ? serialized : serialized[0];
+}
+
 function nextPowerOfTwo(value) {
   if (value <= 1) {
     return 1;
@@ -424,7 +560,12 @@ async function listTournamentMatches(req, res) {
     return a.createdAt - b.createdAt;
   });
 
-  return res.json(matches);
+  const responseMatches = await serializeMatchesForResponse(matches, {
+    tournamentId,
+    categoryId,
+  });
+
+  return res.json(responseMatches);
 }
 
 function parseDayRange(day) {
@@ -825,7 +966,11 @@ async function generateTournamentMatches(req, res) {
   const populatedMatches = await populatedMatchesQuery;
   await hydrateMatchPlayerDetails(populatedMatches);
 
-  return res.status(201).json(populatedMatches);
+  const responseMatches = await serializeMatchesForResponse(populatedMatches, {
+    categoryDoc: category,
+  });
+
+  return res.status(201).json(responseMatches);
 }
 
 async function propagateMatchResult(match, winnerId, loserId) {
@@ -1330,6 +1475,8 @@ async function autoGenerateTournamentBracket(req, res) {
     });
   }
 
+  assignDrawPlaceholders(drawRounds);
+
   for (let roundIndex = 0; roundIndex < mainMatchesMatrix.length - 1; roundIndex += 1) {
     const currentRound = mainMatchesMatrix[roundIndex];
 
@@ -1400,6 +1547,8 @@ async function autoGenerateTournamentBracket(req, res) {
       });
     }
 
+    assignDrawPlaceholders(consolationDrawRounds);
+
     for (let roundIndex = 0; roundIndex < consolationMatrix.length - 1; roundIndex += 1) {
       const currentRound = consolationMatrix[roundIndex];
       const nextRound = consolationMatrix[roundIndex + 1];
@@ -1455,7 +1604,9 @@ async function autoGenerateTournamentBracket(req, res) {
   const matches = await matchesQuery;
   await hydrateMatchPlayerDetails(matches);
 
-  return res.status(201).json(matches);
+  const responseMatches = await serializeMatchesForResponse(matches, { categoryDoc: category });
+
+  return res.status(201).json(responseMatches);
 }
 
 async function recalculateTournamentBracket(req, res) {
@@ -1632,6 +1783,9 @@ async function recalculateTournamentBracket(req, res) {
     }
   });
 
+  assignDrawPlaceholders(drawRounds);
+  assignDrawPlaceholders(consolationRounds);
+
   category.markModified('draw');
   category.markModified('consolationDraw');
   await category.save();
@@ -1645,7 +1799,11 @@ async function recalculateTournamentBracket(req, res) {
   const populatedMatches = await populatedMatchesQuery;
   await hydrateMatchPlayerDetails(populatedMatches);
 
-  return res.json(populatedMatches);
+  const responseMatches = await serializeMatchesForResponse(populatedMatches, {
+    categoryDoc: context.category,
+  });
+
+  return res.json(responseMatches);
 }
 
 async function updateTournamentMatch(req, res) {
@@ -1748,7 +1906,11 @@ async function updateTournamentMatch(req, res) {
 
   await populateMatchPlayers(match);
 
-  return res.json(match);
+  const responseMatch = await serializeMatchesForResponse(match, {
+    categoryDoc: context.category,
+  });
+
+  return res.json(responseMatch);
 }
 
 async function submitTournamentMatchResult(req, res) {
@@ -1830,7 +1992,12 @@ async function submitTournamentMatchResult(req, res) {
   await match.save();
   await populateMatchPlayers(match);
 
-  return res.json(match);
+  const responseMatch = await serializeMatchesForResponse(match, {
+    tournamentId,
+    categoryId,
+  });
+
+  return res.json(responseMatch);
 }
 
 async function approveTournamentMatchResult(req, res) {
@@ -1915,7 +2082,11 @@ async function approveTournamentMatchResult(req, res) {
     await context.tournament.save();
   }
 
-  return res.json(match);
+  const responseMatch = await serializeMatchesForResponse(match, {
+    categoryDoc: context.category,
+  });
+
+  return res.json(responseMatch);
 }
 
 async function resetTournamentMatchResult(req, res) {
@@ -1959,7 +2130,12 @@ async function resetTournamentMatchResult(req, res) {
   await match.save();
   await populateMatchPlayers(match);
 
-  return res.json(match);
+  const responseMatch = await serializeMatchesForResponse(match, {
+    tournamentId,
+    categoryId,
+  });
+
+  return res.json(responseMatch);
 }
 
 async function respondToTournamentMatch(req, res, targetStatus) {
@@ -2014,7 +2190,12 @@ async function respondToTournamentMatch(req, res, targetStatus) {
   await match.save();
   await populateMatchPlayers(match);
 
-  return res.json(match);
+  const responseMatch = await serializeMatchesForResponse(match, {
+    tournamentId,
+    categoryId,
+  });
+
+  return res.json(responseMatch);
 }
 
 async function confirmTournamentMatch(req, res) {
