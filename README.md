@@ -168,6 +168,22 @@ La API interna permanece disponible en `/app/api/*` para integraciones personali
 | `npm start`   | Inicia el servidor en modo producción.                        |
 | `npm run dev` | Arranca el servidor con recarga en caliente (`node --watch`). |
 
+## Versionado y registro de cambios
+
+El proyecto sigue **versionado semántico** (`MAJOR.MINOR.PATCH`) y documenta cada entrega en `CHANGELOG.md`.
+
+| Tipo de cambio      | Comando recomendado                     | Cuándo utilizarlo                                                     |
+| ------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
+| Corrección o fix    | `npm version patch --no-git-tag-version` | Bugs resueltos, ajustes pequeños y mejoras compatibles.               |
+| Nueva funcionalidad | `npm version minor --no-git-tag-version` | Incorporar capacidades sin romper integraciones existentes.           |
+| Cambio rompedor     | `npm version major --no-git-tag-version` | Modificaciones que requieren acciones manuales o rompen compatibilidad |
+
+Tras subir de versión:
+
+1. Anota la novedad en `CHANGELOG.md` bajo la cabecera correspondiente.
+2. Ejecuta las pruebas o comprobaciones disponibles.
+3. Genera el commit y etiqueta Git que identifique la versión publicada.
+
 ---
 
 Si necesitas restablecer el usuario administrador o limpiar la base de datos, basta con eliminar la colección `users` en MongoDB y volver a acceder a la aplicación: se solicitará crear un nuevo administrador inicial.

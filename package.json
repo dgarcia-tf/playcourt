@@ -1,6 +1,6 @@
 {
   "name": "cn-playa-san-marcos",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Liga social C.N. Playa San Marcos",
   "type": "commonjs",
   "main": "src/server.js",
