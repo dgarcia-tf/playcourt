@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Liga social C.N. Playa San Marcos",
   "type": "commonjs",
-  "main": "src/server.js",
+  "main": "src/server.mjs",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs"
   },
   "keywords": [
     "tennis",
