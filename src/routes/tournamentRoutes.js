@@ -228,7 +228,7 @@ router.post(
       .isInt({ min: 1 })
       .toInt()
       .custom((value) => TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.includes(Number(value)))
-      .withMessage('El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.'),
+      .withMessage('El máximo de jugadores por categoría debe ser 8, 16 o 32.'),
   ],
   createTournamentCategory
 );
@@ -261,7 +261,7 @@ router.patch(
       .isInt({ min: 1 })
       .toInt()
       .custom((value) => TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.includes(Number(value)))
-      .withMessage('El máximo de jugadores por categoría debe ser 8, 16, 24 o 32.'),
+      .withMessage('El máximo de jugadores por categoría debe ser 8, 16 o 32.'),
   ],
   updateTournamentCategory
 );
