@@ -378,10 +378,6 @@ const validateListReservations = [
     .optional()
     .isString()
     .withMessage('El indicador de límite manual es inválido.'),
-  query('rangeDays')
-    .optional()
-    .isInt({ min: 1, max: MAX_AVAILABILITY_RANGE_DAYS })
-    .withMessage('El número de días solicitado debe estar entre 1 y 31.'),
 ];
 
 async function createReservation(req, res) {
