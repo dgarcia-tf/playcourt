@@ -2093,7 +2093,7 @@ body.tournament-fullscreen-active {
 }
 
 .bracket-round__matches--list {
-  gap: 1.25rem;
+  gap: var(--bracket-match-gap, 1.25rem);
 }
 
 .bracket-round__empty {
