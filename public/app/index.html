@@ -1484,10 +1484,13 @@
                     <div class="form-grid">
                       <div>
                         <div id="admin-match-schedule-container" class="match-schedule-field" hidden>
-                          <label>
-                            Día del partido
-                            <input id="admin-match-day" type="date" name="scheduledDate" />
-                          </label>
+                          <input
+                            id="admin-match-day"
+                            type="date"
+                            name="scheduledDate"
+                            class="sr-only"
+                            aria-label="Día del partido"
+                          />
                           <div class="match-schedule-picker" id="admin-match-slot-picker" aria-live="polite"></div>
                           <div class="match-schedule-actions">
                             <button type="button" id="admin-match-clear-slot" class="ghost">

@@ -4710,6 +4710,35 @@ body.tournament-fullscreen-active {
   gap: 0.75rem;
 }
 
+.match-schedule-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.match-schedule-picker__header .calendar-nav {
+  gap: 0.5rem;
+}
+
+.match-schedule-picker__label {
+  font-size: 1.05rem;
+}
+
+.match-schedule-picker__date-picker {
+  margin-left: auto;
+}
+
+.match-schedule-picker__date-input {
+  width: auto;
+  min-width: 0;
+}
+
+.match-schedule-picker__grid.calendar-container {
+  margin-top: 0.5rem;
+}
+
 .dark-mode .match-schedule-picker {
   background: rgba(30, 41, 59, 0.6);
   border-color: rgba(148, 163, 184, 0.25);
