@@ -18099,6 +18099,40 @@ function formatReservationParticipantsLabel(reservation) {
   return participants.map((participant) => getPlayerDisplayName(participant)).join(' · ');
 }
 
+function formatMatchPlayersLabel(players = []) {
+  if (!Array.isArray(players)) {
+    return '';
+  }
+
+  const teams = buildMatchTeams(players);
+  if (teams.length) {
+    const teamLabels = teams
+      .map((team) => {
+        const memberNames = team
+          .map((player) => {
+            const name = getPlayerDisplayName(player);
+            return typeof name === 'string' ? name.trim() : '';
+          })
+          .filter(Boolean);
+        return memberNames.join(' / ');
+      })
+      .filter(Boolean);
+
+    if (teamLabels.length) {
+      return teamLabels.join(' vs ');
+    }
+  }
+
+  const playerLabels = players
+    .map((player) => {
+      const name = getPlayerDisplayName(player);
+      return typeof name === 'string' ? name.trim() : '';
+    })
+    .filter(Boolean);
+
+  return playerLabels.join(' vs ');
+}
+
 function formatReservationPlayerOptionLabel(player) {
   if (!player) {
     return 'Jugador';
@@ -18170,9 +18204,8 @@ function buildPlayerCourtCalendarEvents(availability = []) {
       const reservationCourtLabel = formatCourtDisplay(reservation.court) || courtLabel;
       const match = getReservationMatch(reservation);
       if (match) {
-        const playersLabel = Array.isArray(match.players)
-          ? match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
-          : participantsLabel || 'Partido programado';
+        const playersLabel =
+          formatMatchPlayersLabel(match.players) || participantsLabel || 'Partido programado';
         const subtitleParts = [getReservationContextLabel(reservation)];
         const isPreReserved = reservation.status === 'pre_reservada';
         if (isPreReserved) {
