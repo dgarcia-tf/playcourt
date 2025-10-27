@@ -6,7 +6,7 @@ const { TournamentMatch, TOURNAMENT_MATCH_STATUS } = require('../models/Tourname
 const { resolveCategoryColor } = require('../utils/colors');
 const { resolveMatchScheduledAt } = require('../utils/matchSchedule');
 
-const UPCOMING_LEAGUE_MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision'];
+const UPCOMING_LEAGUE_MATCH_STATUSES = ['pendiente', 'programado'];
 const COMPLETED_LEAGUE_MATCH_STATUSES = ['completado'];
 const UPCOMING_TOURNAMENT_MATCH_STATUSES = [
   TOURNAMENT_MATCH_STATUS.PENDING,

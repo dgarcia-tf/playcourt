@@ -8,31 +8,20 @@ const {
   reportResult,
   confirmResult,
   proposeMatch,
-  respondToScheduleConfirmation,
   respondToProposal,
 } = require('../controllers/matchController');
 const { authenticate, authorizeRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
-const MATCH_STATUS_OPTIONS = [
-  'pendiente',
-  'propuesto',
-  'programado',
-  'revision',
-  'completado',
-  'caducado',
-  'finalizado',
-];
+const MATCH_STATUS_OPTIONS = ['pendiente', 'programado', 'completado', 'caducado'];
 
 router.get(
   '/',
   authenticate,
   [
     query('categoryId').optional().isMongoId(),
-    query('status')
-      .optional()
-      .isIn(['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado', 'finalizado']),
+    query('status').optional().isIn(MATCH_STATUS_OPTIONS),
     query('statuses')
       .optional()
       .customSanitizer((value) => {
@@ -99,7 +88,6 @@ router.patch(
       .custom((value) => value === null || value === '' || !Number.isNaN(Date.parse(value)))
       .withMessage('Fecha y hora inválida'),
     body('court').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
-    body('status').optional().isIn(['pendiente', 'propuesto', 'programado', 'revision', 'caducado']),
     body('notes').optional({ nullable: true }).isString().isLength({ max: 500 }),
   ],
   updateMatch
@@ -139,17 +127,6 @@ router.post(
   authenticate,
   [param('matchId').isMongoId(), body('decision').isIn(['approve', 'reject'])],
   confirmResult
-);
-
-router.post(
-  '/:matchId/schedule/respond',
-  authenticate,
-  [
-    param('matchId').isMongoId(),
-    body('decision').isIn(['accept', 'reject']),
-    body('reason').optional({ nullable: true }).isString().isLength({ max: 500 }),
-  ],
-  respondToScheduleConfirmation
 );
 
 router.post(
