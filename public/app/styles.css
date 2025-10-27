@@ -1738,6 +1738,45 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   gap: 0.6rem;
 }
 
+.dashboard-my-matches__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.link-button:hover,
+.link-button:focus {
+  text-decoration: underline;
+  color: var(--accent-strong);
+}
+
+.reservation-modal-context {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.reservation-modal-context strong {
+  font-size: 0.95rem;
+}
+
 .match-list-item__participants {
   display: flex;
   flex-wrap: wrap;
