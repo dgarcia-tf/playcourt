@@ -1,5 +1,6 @@
 import { createCalendarEventsModule } from './features/calendar/events.js';
 import { createCalendarModule } from './features/calendar/calendar.js';
+import { createChatModule } from './features/chat/chat.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -84,3 +85,46 @@ const {
   loadCourtCalendarData,
   handleCourtCalendarDaySelection,
 } = calendarModule;
+const chatModule = createChatModule({
+  state,
+  noticeLastSeenPrefix: NOTICE_LAST_SEEN_PREFIX,
+  noticesMenuBadge,
+  generalChatMessagesList,
+  generalChatForm,
+  generalChatInput,
+  generalChatToolbar,
+  generalChatEditor,
+  generalChatAttachmentInput,
+  generalChatImageInput,
+  generalChatAttachments,
+  generalChatAttachmentsList,
+  request,
+  sanitizeNoticeHtml,
+  readFileAsDataUrl,
+  showGlobalMessage,
+  applyRichTextCommand,
+  isAdmin,
+  normalizeId,
+  formatRoles,
+  formatChatTimestamp,
+  NOTICE_INLINE_IMAGE_DATA_URL_PATTERN,
+  NOTICE_INLINE_IMAGE_SRC_REGEX,
+  MAX_INLINE_NOTICE_IMAGE_SIZE,
+  MAX_TOTAL_INLINE_NOTICE_IMAGE_SIZE,
+  MAX_NOTICE_RICH_CONTENT_LENGTH,
+  MAX_NOTICE_RICH_CONTENT_WITH_IMAGES,
+  MAX_NOTICE_ATTACHMENTS,
+  MAX_NOTICE_ATTACHMENT_SIZE,
+});
+
+const {
+  syncNoticeBoardState,
+  updateNoticesMenuBadge,
+  handleNoticeToolbarClick,
+  handleNoticeAttachmentChange,
+  handleNoticeImageSelection,
+  removeNoticeAttachment,
+  handleNoticeSubmit,
+  loadGeneralChat,
+} = chatModule;
+generalChatForm?.addEventListener('submit', handleNoticeSubmit);
