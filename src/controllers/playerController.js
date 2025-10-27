@@ -157,34 +157,55 @@ async function createPlayer(req, res) {
 }
 
 async function createDemoPlayers(req, res) {
+  const DEMO_PLAYER_MALE_PHOTO =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAY0lEQVR4nO3PQQ3AIADAQMAJpjGKgYngcVnSU9DOfe74s6UDXjWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgfYv+Airwo7ydAAAAAElFTkSuQmCC';
+  const DEMO_PLAYER_FEMALE_PHOTO =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAY0lEQVR4nO3PQQ3AIADAQEAI5lCPi4ngcVnSU9DOu8/4s6UDXjWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgfX0iAeqJMjWDAAAAAElFTkSuQmCC';
+
   const malePlayers = [
     { fullName: 'Novak Djokovic', birthDate: '1987-05-22' },
     { fullName: 'Carlos Alcaraz', birthDate: '2003-05-05' },
-    { fullName: 'Daniil Medvedev', birthDate: '1996-02-11' },
     { fullName: 'Jannik Sinner', birthDate: '2001-08-16' },
+    { fullName: 'Daniil Medvedev', birthDate: '1996-02-11' },
+    { fullName: 'Alexander Zverev', birthDate: '1997-04-20' },
     { fullName: 'Holger Rune', birthDate: '2003-04-29' },
     { fullName: 'Stefanos Tsitsipas', birthDate: '1998-08-12' },
     { fullName: 'Andrey Rublev', birthDate: '1997-10-20' },
     { fullName: 'Casper Ruud', birthDate: '1998-12-22' },
     { fullName: 'Taylor Fritz', birthDate: '1997-10-28' },
     { fullName: 'Frances Tiafoe', birthDate: '1998-01-20' },
-    { fullName: 'Alexander Zverev', birthDate: '1997-04-20' },
     { fullName: 'Hubert Hurkacz', birthDate: '1997-02-11' },
     { fullName: 'Karen Khachanov', birthDate: '1996-05-21' },
     { fullName: 'Tommy Paul', birthDate: '1997-05-17' },
     { fullName: 'Alex de Minaur', birthDate: '1999-02-17' },
     { fullName: 'Felix Auger-Aliassime', birthDate: '2000-08-08' },
-  ].map((player) => ({ ...player, gender: GENDERS.MALE }));
+    { fullName: 'Cameron Norrie', birthDate: '1995-08-23' },
+    { fullName: 'Lorenzo Musetti', birthDate: '2002-03-03' },
+    { fullName: 'Matteo Berrettini', birthDate: '1996-04-12' },
+    { fullName: 'Grigor Dimitrov', birthDate: '1991-05-16' },
+    { fullName: 'Alexander Bublik', birthDate: '1997-06-17' },
+    { fullName: 'Roberto Bautista Agut', birthDate: '1988-04-14' },
+    { fullName: 'Denis Shapovalov', birthDate: '1999-04-15' },
+    { fullName: 'Pablo Carreno Busta', birthDate: '1991-07-12' },
+    { fullName: 'Nick Kyrgios', birthDate: '1995-04-27' },
+    { fullName: 'Borna Coric', birthDate: '1996-11-14' },
+    { fullName: 'Sebastian Korda', birthDate: '2000-07-05' },
+    { fullName: 'Dominic Thiem', birthDate: '1993-09-03' },
+    { fullName: 'Gael Monfils', birthDate: '1986-09-01' },
+    { fullName: 'Marin Cilic', birthDate: '1988-09-28' },
+    { fullName: 'Yoshihito Nishioka', birthDate: '1995-09-27' },
+    { fullName: 'Ben Shelton', birthDate: '2002-10-09' },
+  ].map((player) => ({ ...player, gender: GENDERS.MALE, photo: DEMO_PLAYER_MALE_PHOTO }));
 
   const femalePlayers = [
     { fullName: 'Iga Swiatek', birthDate: '2001-05-31' },
     { fullName: 'Aryna Sabalenka', birthDate: '1998-05-05' },
-    { fullName: 'Jessica Pegula', birthDate: '1994-02-24' },
-    { fullName: 'Elena Rybakina', birthDate: '1999-06-17' },
-    { fullName: 'Caroline Garcia', birthDate: '1993-10-16' },
     { fullName: 'Coco Gauff', birthDate: '2004-03-13' },
+    { fullName: 'Elena Rybakina', birthDate: '1999-06-17' },
+    { fullName: 'Jessica Pegula', birthDate: '1994-02-24' },
     { fullName: 'Ons Jabeur', birthDate: '1994-08-28' },
     { fullName: 'Maria Sakkari', birthDate: '1995-07-25' },
+    { fullName: 'Caroline Garcia', birthDate: '1993-10-16' },
     { fullName: 'Daria Kasatkina', birthDate: '1997-05-07' },
     { fullName: 'Veronika Kudermetova', birthDate: '1997-04-24' },
     { fullName: 'Belinda Bencic', birthDate: '1997-03-10' },
@@ -193,7 +214,23 @@ async function createDemoPlayers(req, res) {
     { fullName: 'Paula Badosa', birthDate: '1997-11-15' },
     { fullName: 'Beatriz Haddad Maia', birthDate: '1996-05-30' },
     { fullName: 'Jelena Ostapenko', birthDate: '1997-06-08' },
-  ].map((player) => ({ ...player, gender: GENDERS.FEMALE }));
+    { fullName: 'Madison Keys', birthDate: '1995-02-17' },
+    { fullName: 'Liudmila Samsonova', birthDate: '1998-11-11' },
+    { fullName: 'Karolina Pliskova', birthDate: '1992-03-21' },
+    { fullName: 'Elina Svitolina', birthDate: '1994-09-12' },
+    { fullName: 'Victoria Azarenka', birthDate: '1989-07-31' },
+    { fullName: 'Anastasia Potapova', birthDate: '2001-03-30' },
+    { fullName: 'Ekaterina Alexandrova', birthDate: '1994-11-15' },
+    { fullName: 'Magda Linette', birthDate: '1992-02-12' },
+    { fullName: 'Qinwen Zheng', birthDate: '2002-10-08' },
+    { fullName: 'Donna Vekic', birthDate: '1996-06-28' },
+    { fullName: 'Bianca Andreescu', birthDate: '2000-06-16' },
+    { fullName: 'Sloane Stephens', birthDate: '1993-03-20' },
+    { fullName: 'Simona Halep', birthDate: '1991-09-27' },
+    { fullName: 'Marketa Vondrousova', birthDate: '1999-06-28' },
+    { fullName: 'Sorana Cirstea', birthDate: '1990-04-07' },
+    { fullName: 'Marta Kostyuk', birthDate: '2002-06-28' },
+  ].map((player) => ({ ...player, gender: GENDERS.FEMALE, photo: DEMO_PLAYER_FEMALE_PHOTO }));
 
   const demoPlayers = [...malePlayers, ...femalePlayers];
 
@@ -222,6 +259,7 @@ async function createDemoPlayers(req, res) {
       password: hashedPassword,
       gender: player.gender,
       birthDate,
+      photo: player.photo,
       roles: [USER_ROLES.PLAYER],
       role: USER_ROLES.PLAYER,
       phone: (600000000 + playerIndex).toString(),
