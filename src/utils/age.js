@@ -96,6 +96,8 @@ function userMeetsCategoryMinimumAge(category, user, referenceDate = new Date())
     return true;
   }
 
+  const minimumAge = Number(category.minimumAge);
+
   const birthDate = user?.birthDate;
   const parsedBirthDate = parseDate(birthDate);
   if (!parsedBirthDate) {
