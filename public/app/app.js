@@ -20,6 +20,8 @@ const CALENDAR_TIME_SLOT_MINUTES = COURT_RESERVATION_DEFAULT_DURATION;
 const CALENDAR_TIME_SLOT_STEP_SECONDS = CALENDAR_TIME_SLOT_MINUTES * 60;
 const COURT_RESERVATION_FIRST_SLOT_MINUTE = 8 * 60 + 30;
 const COURT_RESERVATION_LAST_SLOT_END_MINUTE = 22 * 60 + 15;
+const COURT_AVAILABILITY_DEFAULT_RANGE_DAYS = 1;
+const COURT_AVAILABILITY_MAX_RANGE_DAYS = 31;
 
 const SCHEDULE_LABELS = {
   manana: 'Mañana',
@@ -1208,6 +1210,13 @@ function getScheduleAvailabilityState(scope = 'player') {
       date: state.courtAdminDate,
       court: state.courtAdminCourt || '',
       ignoreManualLimit: Boolean(state.courtAdminIgnoreManualLimit),
+      reservationType: state.courtAdminReservationType || '',
+      contextType: state.courtAdminContextType || '',
+      contextId: state.courtAdminContextId || '',
+      rangeDays:
+        Number.isFinite(Number(state.courtAdminRangeDays))
+          ? Math.max(1, Math.floor(Number(state.courtAdminRangeDays)))
+          : COURT_AVAILABILITY_DEFAULT_RANGE_DAYS,
     };
   }
 
@@ -1216,6 +1225,13 @@ function getScheduleAvailabilityState(scope = 'player') {
     date: state.courtAvailabilityDate,
     court: state.courtAvailabilityCourt || '',
     ignoreManualLimit: Boolean(state.courtAvailabilityIgnoreManualLimit),
+    reservationType: state.courtAvailabilityReservationType || '',
+    contextType: state.courtAvailabilityContextType || '',
+    contextId: state.courtAvailabilityContextId || '',
+    rangeDays:
+      Number.isFinite(Number(state.courtAvailabilityRangeDays))
+        ? Math.max(1, Math.floor(Number(state.courtAvailabilityRangeDays)))
+        : COURT_AVAILABILITY_DEFAULT_RANGE_DAYS,
   };
 }
 
@@ -1224,12 +1240,28 @@ async function resolveScheduleAvailability({
   dateValue,
   courtValue,
   ignoreManualLimit,
+  reservationType,
+  contextType,
+  contextId,
+  rangeDays,
 } = {}) {
   const dateString = typeof dateValue === 'string' ? dateValue : '';
   const targetDate = dateString ? new Date(`${dateString}T00:00:00`) : null;
   if (targetDate && Number.isNaN(targetDate.getTime())) {
     return getScheduleAvailabilityState(scope);
   }
+
+  const normalizedReservationType =
+    typeof reservationType === 'string' ? reservationType.trim() : '';
+  const normalizedContextType = typeof contextType === 'string' ? contextType.trim() : '';
+  const normalizedContextId = typeof contextId === 'string' ? contextId.trim() : '';
+  const rangeDaysValue = Number(rangeDays);
+  const normalizedRangeDays = Number.isFinite(rangeDaysValue)
+    ? Math.min(
+        Math.max(Math.floor(rangeDaysValue), COURT_AVAILABILITY_DEFAULT_RANGE_DAYS),
+        COURT_AVAILABILITY_MAX_RANGE_DAYS
+      )
+    : COURT_AVAILABILITY_DEFAULT_RANGE_DAYS;
 
   const currentState = getScheduleAvailabilityState(scope);
   const currentDateValue = formatDateInput(currentState.date);
@@ -1241,6 +1273,15 @@ async function resolveScheduleAvailability({
       ? ignoreManualLimit
       : scope !== 'player' && hasCourtManagementAccess();
   const currentIgnoreManualLimit = Boolean(currentState.ignoreManualLimit);
+  const currentReservationType =
+    typeof currentState.reservationType === 'string' ? currentState.reservationType : '';
+  const currentContextType =
+    typeof currentState.contextType === 'string' ? currentState.contextType : '';
+  const currentContextId =
+    typeof currentState.contextId === 'string' ? currentState.contextId : '';
+  const currentRangeDays = Number.isFinite(Number(currentState.rangeDays))
+    ? Math.max(1, Math.floor(Number(currentState.rangeDays)))
+    : COURT_AVAILABILITY_DEFAULT_RANGE_DAYS;
 
   if (!targetDateValue) {
     return currentState;
@@ -1249,7 +1290,11 @@ async function resolveScheduleAvailability({
   if (
     currentDateValue === targetDateValue &&
     currentCourtValue === normalizedCourt &&
-    currentIgnoreManualLimit === shouldIgnoreManualLimit
+    currentIgnoreManualLimit === shouldIgnoreManualLimit &&
+    currentReservationType === normalizedReservationType &&
+    currentContextType === normalizedContextType &&
+    currentContextId === normalizedContextId &&
+    currentRangeDays === normalizedRangeDays
   ) {
     return currentState;
   }
@@ -1258,15 +1303,27 @@ async function resolveScheduleAvailability({
     state.courtAdminDate = targetDate;
     state.courtAdminCourt = normalizedCourt;
     state.courtAdminIgnoreManualLimit = shouldIgnoreManualLimit;
+    state.courtAdminReservationType = normalizedReservationType;
+    state.courtAdminContextType = normalizedContextType;
+    state.courtAdminContextId = normalizedContextId;
+    state.courtAdminRangeDays = normalizedRangeDays;
   } else {
     state.courtAvailabilityDate = targetDate;
     state.courtAvailabilityCourt = normalizedCourt;
     state.courtAvailabilityIgnoreManualLimit = shouldIgnoreManualLimit;
+    state.courtAvailabilityReservationType = normalizedReservationType;
+    state.courtAvailabilityContextType = normalizedContextType;
+    state.courtAvailabilityContextId = normalizedContextId;
+    state.courtAvailabilityRangeDays = normalizedRangeDays;
   }
 
   await refreshCourtAvailability(scope, {
     court: normalizedCourt,
     ignoreManualLimit: shouldIgnoreManualLimit,
+    reservationType: normalizedReservationType,
+    contextType: normalizedContextType,
+    contextId: normalizedContextId,
+    rangeDays: normalizedRangeDays,
   });
 
   return getScheduleAvailabilityState(scope);
@@ -1458,6 +1515,8 @@ function createMatchScheduleSlotPicker({
   onChange = () => {},
   ignoreMatchId = '',
   ignoreManualLimit,
+  match = null,
+  availabilityParams: availabilityParamsOption = null,
 } = {}) {
   const resolvedTemplates = Array.isArray(templates) ? templates : [];
   if (!container || !dateField || !scheduledField) {
@@ -1481,6 +1540,96 @@ function createMatchScheduleSlotPicker({
   gridWrapper.className = 'match-schedule-picker__grid';
   container.appendChild(gridWrapper);
 
+  const normalizedMatch = match && typeof match === 'object' ? match : null;
+
+  const normalizeAvailabilityParams = (params = {}) => {
+    if (!params || typeof params !== 'object') {
+      return {
+        reservationType: '',
+        contextType: '',
+        contextId: '',
+        rangeDays: null,
+      };
+    }
+
+    const reservationTypeValue =
+      typeof params.reservationType === 'string' ? params.reservationType.trim() : '';
+    const contextTypeValue = typeof params.contextType === 'string' ? params.contextType.trim() : '';
+    const contextIdValue = typeof params.contextId === 'string' ? params.contextId.trim() : '';
+    const rangeDaysValue = Number(params.rangeDays);
+    const normalizedRangeDays =
+      Number.isFinite(rangeDaysValue) && rangeDaysValue > 0 ? Math.floor(rangeDaysValue) : null;
+
+    return {
+      reservationType: reservationTypeValue,
+      contextType: contextTypeValue,
+      contextId: contextIdValue,
+      rangeDays: normalizedRangeDays,
+    };
+  };
+
+  const deriveAvailabilityParamsFromMatch = (matchInput) => {
+    if (!matchInput || typeof matchInput !== 'object') {
+      return null;
+    }
+
+    const matchScope = typeof matchInput.scope === 'string' ? matchInput.scope : '';
+    const tournamentId = normalizeId(matchInput.tournament);
+    if (matchScope === 'tournament' || tournamentId) {
+      return {
+        reservationType: 'match',
+        contextType: 'tournament',
+        contextId: tournamentId || '',
+        rangeDays: COURT_AVAILABILITY_MAX_RANGE_DAYS,
+      };
+    }
+
+    const leagueId = normalizeId(matchInput.league);
+    if (matchScope === 'league' || leagueId) {
+      return {
+        reservationType: 'match',
+        contextType: 'league',
+        contextId: leagueId || '',
+        rangeDays: COURT_AVAILABILITY_MAX_RANGE_DAYS,
+      };
+    }
+
+    return null;
+  };
+
+  const resolveAvailabilityParams = ({ params, match: matchInput } = {}) => {
+    const base = normalizeAvailabilityParams(params);
+    const matchParams = deriveAvailabilityParamsFromMatch(matchInput);
+
+    const reservationTypeValue = base.reservationType || matchParams?.reservationType || '';
+    const contextTypeValue = base.contextType || matchParams?.contextType || '';
+    const contextIdValue = base.contextId || matchParams?.contextId || '';
+
+    const candidateRangeDays = Number.isFinite(base.rangeDays)
+      ? Math.floor(base.rangeDays)
+      : Number.isFinite(matchParams?.rangeDays)
+        ? Math.floor(matchParams.rangeDays)
+        : COURT_AVAILABILITY_DEFAULT_RANGE_DAYS;
+    const normalizedRangeDays = Math.min(
+      Math.max(candidateRangeDays, COURT_AVAILABILITY_DEFAULT_RANGE_DAYS),
+      COURT_AVAILABILITY_MAX_RANGE_DAYS
+    );
+
+    const hasContext = Boolean(contextIdValue);
+
+    return {
+      reservationType: reservationTypeValue,
+      contextType: hasContext ? contextTypeValue : '',
+      contextId: hasContext ? contextIdValue : '',
+      rangeDays: normalizedRangeDays,
+    };
+  };
+
+  const initialAvailabilityParams = resolveAvailabilityParams({
+    params: availabilityParamsOption,
+    match: normalizedMatch,
+  });
+
   const state = {
     dateValue: '',
     timeValue: '',
@@ -1491,6 +1640,9 @@ function createMatchScheduleSlotPicker({
       typeof ignoreManualLimit === 'boolean'
         ? ignoreManualLimit
         : scope !== 'player' && hasCourtManagementAccess(),
+    match: normalizedMatch,
+    availabilityParams: initialAvailabilityParams,
+    ignoredMatchId: normalizeId(ignoreMatchId),
   };
 
   let loadToken = 0;
@@ -1832,10 +1984,16 @@ function createMatchScheduleSlotPicker({
     const token = ++loadToken;
     setStatus('Cargando disponibilidad...');
     try {
+      const availabilityParams = state.availabilityParams || initialAvailabilityParams;
       const { availability, date } = await resolveScheduleAvailability({
         scope,
         dateValue: normalizedDate,
+        courtValue: state.courtValue,
         ignoreManualLimit: state.ignoreManualLimit,
+        reservationType: availabilityParams?.reservationType,
+        contextType: availabilityParams?.contextType,
+        contextId: availabilityParams?.contextId,
+        rangeDays: availabilityParams?.rangeDays,
       });
       if (token !== loadToken) {
         return;
@@ -1947,6 +2105,27 @@ function createMatchScheduleSlotPicker({
         emitChange();
         renderGrid();
       }
+    },
+    setAvailabilityContext({
+      match: nextMatch = null,
+      reservationType,
+      contextType,
+      contextId,
+      rangeDays,
+    } = {}) {
+      const resolvedMatch =
+        nextMatch && typeof nextMatch === 'object' ? nextMatch : state.match;
+      state.match = resolvedMatch;
+      state.availabilityParams = resolveAvailabilityParams({
+        params: { reservationType, contextType, contextId, rangeDays },
+        match: state.match,
+      });
+      if (state.dateValue) {
+        loadAvailabilityForDate(state.dateValue).catch((error) => {
+          console.warn('No se pudo actualizar la disponibilidad de pistas', error);
+        });
+      }
+      return state.availabilityParams;
     },
   };
 }
@@ -2633,11 +2812,19 @@ const state = {
   courtAvailabilityDate: new Date(),
   courtAvailabilityCourt: '',
   courtAvailabilityIgnoreManualLimit: false,
+  courtAvailabilityReservationType: '',
+  courtAvailabilityContextType: '',
+  courtAvailabilityContextId: '',
+  courtAvailabilityRangeDays: COURT_AVAILABILITY_DEFAULT_RANGE_DAYS,
   courtAdminDate: new Date(),
   courtAdminCourt: '',
   courtAdminSchedule: [],
   courtAdminBlocks: [],
   courtAdminIgnoreManualLimit: false,
+  courtAdminReservationType: '',
+  courtAdminContextType: '',
+  courtAdminContextId: '',
+  courtAdminRangeDays: COURT_AVAILABILITY_DEFAULT_RANGE_DAYS,
   courtCalendarDate: new Date(),
   courtCalendarEvents: [],
   courtCalendarViewMode: 'month',
@@ -17198,7 +17385,14 @@ async function loadPlayerCourtData() {
 
 async function refreshCourtAvailability(
   scope = 'player',
-  { court: courtValue = '', ignoreManualLimit = false } = {}
+  {
+    court: courtValue = '',
+    ignoreManualLimit = false,
+    reservationType = '',
+    contextType = '',
+    contextId = '',
+    rangeDays,
+  } = {}
 ) {
   const normalizedCourt = typeof courtValue === 'string' ? courtValue.trim() : '';
   const targetDate = scope === 'admin' ? state.courtAdminDate : state.courtAvailabilityDate;
@@ -17208,6 +17402,17 @@ async function refreshCourtAvailability(
   }
 
   const normalizedIgnoreManualLimit = Boolean(ignoreManualLimit);
+  const normalizedReservationType =
+    typeof reservationType === 'string' ? reservationType.trim() : '';
+  const normalizedContextType = typeof contextType === 'string' ? contextType.trim() : '';
+  const normalizedContextId = typeof contextId === 'string' ? contextId.trim() : '';
+  const rangeDaysValue = Number(rangeDays);
+  const normalizedRangeDays = Number.isFinite(rangeDaysValue)
+    ? Math.min(
+        Math.max(Math.floor(rangeDaysValue), COURT_AVAILABILITY_DEFAULT_RANGE_DAYS),
+        COURT_AVAILABILITY_MAX_RANGE_DAYS
+      )
+    : COURT_AVAILABILITY_DEFAULT_RANGE_DAYS;
 
   if (scope === 'admin' && courtAdminStatus) {
     setStatusMessage(courtAdminStatus, 'info', 'Cargando reservas...');
@@ -17223,6 +17428,16 @@ async function refreshCourtAvailability(
     if (normalizedIgnoreManualLimit) {
       params.append('ignoreManualLimit', 'true');
     }
+    if (normalizedReservationType) {
+      params.append('reservationType', normalizedReservationType);
+    }
+    if (normalizedContextType && normalizedContextId) {
+      params.append('contextType', normalizedContextType);
+      params.append('contextId', normalizedContextId);
+    }
+    if (normalizedRangeDays > 1) {
+      params.append('rangeDays', String(normalizedRangeDays));
+    }
     const availability = await request(`/courts/availability?${params.toString()}`);
     const courts = Array.isArray(availability?.courts) ? availability.courts : [];
     if (scope === 'admin') {
@@ -17232,6 +17447,10 @@ async function refreshCourtAvailability(
         ? availability.blocks
         : [];
       state.courtAdminIgnoreManualLimit = normalizedIgnoreManualLimit;
+      state.courtAdminReservationType = normalizedReservationType;
+      state.courtAdminContextType = normalizedContextType;
+      state.courtAdminContextId = normalizedContextId;
+      state.courtAdminRangeDays = normalizedRangeDays;
       renderCourtAdminSchedule();
       if (courtAdminStatus) {
         setStatusMessage(courtAdminStatus, '', '');
@@ -17240,6 +17459,10 @@ async function refreshCourtAvailability(
       state.courtAvailabilityCourt = normalizedCourt;
       state.courtAvailability = courts;
       state.courtAvailabilityIgnoreManualLimit = normalizedIgnoreManualLimit;
+      state.courtAvailabilityReservationType = normalizedReservationType;
+      state.courtAvailabilityContextType = normalizedContextType;
+      state.courtAvailabilityContextId = normalizedContextId;
+      state.courtAvailabilityRangeDays = normalizedRangeDays;
       renderCourtAvailability();
       renderPlayerCourtCalendar();
       if (playerCourtCalendarStatus) {
@@ -17252,6 +17475,10 @@ async function refreshCourtAvailability(
       state.courtAdminSchedule = [];
       state.courtAdminBlocks = [];
       state.courtAdminIgnoreManualLimit = normalizedIgnoreManualLimit;
+      state.courtAdminReservationType = normalizedReservationType;
+      state.courtAdminContextType = normalizedContextType;
+      state.courtAdminContextId = normalizedContextId;
+      state.courtAdminRangeDays = normalizedRangeDays;
       renderCourtAdminSchedule();
       if (courtAdminStatus) {
         setStatusMessage(courtAdminStatus, 'error', error.message);
@@ -17260,6 +17487,10 @@ async function refreshCourtAvailability(
       state.courtAvailabilityCourt = normalizedCourt;
       state.courtAvailability = [];
       state.courtAvailabilityIgnoreManualLimit = normalizedIgnoreManualLimit;
+      state.courtAvailabilityReservationType = normalizedReservationType;
+      state.courtAvailabilityContextType = normalizedContextType;
+      state.courtAvailabilityContextId = normalizedContextId;
+      state.courtAvailabilityRangeDays = normalizedRangeDays;
       renderCourtAvailability();
       renderPlayerCourtCalendar();
       if (playerCourtCalendarStatus) {
@@ -18290,6 +18521,78 @@ function renderCourtReservations() {
   });
 }
 
+function buildScheduleDaySegments(entries = [], dayStart, dayEnd, { defaultDurationMinutes } = {}) {
+  if (!Array.isArray(entries) || !entries.length) {
+    return [];
+  }
+
+  const startDate =
+    dayStart instanceof Date ? new Date(dayStart.getTime()) : new Date(dayStart);
+  if (Number.isNaN(startDate.getTime())) {
+    return [];
+  }
+  startDate.setHours(0, 0, 0, 0);
+  const normalizedStart = startDate;
+
+  let normalizedEnd = null;
+  if (dayEnd instanceof Date) {
+    const endDate = new Date(dayEnd.getTime());
+    if (!Number.isNaN(endDate.getTime())) {
+      normalizedEnd = endDate;
+    }
+  } else if (dayEnd) {
+    const endDate = new Date(dayEnd);
+    if (!Number.isNaN(endDate.getTime())) {
+      normalizedEnd = endDate;
+    }
+  }
+  if (!normalizedEnd) {
+    normalizedEnd = addDays(normalizedStart, 1);
+  } else if (normalizedEnd <= normalizedStart) {
+    normalizedEnd = addDays(normalizedStart, 1);
+  }
+
+  const fallbackMinutes = Number.isFinite(defaultDurationMinutes) && defaultDurationMinutes > 0
+    ? Math.floor(defaultDurationMinutes)
+    : null;
+
+  return entries
+    .map((item) => {
+      if (!item) {
+        return null;
+      }
+      const startsAt = parseDateSafe(item.startsAt);
+      if (!startsAt) {
+        return null;
+      }
+      const rawEndsAt = parseDateSafe(item.endsAt);
+      const endsAt = rawEndsAt && rawEndsAt > startsAt
+        ? rawEndsAt
+        : fallbackMinutes
+          ? addMinutes(startsAt, fallbackMinutes)
+          : null;
+      if (!endsAt) {
+        return null;
+      }
+
+      if (endsAt <= normalizedStart || startsAt >= normalizedEnd) {
+        return null;
+      }
+
+      const displayStartsAt = startsAt > normalizedStart ? startsAt : new Date(normalizedStart.getTime());
+      const displayEndsAt = endsAt < normalizedEnd ? endsAt : new Date(normalizedEnd.getTime());
+
+      return {
+        item,
+        startsAt,
+        endsAt,
+        displayStartsAt,
+        displayEndsAt,
+      };
+    })
+    .filter(Boolean);
+}
+
 function renderCourtAvailability() {
   if (courtAvailabilityDateInput) {
     courtAvailabilityDateInput.value = formatDateInput(state.courtAvailabilityDate);
@@ -18312,6 +18615,13 @@ function renderCourtAvailability() {
     courtAvailabilityEmpty.hidden = true;
   }
 
+  const referenceDate =
+    state.courtAvailabilityDate instanceof Date
+      ? new Date(state.courtAvailabilityDate.getTime())
+      : parseDateSafe(state.courtAvailabilityDate) || new Date();
+  const dayStart = startOfDay(referenceDate);
+  const dayEnd = addDays(dayStart, 1);
+
   availability.forEach((entry) => {
     const item = document.createElement('li');
     item.className = 'court-availability-item';
@@ -18322,16 +18632,27 @@ function renderCourtAvailability() {
     const reservations = Array.isArray(entry.reservations) ? entry.reservations : [];
     const blocks = Array.isArray(entry.blocks) ? entry.blocks : [];
 
-    if (!reservations.length && !blocks.length) {
+    const reservationSegments = buildScheduleDaySegments(reservations, dayStart, dayEnd, {
+      defaultDurationMinutes: COURT_RESERVATION_DEFAULT_DURATION,
+    });
+    const blockSegments = buildScheduleDaySegments(blocks, dayStart, dayEnd, {
+      defaultDurationMinutes: null,
+    });
+
+    if (!reservationSegments.length && !blockSegments.length) {
       const meta = document.createElement('div');
       meta.className = 'meta';
       meta.textContent = 'Disponible todo el día';
       item.appendChild(meta);
     } else {
-      blocks.forEach((block) => {
+      blockSegments.forEach((segment) => {
+        const block = segment.item;
+        if (!block) {
+          return;
+        }
         const blockRow = document.createElement('div');
         blockRow.className = 'meta court-availability-block';
-        const timeLabel = formatTimeRangeLabel(block.startsAt, block.endsAt);
+        const timeLabel = formatTimeRangeLabel(segment.displayStartsAt, segment.displayEndsAt);
         blockRow.appendChild(document.createElement('span')).textContent = `${timeLabel}`;
         const labelParts = [];
         if (block.contextName) {
@@ -18348,12 +18669,16 @@ function renderCourtAvailability() {
         item.appendChild(blockRow);
       });
 
-      reservations.forEach((reservation) => {
+      reservationSegments.forEach((segment) => {
+        const reservation = segment.item;
+        if (!reservation) {
+          return;
+        }
         const slot = document.createElement('div');
         slot.className = 'meta court-availability-slot';
         slot.appendChild(document.createElement('span')).textContent = formatTimeRangeLabel(
-          reservation.startsAt,
-          reservation.endsAt
+          segment.displayStartsAt,
+          segment.displayEndsAt
         );
         const participants = getReservationParticipants(reservation);
         if (participants.length) {
@@ -18410,6 +18735,13 @@ function renderCourtAdminSchedule() {
     courtAdminEmpty.hidden = true;
   }
 
+  const referenceDate =
+    state.courtAdminDate instanceof Date
+      ? new Date(state.courtAdminDate.getTime())
+      : parseDateSafe(state.courtAdminDate) || new Date();
+  const dayStart = startOfDay(referenceDate);
+  const dayEnd = addDays(dayStart, 1);
+
   availability.forEach((entry) => {
     const block = document.createElement('div');
     block.className = 'court-schedule';
@@ -18421,21 +18753,30 @@ function renderCourtAdminSchedule() {
     const blocks = Array.isArray(entry.blocks) ? entry.blocks : [];
     const timeline = [];
 
-    reservations.forEach((reservation) => {
+    const reservationSegments = buildScheduleDaySegments(
+      reservations,
+      dayStart,
+      dayEnd,
+      { defaultDurationMinutes: COURT_RESERVATION_DEFAULT_DURATION }
+    );
+    reservationSegments.forEach((segment) => {
       timeline.push({
         type: 'reservation',
-        startsAt: reservation.startsAt,
-        endsAt: reservation.endsAt,
-        reservation,
+        startsAt: segment.displayStartsAt,
+        endsAt: segment.displayEndsAt,
+        reservation: segment.item,
       });
     });
 
-    blocks.forEach((blockEntry) => {
+    const blockSegments = buildScheduleDaySegments(blocks, dayStart, dayEnd, {
+      defaultDurationMinutes: null,
+    });
+    blockSegments.forEach((segment) => {
       timeline.push({
         type: 'block',
-        startsAt: blockEntry.startsAt,
-        endsAt: blockEntry.endsAt,
-        block: blockEntry,
+        startsAt: segment.displayStartsAt,
+        endsAt: segment.displayEndsAt,
+        block: segment.item,
       });
     });
 
@@ -18460,8 +18801,8 @@ function renderCourtAdminSchedule() {
           const info = document.createElement('div');
           info.className = 'court-schedule-info';
           info.appendChild(document.createElement('span')).textContent = formatTimeRangeLabel(
-            blockEntry.startsAt,
-            blockEntry.endsAt
+            timelineEntry.startsAt,
+            timelineEntry.endsAt
           );
 
           const details = [];
@@ -18506,8 +18847,8 @@ function renderCourtAdminSchedule() {
         const info = document.createElement('div');
         info.className = 'court-schedule-info';
         info.appendChild(document.createElement('span')).textContent = formatTimeRangeLabel(
-          reservation.startsAt,
-          reservation.endsAt
+          timelineEntry.startsAt,
+          timelineEntry.endsAt
         );
         const participants = getReservationParticipants(reservation);
         if (participants.length) {
@@ -19969,6 +20310,8 @@ function openProposalForm(matchId, triggerButton) {
     return;
   }
 
+  const match = findMatchById(matchId);
+
   if (activeProposalForm && activeProposalMatchId === matchId) {
     closeProposalForm();
     return;
@@ -20092,6 +20435,7 @@ function openProposalForm(matchId, triggerButton) {
         scope: 'player',
         existingValue: defaultSelectionValue,
         ignoreMatchId: matchId,
+        match,
         onChange: () => {
           updateError();
         },
@@ -23317,7 +23661,7 @@ function syncAdminMatchScheduledValue() {
   adminMatchDate.value = '';
 }
 
-function updateAdminMatchScheduleVisibility({ selectedTime, selectedCourt } = {}) {
+function updateAdminMatchScheduleVisibility({ selectedTime, selectedCourt, match } = {}) {
   const templates = getClubMatchScheduleTemplates();
   const hasTemplates = Array.isArray(templates) && templates.length > 0;
 
@@ -23358,6 +23702,14 @@ function updateAdminMatchScheduleVisibility({ selectedTime, selectedCourt } = {}
     const resolvedSelectedCourt =
       typeof selectedCourt === 'string' ? selectedCourt : adminMatchCourt?.value || '';
 
+    const editingMatchId = state.adminMatchEditingId || adminMatchSelect?.value || '';
+    const contextMatch =
+      match && typeof match === 'object'
+        ? match
+        : editingMatchId
+          ? findMatchById(editingMatchId)
+          : null;
+
     adminMatchSchedulePicker = createMatchScheduleSlotPicker({
       container: adminMatchSchedulePickerContainer,
       dateField: adminMatchDay,
@@ -23368,6 +23720,7 @@ function updateAdminMatchScheduleVisibility({ selectedTime, selectedCourt } = {}
       existingValue: adminMatchDate.value || '',
       existingCourt: resolvedSelectedCourt,
       ignoreMatchId: state.adminMatchEditingId || '',
+      match: contextMatch,
       ignoreManualLimit: hasCourtManagementAccess(),
       onChange: () => {
         syncAdminMatchScheduledValue();
@@ -23498,6 +23851,7 @@ function setAdminMatchEditing(matchId) {
   updateAdminMatchScheduleVisibility({
     selectedTime: scheduledValue ? scheduledValue.split('T')[1] : '',
     selectedCourt: match.court || '',
+    match,
   });
   if (adminMatchNotes) {
     const notes = match.result?.notes || match.notes || '';
@@ -27585,10 +27939,28 @@ function openMatchModal(matchId = '') {
   if (leagueField) {
     leagueField.addEventListener('change', (event) => {
       setStatusMessage(status, '', '');
-      const nextCategoryId = updateCategoryOptions({ leagueId: event.target.value });
+      const nextLeagueId = event.target.value || '';
+      const nextCategoryId = updateCategoryOptions({ leagueId: nextLeagueId });
       populateMatchPlayerSelects(form, nextCategoryId, [], status).catch((error) => {
         console.warn('No fue posible cargar jugadores inscritos', error);
       });
+      if (schedulePicker) {
+        const hasLeagueContext = Boolean(nextLeagueId && nextLeagueId !== UNASSIGNED_LEAGUE_VALUE);
+        const contextMatch = match
+          ? { ...match, league: nextLeagueId }
+          : hasLeagueContext
+            ? { league: nextLeagueId }
+            : {};
+        schedulePicker.setAvailabilityContext({
+          match: contextMatch,
+          reservationType: hasLeagueContext ? 'match' : '',
+          contextType: hasLeagueContext ? 'league' : '',
+          contextId: hasLeagueContext ? nextLeagueId : '',
+          rangeDays: hasLeagueContext
+            ? COURT_AVAILABILITY_MAX_RANGE_DAYS
+            : COURT_AVAILABILITY_DEFAULT_RANGE_DAYS,
+        });
+      }
     });
   }
 
@@ -27626,6 +27998,7 @@ function openMatchModal(matchId = '') {
       existingValue: scheduledField?.value || '',
       existingCourt: match?.court || '',
       ignoreMatchId: match?._id || '',
+      match,
       onChange: updateStatusForSchedule,
     });
 
@@ -28068,6 +28441,19 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
 
   let schedulePicker = null;
   if (canUseSchedulePicker && schedulePickerContainer && scheduleDateField && scheduledField) {
+    const matchAvailabilityContext = {
+      ...(match && typeof match === 'object' ? match : {}),
+    };
+    if (!matchAvailabilityContext.scope) {
+      matchAvailabilityContext.scope = 'tournament';
+    }
+    if (resolvedTournamentId && !matchAvailabilityContext.tournament) {
+      matchAvailabilityContext.tournament = resolvedTournamentId;
+    }
+    if (resolvedCategoryId && !matchAvailabilityContext.category) {
+      matchAvailabilityContext.category = resolvedCategoryId;
+    }
+
     schedulePicker = createMatchScheduleSlotPicker({
       container: schedulePickerContainer,
       dateField: scheduleDateField,
@@ -28079,6 +28465,7 @@ function openTournamentMatchScheduleModal(matchId, context = {}) {
       existingCourt: courtField?.value || match?.court || '',
       ignoreMatchId: match?._id || '',
       ignoreManualLimit: hasCourtManagementAccess(),
+      match: matchAvailabilityContext,
       onChange: () => {
         updateCourtInfoDisplay();
       },
