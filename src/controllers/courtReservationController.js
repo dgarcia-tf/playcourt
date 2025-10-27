@@ -22,6 +22,8 @@ const {
   cleanupExpiredManualReservations,
 } = require('../services/courtReservationService');
 
+const MAX_AVAILABILITY_RANGE_DAYS = 31;
+
 function sanitizeNotes(notes) {
   if (typeof notes !== 'string') {
     return '';
@@ -663,11 +665,46 @@ async function getAvailability(req, res) {
 
   await cleanupExpiredManualReservations().catch(() => null);
 
-  const { date, court: rawCourt } = req.query;
-  const range = buildDayRange(date);
-  if (!range) {
+  const { date, start: rawStart, end: rawEnd, rangeDays: rawRangeDays, court: rawCourt } = req.query;
+
+  const startCandidate = toDate(rawStart) || toDate(date);
+  if (!startCandidate) {
     return res.status(400).json({ message: 'La fecha es obligatoria para consultar disponibilidad.' });
   }
+
+  const rangeStart = new Date(startCandidate);
+  rangeStart.setHours(0, 0, 0, 0);
+
+  const requestedRangeDays = Number.parseInt(rawRangeDays, 10);
+  const normalizedRangeDays = Number.isFinite(requestedRangeDays)
+    ? Math.min(Math.max(requestedRangeDays, 1), MAX_AVAILABILITY_RANGE_DAYS)
+    : 1;
+
+  let rangeEnd = null;
+  const endCandidate = toDate(rawEnd);
+  if (endCandidate) {
+    rangeEnd = new Date(endCandidate);
+    rangeEnd.setHours(0, 0, 0, 0);
+    rangeEnd.setDate(rangeEnd.getDate() + 1);
+  }
+
+  if (!rangeEnd) {
+    rangeEnd = new Date(rangeStart);
+    rangeEnd.setDate(rangeEnd.getDate() + normalizedRangeDays);
+  }
+
+  if (rangeEnd <= rangeStart) {
+    rangeEnd = new Date(rangeStart);
+    rangeEnd.setDate(rangeEnd.getDate() + 1);
+  }
+
+  const maxRangeEnd = new Date(rangeStart);
+  maxRangeEnd.setDate(maxRangeEnd.getDate() + MAX_AVAILABILITY_RANGE_DAYS);
+  if (rangeEnd > maxRangeEnd) {
+    rangeEnd = maxRangeEnd;
+  }
+
+  const range = { start: rangeStart, end: rangeEnd };
 
   const club = await Club.getSingleton();
   const allCourts = Array.isArray(club?.courts)
@@ -709,13 +746,22 @@ async function getAvailability(req, res) {
   })();
 
   if (!selectedCourts.length) {
-    return res.json({ date: range.start, courts: [], blocks: [] });
+    return res.json({
+      date: range.start,
+      range,
+      court: resolvedCourt,
+      courts: [],
+      blocks: [],
+    });
   }
 
   const reservations = await CourtReservation.find({
     court: { $in: selectedCourts },
     status: { $in: ACTIVE_RESERVATION_STATUSES },
-    startsAt: { $gte: range.start, $lt: range.end },
+    $and: [
+      { startsAt: { $lt: range.end } },
+      { endsAt: { $gt: range.start } },
+    ],
   })
     .sort({ startsAt: 1 })
     .populate('createdBy', 'fullName email roles')
@@ -782,7 +828,11 @@ async function getAvailability(req, res) {
     });
   });
 
-  const slots = buildDailySlots(range.start);
+  const slots = [];
+  for (let cursor = new Date(range.start.getTime()); cursor < range.end; cursor.setDate(cursor.getDate() + 1)) {
+    const daySlots = buildDailySlots(new Date(cursor));
+    slots.push(...daySlots);
+  }
   const manualReservationCutoff = new Date(
     Date.now() + MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000
   );
@@ -860,11 +910,17 @@ async function getAvailability(req, res) {
     });
   });
 
+  const rangeDays = Math.max(
+    1,
+    Math.round((range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000))
+  );
+
   return res.json({
     date: range.start,
     court: resolvedCourt,
     courts: grouped,
     blocks: serializedBlocks,
+    range: { ...range, days: rangeDays },
   });
 }
 
