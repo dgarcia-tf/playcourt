@@ -8,7 +8,6 @@ const { sendEmailNotification } = require('./emailService');
 const DEFAULT_RESERVATION_DURATION_MINUTES = 75;
 const RESERVATION_DAY_START_MINUTE = 8 * 60 + 30;
 const RESERVATION_DAY_END_MINUTE = 22 * 60 + 15;
-const MANUAL_RESERVATION_MAX_ADVANCE_HOURS = 48;
 const INVALID_RESERVATION_SLOT_MESSAGE =
   'Las reservas deben realizarse en bloques de 75 minutos entre las 08:30 y las 22:15.';
 const ACTIVE_RESERVATION_STATUSES = [RESERVATION_STATUS.RESERVED, RESERVATION_STATUS.PRE_RESERVED];
@@ -94,23 +93,15 @@ async function ensureReservationAvailability({
     throw error;
   }
 
-  if (reservationType === RESERVATION_TYPES.MANUAL && !bypassManualAdvanceLimit) {
-    const now = new Date();
-    const maxAdvanceMs = MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000;
-    if (startDate.getTime() - now.getTime() > maxAdvanceMs) {
-      const error = new Error('Las reservas solo pueden realizarse con hasta 48 horas de antelación.');
-      error.statusCode = 400;
-      throw error;
-    }
-  }
-
   if (endDate <= startDate) {
     const error = new Error('La hora de finalización debe ser posterior a la de inicio.');
     error.statusCode = 400;
     throw error;
   }
 
-  const shouldEnforceStandardSlots = reservationType !== RESERVATION_TYPES.MATCH;
+  const isManualReservation = reservationType === RESERVATION_TYPES.MANUAL;
+
+  const shouldEnforceStandardSlots = !isManualReservation && reservationType !== RESERVATION_TYPES.MATCH;
 
   if (shouldEnforceStandardSlots && !isValidReservationSlot(startDate, endDate)) {
     const error = new Error(INVALID_RESERVATION_SLOT_MESSAGE);
@@ -149,43 +140,47 @@ async function ensureReservationAvailability({
     query._id = { $ne: excludeReservationId };
   }
 
-  const overlappingReservation = await CourtReservation.findOne(query).select('_id match');
-  if (overlappingReservation) {
-    const error = new Error('La pista ya está reservada en el horario seleccionado.');
-    error.statusCode = 409;
-    throw error;
+  if (!isManualReservation) {
+    const overlappingReservation = await CourtReservation.findOne(query).select('_id match');
+    if (overlappingReservation) {
+      const error = new Error('La pista ya está reservada en el horario seleccionado.');
+      error.statusCode = 409;
+      throw error;
+    }
   }
 
-  const blockQuery = {
-    startsAt: { $lt: endDate },
-    endsAt: { $gt: startDate },
-    $or: [{ courts: { $size: 0 } }, { courts: court }],
-  };
+  if (!isManualReservation) {
+    const blockQuery = {
+      startsAt: { $lt: endDate },
+      endsAt: { $gt: startDate },
+      $or: [{ courts: { $size: 0 } }, { courts: court }],
+    };
 
-  const blockingEntries = await CourtBlock.find(blockQuery)
-    .select('contextType context courts startsAt endsAt')
-    .lean();
+    const blockingEntries = await CourtBlock.find(blockQuery)
+      .select('contextType context courts startsAt endsAt')
+      .lean();
 
-  if (blockingEntries.length) {
-    if (reservationType === RESERVATION_TYPES.MATCH && contextType && contextId) {
-      const contextKey = contextId.toString();
-      const allowed = blockingEntries.some((block) => {
-        if (block.contextType !== contextType) {
-          return false;
+    if (blockingEntries.length) {
+      if (reservationType === RESERVATION_TYPES.MATCH && contextType && contextId) {
+        const contextKey = contextId.toString();
+        const allowed = blockingEntries.some((block) => {
+          if (block.contextType !== contextType) {
+            return false;
+          }
+          const blockContext = block.context?.toString?.();
+          return blockContext && blockContext === contextKey;
+        });
+        if (allowed) {
+          return;
         }
-        const blockContext = block.context?.toString?.();
-        return blockContext && blockContext === contextKey;
-      });
-      if (allowed) {
-        return;
       }
-    }
 
-    const error = new Error(
-      'La pista está bloqueada para partidos oficiales en el horario seleccionado. Contacta con la organización.'
-    );
-    error.statusCode = 409;
-    throw error;
+      const error = new Error(
+        'La pista está bloqueada para partidos oficiales en el horario seleccionado. Contacta con la organización.'
+      );
+      error.statusCode = 409;
+      throw error;
+    }
   }
 }
 
@@ -680,7 +675,6 @@ module.exports = {
   INVALID_RESERVATION_SLOT_MESSAGE,
   RESERVATION_DAY_START_MINUTE,
   RESERVATION_DAY_END_MINUTE,
-  MANUAL_RESERVATION_MAX_ADVANCE_HOURS,
   ensureReservationAvailability,
   upsertMatchReservation,
   cancelMatchReservation,

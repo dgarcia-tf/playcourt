@@ -14,11 +14,9 @@ const { formatCourtBlock, buildContextLabelMap } = require('./courtBlockControll
 const {
   ensureReservationAvailability,
   DEFAULT_RESERVATION_DURATION_MINUTES,
-  INVALID_RESERVATION_SLOT_MESSAGE,
   normalizeParticipants,
   RESERVATION_DAY_START_MINUTE,
   RESERVATION_DAY_END_MINUTE,
-  MANUAL_RESERVATION_MAX_ADVANCE_HOURS,
   cleanupExpiredManualReservations,
 } = require('../services/courtReservationService');
 
@@ -321,17 +319,14 @@ const validateCreateReservation = [
     .withMessage('La fecha y hora de finalización no es válida.'),
   body('durationMinutes')
     .optional()
-    .isInt({ gt: 0, lt: 12 * 60 })
+    .isInt({ gt: 0 })
     .withMessage('La duración debe ser un número de minutos válido.'),
   body('notes')
     .optional()
     .isString()
     .isLength({ max: 500 })
     .withMessage('Las notas deben tener menos de 500 caracteres.'),
-  body('participants')
-    .optional()
-    .isArray({ max: 3 })
-    .withMessage('La lista de participantes es inválida.'),
+  body('participants').optional().isArray().withMessage('La lista de participantes es inválida.'),
   body('participants.*')
     .optional()
     .isMongoId()
@@ -374,10 +369,6 @@ const validateListReservations = [
     .custom((value) => Object.values(COURT_BLOCK_CONTEXTS).includes(value))
     .withMessage('El contexto indicado no es válido.'),
   query('contextId').optional().isString().withMessage('El identificador del contexto es inválido.'),
-  query('ignoreManualLimit')
-    .optional()
-    .isString()
-    .withMessage('El indicador de límite manual es inválido.'),
 ];
 
 async function createReservation(req, res) {
@@ -408,19 +399,10 @@ async function createReservation(req, res) {
     ? Number(durationMinutes)
     : null;
 
-  if (normalizedDuration !== null && normalizedDuration !== DEFAULT_RESERVATION_DURATION_MINUTES) {
-    return res.status(400).json({ message: INVALID_RESERVATION_SLOT_MESSAGE });
-  }
-
-  const duration = DEFAULT_RESERVATION_DURATION_MINUTES;
+  const duration = normalizedDuration || DEFAULT_RESERVATION_DURATION_MINUTES;
 
   if (!endsAt) {
     endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
-  } else {
-    const diffMinutes = Math.round((endsAt.getTime() - startsAt.getTime()) / (60 * 1000));
-    if (diffMinutes !== duration) {
-      return res.status(400).json({ message: INVALID_RESERVATION_SLOT_MESSAGE });
-    }
   }
 
   if (endsAt <= startsAt) {
@@ -433,7 +415,7 @@ async function createReservation(req, res) {
     court,
     startsAt,
     endsAt,
-    bypassManualAdvanceLimit: hasCourtManagementAccess(req.user),
+    reservationType: RESERVATION_TYPES.MANUAL,
   });
 
   let gameType = RESERVATION_GAME_TYPES.SINGLES;
@@ -463,63 +445,6 @@ async function createReservation(req, res) {
 
   if (!participants.includes(requesterId)) {
     participants.unshift(requesterId);
-  }
-
-  const requiredParticipants =
-    gameType === RESERVATION_GAME_TYPES.DOUBLES ? 4 : 2;
-
-  if (participants.length < requiredParticipants) {
-    return res.status(400).json({
-      message:
-        gameType === RESERVATION_GAME_TYPES.DOUBLES
-          ? 'Debes añadir a los cuatro jugadores para una reserva de dobles.'
-          : 'Debes añadir al segundo jugador para una reserva individual.',
-    });
-  }
-
-  if (participants.length > requiredParticipants) {
-    return res.status(400).json({
-      message:
-        gameType === RESERVATION_GAME_TYPES.DOUBLES
-          ? 'Una reserva de dobles solo puede tener cuatro participantes.'
-          : 'Una reserva individual solo puede tener dos participantes.',
-    });
-  }
-
-  const now = new Date();
-  const conflictingReservation = await CourtReservation.findOne({
-    type: RESERVATION_TYPES.MANUAL,
-    status: { $in: ACTIVE_RESERVATION_STATUSES },
-    endsAt: { $gt: now },
-    participants: { $in: participants },
-  })
-    .populate('participants', 'fullName')
-    .lean();
-
-  if (conflictingReservation) {
-    const conflictingParticipants = normalizeParticipants(conflictingReservation.participants);
-    const conflictingId = participants.find((participantId) =>
-      conflictingParticipants.includes(participantId)
-    );
-
-    let conflictMessage =
-      'Uno de los jugadores ya tiene una reserva activa. Cancela la reserva anterior antes de crear una nueva.';
-    if (conflictingId && Array.isArray(conflictingReservation.participants)) {
-      const conflictingUser = conflictingReservation.participants.find((participant) => {
-        const participantId =
-          participant && typeof participant === 'object'
-            ? participant._id?.toString?.() || participant.id?.toString?.()
-            : participant?.toString?.();
-        return participantId === conflictingId;
-      });
-      const displayName =
-        conflictingUser?.fullName || conflictingUser?.email || conflictingReservation.createdBy?.fullName;
-      if (displayName) {
-        conflictMessage = `El jugador ${displayName} ya tiene una reserva activa. Cancela la reserva anterior antes de crear una nueva.`;
-      }
-    }
-
-    return res.status(409).json({ message: conflictMessage });
   }
 
   const reservation = await CourtReservation.create({
@@ -734,17 +659,6 @@ async function getAvailability(req, res) {
   const requestedContextId = typeof req.query.contextId === 'string' ? req.query.contextId.trim() : '';
   const normalizedContextId = requestedContextId || null;
 
-  const ignoreManualLimit = (() => {
-    if (typeof req.query.ignoreManualLimit !== 'string') {
-      return false;
-    }
-    const normalized = req.query.ignoreManualLimit.trim().toLowerCase();
-    if (!normalized) {
-      return false;
-    }
-    return ['true', '1', 'yes', 'on'].includes(normalized);
-  })();
-
   if (!selectedCourts.length) {
     return res.json({
       date: range.start,
@@ -833,12 +747,7 @@ async function getAvailability(req, res) {
     const daySlots = buildDailySlots(new Date(cursor));
     slots.push(...daySlots);
   }
-  const manualReservationCutoff = new Date(
-    Date.now() + MANUAL_RESERVATION_MAX_ADVANCE_HOURS * 60 * 60 * 1000
-  );
-  const hasManualLimitPrivileges = hasCourtManagementAccess(req.user) || ignoreManualLimit;
-  const shouldEnforceManualLimit =
-    normalizedReservationType !== RESERVATION_TYPES.MATCH && !hasManualLimitPrivileges;
+  const isManualAvailability = normalizedReservationType === RESERVATION_TYPES.MANUAL;
   const allowedContextKey =
     normalizedReservationType === RESERVATION_TYPES.MATCH && normalizedContextType && normalizedContextId
       ? `${normalizedContextType}:${normalizedContextId}`
@@ -876,8 +785,8 @@ async function getAvailability(req, res) {
     const courtBlocks = entry.blocks || [];
 
     entry.availableSlots = slots.filter((slot) => {
-      if (shouldEnforceManualLimit && slot.startsAt > manualReservationCutoff) {
-        return false;
+      if (isManualAvailability) {
+        return true;
       }
 
       const blockedByReservation = courtReservations.some((reservation) =>
