@@ -73,8 +73,12 @@ const TOURNAMENT_BRACKET_SIZES = [8, 16, 24, 32];
 const TOURNAMENT_CATEGORY_DRAW_SIZE_OPTIONS = [8, 16, 24, 32];
 const TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION =
   'El cuadro actual desaparecerá y se generará uno nuevo. ¿Deseas continuar?';
-const TOURNAMENT_BRACKET_RESULTS_BLOCKED_MESSAGE =
-  'No es posible generar un nuevo cuadro porque esta categoría ya tiene resultados registrados.';
+const TOURNAMENT_BRACKET_REPLACEMENT_TOOLTIP =
+  'Generar un nuevo cuadro reemplazará el actual.';
+const TOURNAMENT_BRACKET_RESULTS_REPLACEMENT_CONFIRMATION =
+  'El cuadro actual tiene resultados registrados. Generar un nuevo cuadro eliminará los resultados anteriores. ¿Deseas continuar?';
+const TOURNAMENT_BRACKET_RESULTS_REPLACEMENT_TOOLTIP =
+  'Generar un nuevo cuadro eliminará los resultados registrados en esta categoría.';
 
 const PUSH_SUPPORTED =
   typeof window !== 'undefined' &&
@@ -3782,7 +3786,7 @@ function updateTournamentActionAvailability() {
 
   if (tournamentBracketGenerateButton) {
     let disableGenerate = !isAdmin() || !hasBracketSelection;
-    let disabledMessage = '';
+    let tooltipMessage = '';
 
     if (!disableGenerate) {
       const matches = getCachedTournamentBracketMatches(
@@ -3790,14 +3794,15 @@ function updateTournamentActionAvailability() {
         state.selectedBracketCategoryId
       );
       if (bracketMatchesHaveRecordedResults(matches)) {
-        disableGenerate = true;
-        disabledMessage = TOURNAMENT_BRACKET_RESULTS_BLOCKED_MESSAGE;
+        tooltipMessage = TOURNAMENT_BRACKET_RESULTS_REPLACEMENT_TOOLTIP;
+      } else if (matches.length) {
+        tooltipMessage = TOURNAMENT_BRACKET_REPLACEMENT_TOOLTIP;
       }
     }
 
     tournamentBracketGenerateButton.disabled = disableGenerate;
-    if (disabledMessage) {
-      tournamentBracketGenerateButton.title = disabledMessage;
+    if (tooltipMessage) {
+      tournamentBracketGenerateButton.title = tooltipMessage;
     } else {
       tournamentBracketGenerateButton.removeAttribute('title');
     }
@@ -25906,6 +25911,19 @@ async function openTournamentDrawModal() {
 
     const replaceExisting = form.elements.replaceExisting?.checked || false;
 
+    if (replaceExisting) {
+      const confirmed = await openConfirmationDialog({
+        title: 'Generar nuevo cuadro',
+        message: TOURNAMENT_BRACKET_RESULTS_REPLACEMENT_CONFIRMATION,
+        confirmLabel: 'Generar nuevo cuadro',
+        cancelLabel: 'Cancelar',
+      });
+      if (!confirmed) {
+        setStatusMessage(status, '', '');
+        return;
+      }
+    }
+
     setStatusMessage(status, 'info', 'Generando cuadro...');
     submitButton.disabled = true;
 
@@ -30952,20 +30970,14 @@ tournamentBracketGenerateButton?.addEventListener('click', async () => {
   }
 
   const cachedMatches = getCachedTournamentBracketMatches(tournamentId, categoryId);
-  if (bracketMatchesHaveRecordedResults(cachedMatches)) {
-    setStatusMessage(
-      tournamentBracketStatus,
-      'error',
-      TOURNAMENT_BRACKET_RESULTS_BLOCKED_MESSAGE
-    );
-    updateTournamentActionAvailability();
-    return;
-  }
+  const hasRecordedResults = bracketMatchesHaveRecordedResults(cachedMatches);
 
-  if (cachedMatches.length) {
+  if (hasRecordedResults || cachedMatches.length) {
     const confirmed = await openConfirmationDialog({
       title: 'Generar nuevo cuadro',
-      message: TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION,
+      message: hasRecordedResults
+        ? TOURNAMENT_BRACKET_RESULTS_REPLACEMENT_CONFIRMATION
+        : TOURNAMENT_BRACKET_REPLACEMENT_CONFIRMATION,
       confirmLabel: 'Generar nuevo cuadro',
       cancelLabel: 'Cancelar',
     });

@@ -38,7 +38,7 @@ const ROUND_NAME_LABELS = {
 
 const BYE_PLACEHOLDER = 'BYE';
 const BRACKET_RESULTS_BLOCKED_MESSAGE =
-  'No es posible generar un nuevo cuadro porque esta categoría ya tiene resultados registrados.';
+  'Esta categoría ya tiene resultados registrados. Marca la opción de reemplazo para generar un nuevo cuadro.';
 
 const MAX_CATEGORY_PARTICIPANTS =
   Number.isFinite(MAX_TOURNAMENT_CATEGORY_PLAYERS) && MAX_TOURNAMENT_CATEGORY_PLAYERS > 0
@@ -889,7 +889,7 @@ async function generateTournamentMatches(req, res) {
   }
 
   const hasRecordedResults = await hasCategoryMatchesWithResults(tournamentId, categoryId);
-  if (hasRecordedResults) {
+  if (hasRecordedResults && !replaceExisting) {
     return res.status(400).json({ message: BRACKET_RESULTS_BLOCKED_MESSAGE });
   }
 
@@ -1220,11 +1220,6 @@ async function autoGenerateTournamentBracket(req, res) {
     return res.status(400).json({
       message: `La categoría supera el máximo permitido de ${MAX_CATEGORY_PARTICIPANTS} jugadores.`,
     });
-  }
-
-  const hasRecordedResults = await hasCategoryMatchesWithResults(tournamentId, categoryId);
-  if (hasRecordedResults) {
-    return res.status(400).json({ message: BRACKET_RESULTS_BLOCKED_MESSAGE });
   }
 
   const rawConfiguredCapacity =
