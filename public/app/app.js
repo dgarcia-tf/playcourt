@@ -1,6 +1,7 @@
 import { createCalendarEventsModule } from './features/calendar/events.js';
 import { createCalendarModule } from './features/calendar/calendar.js';
 import { createChatModule } from './features/chat/chat.js';
+import { createCourtsModule } from './features/courts/courts.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -128,3 +129,100 @@ const {
   loadGeneralChat,
 } = chatModule;
 generalChatForm?.addEventListener('submit', handleNoticeSubmit);
+
+const courtsModule = createCourtsModule({
+  state,
+  request,
+  showGlobalMessage,
+  setStatusMessage,
+  formatDate,
+  formatDateInput,
+  formatTime,
+  formatTimeRangeLabel,
+  formatTimeInputValue,
+  formatCourtDisplay,
+  combineDateAndTime,
+  roundDateUpToInterval,
+  addMinutes,
+  startOfDay,
+  normalizeId,
+  getPlayerDisplayName,
+  getClubCourtNames,
+  hasCourtManagementAccess,
+  openModal,
+  closeModal,
+  buildMatchTeams,
+  formatDateTimeLocal,
+  courtReservationList,
+  courtReservationEmpty,
+  courtReservationForm,
+  courtReservationDateInput,
+  courtReservationTimeInput,
+  courtReservationDurationSelect,
+  courtReservationCourtSelect,
+  courtReservationNotesInput,
+  courtReservationStatus,
+  courtReservationSubmit,
+  courtAvailabilityDateInput,
+  courtAvailabilityList,
+  courtAvailabilityEmpty,
+  courtAdminDateInput,
+  courtAdminSchedule,
+  courtAdminEmpty,
+  courtAdminStatus,
+  courtBlockForm,
+  courtBlockContextSelect,
+  courtBlockEntitySelect,
+  courtBlockCourtsSelect,
+  courtBlockStartInput,
+  courtBlockEndInput,
+  courtBlockSubmit,
+  courtBlockStatus,
+  courtBlocksList,
+  courtBlocksEmpty,
+  playerCourtCalendarStatus,
+  COURT_RESERVATION_DEFAULT_DURATION,
+  COURT_RESERVATION_FIRST_SLOT_MINUTE,
+  COURT_RESERVATION_LAST_SLOT_END_MINUTE,
+  CALENDAR_TIME_SLOT_MINUTES,
+});
+
+const {
+  getReservationSlotStartsForDate,
+  getReservationSlotEnd,
+  formatReservationSlotLabel,
+  isValidReservationSlotStart,
+  getReservationMatch,
+  getReservationContext,
+  getReservationContextLabel,
+  getReservationParticipants,
+  formatReservationParticipantsLabel,
+  formatMatchPlayersLabel,
+  formatReservationPlayerOptionLabel,
+  getSelectableReservationPlayers,
+  ensureReservationPlayersLoaded,
+  renderCourtReservations,
+  populateCourtReservationCourts,
+  populateCourtReservationTimeOptions,
+  resetCourtReservationForm,
+  openReservationEditorFromCalendar,
+  cancelCourtReservation,
+  loadPlayerCourtData,
+  populateCourtBlockCourts,
+  populateCourtBlockEntities,
+  setCourtBlockDefaultRange,
+  ensureCourtBlockRangeDefaults,
+  renderCourtAvailability,
+  renderCourtAdminSchedule,
+  deleteCourtBlock,
+  refreshCourtAvailability,
+  loadAdminCourtData,
+  registerCalendarHooks: registerCourtCalendarHooks,
+} = courtsModule;
+registerCourtCalendarHooks({ renderPlayerCourtCalendar, loadCourtCalendarData });
+async 
+async  = {}
+async 
+async  = {}) {
+async ) {
+async  = {}) {
