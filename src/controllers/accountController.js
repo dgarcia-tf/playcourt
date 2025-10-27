@@ -280,6 +280,21 @@ function groupPayments(records) {
 async function getAccountSummary(req, res) {
   const userId = req.user.id;
 
+  const tournamentEnrollmentQuery = TournamentEnrollment.find({ user: userId })
+    .populate({
+      path: 'category',
+      select: 'name color status tournament',
+      populate: { path: 'tournament', select: 'name status' },
+    })
+    .populate('tournament', 'name status')
+    .sort({ createdAt: -1 })
+    .lean()
+    .catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error('No se pudieron cargar las inscripciones de torneos del usuario', error);
+      return [];
+    });
+
   const [
     leagueEnrollmentsRaw,
     tournamentEnrollmentsRaw,
