@@ -1698,6 +1698,16 @@ function createMatchScheduleSlotPicker({
   };
 
   const doesReservationCoverSlot = (reservation, timeValue) => {
+    if (!state.dateValue || !timeValue) {
+      return false;
+    }
+
+    const slotStart = combineDateAndTime(state.dateValue, timeValue);
+    if (!(slotStart instanceof Date) || Number.isNaN(slotStart.getTime())) {
+      return false;
+    }
+
+    const slotEnd = addMinutes(slotStart, COURT_RESERVATION_DEFAULT_DURATION);
     const reservationStart = parseDateSafe(reservation?.startsAt);
     if (!reservationStart) {
       return false;
