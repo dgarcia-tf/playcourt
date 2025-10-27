@@ -2115,7 +2115,7 @@ body.tournament-fullscreen-active {
   flex-direction: column;
   gap: 0.85rem;
   position: relative;
-  min-height: auto;
+  min-height: var(--bracket-match-height, auto);
   z-index: 1;
 }
 

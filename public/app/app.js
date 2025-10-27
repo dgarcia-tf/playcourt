@@ -11444,96 +11444,101 @@ function applyTournamentBracketRoundOffsets(grid) {
       );
     }
   );
+
   if (!roundLists.length) {
+    grid.style.removeProperty('--bracket-match-height');
     return;
   }
 
-  roundLists.forEach((roundList) => {
+  const baseRound = roundLists[0];
+  const baseMatches = Array.from(baseRound.querySelectorAll('.bracket-match')).filter(
+    (match) => match instanceof HTMLElement
+  );
+
+  const baseMatch = baseMatches[0];
+  if (!(baseMatch instanceof HTMLElement)) {
+    return;
+  }
+
+  const baseRect = baseMatch.getBoundingClientRect();
+  const baseHeight = baseRect?.height;
+
+  if (!Number.isFinite(baseHeight) || baseHeight <= 0) {
+    return;
+  }
+
+  let baseGap = null;
+  for (let index = 1; index < baseMatches.length; index += 1) {
+    const previousRect = baseMatches[index - 1].getBoundingClientRect();
+    const currentRect = baseMatches[index].getBoundingClientRect();
+    const spacing = currentRect.top - previousRect.bottom;
+
+    if (Number.isFinite(spacing) && spacing >= 0) {
+      baseGap = spacing;
+      break;
+    }
+  }
+
+  if (!Number.isFinite(baseGap) || baseGap < 0) {
+    let computedGap = null;
+
+    if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+      const computedStyle = window.getComputedStyle(baseRound);
+
+      if (computedStyle) {
+        const gapCandidates = [computedStyle.rowGap, computedStyle.gap];
+        for (let index = 0; index < gapCandidates.length; index += 1) {
+          const value = Number.parseFloat(gapCandidates[index]);
+          if (Number.isFinite(value) && value >= 0) {
+            computedGap = value;
+            break;
+          }
+        }
+      }
+    }
+
+    if (Number.isFinite(computedGap) && computedGap >= 0) {
+      baseGap = computedGap;
+    } else {
+      baseGap = 16;
+    }
+  }
+
+  const matchStride = baseHeight + baseGap;
+  grid.style.setProperty('--bracket-match-height', `${baseHeight}px`);
+
+  const computeOffset = (roundIndex) => {
+    if (roundIndex <= 0) {
+      return 0;
+    }
+    const offset = ((Math.pow(2, roundIndex) - 1) * matchStride) / 2;
+    return Math.max(0, offset);
+  };
+
+  const computeGap = (roundIndex) => {
+    if (roundIndex <= 0) {
+      return baseGap;
+    }
+    const desiredGap = Math.pow(2, roundIndex) * matchStride - baseHeight;
+    return Math.max(0, desiredGap);
+  };
+
+  roundLists.forEach((roundList, roundIndex) => {
     if (!(roundList instanceof HTMLElement)) {
       return;
     }
 
-    const baseGapRem = Number.parseFloat(roundList.dataset.baseMatchGapRem);
-    if (Number.isFinite(baseGapRem)) {
-      roundList.style.setProperty('--bracket-match-gap', `${baseGapRem}rem`);
-    } else {
-      roundList.style.removeProperty('--bracket-match-gap');
-    }
+    const offset = computeOffset(roundIndex);
+    const gap = computeGap(roundIndex);
 
-    const baseOffsetRem = Number.parseFloat(roundList.dataset.baseRoundOffsetRem);
-    if (Number.isFinite(baseOffsetRem)) {
-      if (baseOffsetRem !== 0) {
-        roundList.style.setProperty('--bracket-round-offset', `${baseOffsetRem}rem`);
-      } else {
-        roundList.style.removeProperty('--bracket-round-offset');
-      }
-    } else {
+    if (roundIndex === 0 && offset === 0) {
       roundList.style.removeProperty('--bracket-round-offset');
-      roundList.style.removeProperty('--bracket-match-gap');
+    } else {
+      roundList.style.setProperty('--bracket-round-offset', `${offset}px`);
     }
+
+    roundList.style.setProperty('--bracket-match-gap', `${gap}px`);
   });
-
-  for (let index = 1; index < roundLists.length; index += 1) {
-    const previousRound = roundLists[index - 1];
-    const currentRound = roundLists[index];
-
-    if (!(previousRound instanceof HTMLElement) || !(currentRound instanceof HTMLElement)) {
-      continue;
-    }
-
-    const previousMatches = Array.from(previousRound.querySelectorAll('.bracket-match'));
-    const currentMatches = Array.from(currentRound.querySelectorAll('.bracket-match'));
-
-    if (!previousMatches.length || !currentMatches.length) {
-      continue;
-    }
-
-    const currentFirstMatch = currentMatches[0];
-    if (!(currentFirstMatch instanceof HTMLElement)) {
-      continue;
-    }
-
-    const getGroupCenter = (matches, startIndex, groupSize) => {
-      if (!Array.isArray(matches) || matches.length === 0) {
-        return null;
-      }
-
-      const safeStart = Math.max(0, startIndex);
-      const size = Math.max(1, groupSize);
-      const group = matches.slice(safeStart, safeStart + size).filter((match) => match instanceof HTMLElement);
-
-      if (!group.length) {
-        return null;
-      }
-
-      const firstRect = group[0].getBoundingClientRect();
-      const lastRect = group[group.length - 1].getBoundingClientRect();
-
-      return (firstRect.top + lastRect.bottom) / 2;
-    };
-
-    const currentFirstRect = currentFirstMatch.getBoundingClientRect();
-    const currentFirstCenter = currentFirstRect.top + currentFirstRect.height / 2;
-
-    const groupSize = Math.max(1, Math.floor(previousMatches.length / currentMatches.length));
-    const firstGroupCenter = getGroupCenter(previousMatches, 0, groupSize);
-
-    if (Number.isFinite(firstGroupCenter)) {
-      const offsetPx = Math.max(0, firstGroupCenter - currentFirstCenter);
-      currentRound.style.setProperty('--bracket-round-offset', `${offsetPx}px`);
-    }
-
-    if (currentMatches.length > 1) {
-      const secondGroupStart = groupSize;
-      const secondGroupCenter = getGroupCenter(previousMatches, secondGroupStart, groupSize);
-
-      if (Number.isFinite(firstGroupCenter) && Number.isFinite(secondGroupCenter)) {
-        const desiredCenterDistance = Math.max(0, secondGroupCenter - firstGroupCenter);
-        const desiredGap = Math.max(0, desiredCenterDistance - currentFirstRect.height);
-        currentRound.style.setProperty('--bracket-match-gap', `${desiredGap}px`);
-      }
-    }
-  }
 }
 
 function scheduleTournamentBracketAlignment(section) {
