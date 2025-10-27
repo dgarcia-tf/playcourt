@@ -6889,7 +6889,7 @@ function updateTournamentPaymentMenuVisibility() {
       tournamentPaymentsSection.hidden = true;
     }
     if (adminUser && state.activeSection === 'section-tournament-payments') {
-      showSection('section-tournaments');
+      showSection('section-tournament-dashboard');
     }
   }
 }
