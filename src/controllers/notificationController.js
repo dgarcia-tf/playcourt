@@ -17,7 +17,7 @@ async function createNotification(req, res) {
     title,
     message,
     richMessage,
-    attachments = [],
+    attachments,
     channel,
     scheduledFor,
     recipients = [],
@@ -50,21 +50,53 @@ async function createNotification(req, res) {
     }
   }
 
-  const normalizedAttachments = (attachments || [])
-    .filter((attachment) => attachment && attachment.url)
-    .map((attachment) => ({
-      url: attachment.url,
-      description: attachment.description,
-      type: attachment.type || 'image',
-    }));
+  let sanitizedAttachments = [];
+  try {
+    sanitizedAttachments = normalizeAttachments(attachments);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+
+  let notificationAttachments = [];
+  try {
+    notificationAttachments = sanitizedAttachments.map((attachment) => {
+      if (attachment.dataUrl) {
+        throw new Error('Las notificaciones solo admiten adjuntos accesibles mediante una URL pública.');
+      }
+      if (!attachment.url) {
+        throw new Error('Cada adjunto debe incluir una URL pública válida.');
+      }
+
+      return {
+        url: attachment.url,
+        description: attachment.description,
+        type: attachment.type || 'image',
+      };
+    });
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+
+  let normalizedScheduledFor;
+  if (typeof scheduledFor !== 'undefined') {
+    if (scheduledFor === null || scheduledFor === '') {
+      normalizedScheduledFor = undefined;
+    } else {
+      const parsedScheduledFor = new Date(scheduledFor);
+      if (Number.isNaN(parsedScheduledFor.getTime())) {
+        return res.status(400).json({ message: 'La fecha de programación es inválida.' });
+      }
+      normalizedScheduledFor = parsedScheduledFor;
+    }
+  }
 
   const notification = await Notification.create({
     title,
     message,
     richMessage,
-    attachments: normalizedAttachments,
+    attachments: notificationAttachments,
     channel,
-    scheduledFor,
+    scheduledFor: normalizedScheduledFor,
     recipients,
     match: match ? match._id : undefined,
     metadata: normalizedMetadata,
@@ -141,7 +173,15 @@ async function updateNotificationStatus(req, res) {
   }
 
   if (typeof scheduledFor !== 'undefined') {
-    notification.scheduledFor = scheduledFor;
+    if (scheduledFor === null || scheduledFor === '') {
+      notification.scheduledFor = undefined;
+    } else {
+      const parsedScheduledFor = new Date(scheduledFor);
+      if (Number.isNaN(parsedScheduledFor.getTime())) {
+        return res.status(400).json({ message: 'La fecha de programación es inválida.' });
+      }
+      notification.scheduledFor = parsedScheduledFor;
+    }
   }
 
   notification.status = status;
