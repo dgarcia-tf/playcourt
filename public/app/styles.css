@@ -4632,38 +4632,40 @@ body.tournament-fullscreen-active {
 }
 
 .calendar-event--reservation {
-  background: rgba(37, 99, 235, 0.12);
-  border-color: rgba(37, 99, 235, 0.28);
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.32);
 }
 
 .calendar-event--match {
-  background: rgba(16, 185, 129, 0.14);
-  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.28);
 }
 .calendar-event--tournament-match {
-  background: rgba(16, 185, 129, 0.14);
-  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(249, 115, 22, 0.14);
+  border-color: rgba(249, 115, 22, 0.32);
 }
 
 .calendar-event--pre-reservation {
   border-style: dashed;
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.3);
 }
 
-.calendar-event--match.calendar-event--pre-reservation {
+.calendar-event--reservation.calendar-event--pre-reservation {
   background: rgba(16, 185, 129, 0.12);
   border-color: rgba(16, 185, 129, 0.32);
 }
+.calendar-event--match.calendar-event--pre-reservation {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.28);
+}
 .calendar-event--tournament-match.calendar-event--pre-reservation {
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.32);
 }
 
 .calendar-event--block {
-  background: rgba(245, 158, 11, 0.18);
-  border-color: rgba(245, 158, 11, 0.32);
-  color: #92400e;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.32);
+  color: #7f1d1d;
 }
 
 .calendar-event--spanning {
