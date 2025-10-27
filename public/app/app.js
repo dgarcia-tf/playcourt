@@ -2,6 +2,7 @@ import { createCalendarEventsModule } from './features/calendar/events.js';
 import { createCalendarModule } from './features/calendar/calendar.js';
 import { createChatModule } from './features/chat/chat.js';
 import { createCourtsModule } from './features/courts/courts.js';
+import { createLeaguesModule } from './features/leagues/leagues.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -226,3 +227,21 @@ async
 async  = {}) {
 async ) {
 async  = {}) {
+
+
+const {
+  ensureRankingFilters,
+  ensureCategoryFilters,
+  ensureLeaguePlayerFilters,
+  ensureLeaguePaymentFilters,
+  leagueHasEnrollmentFee,
+  getLeaguesWithEnrollmentFee,
+  formatLeagueOptionLabel,
+  compareLeaguesByHistory,
+  getLeagueById,
+  getLeagueCategories,
+  getLeagueIdForCategory,
+  invalidateLeaguePaymentsByCategory,
+  pruneLeagueCaches,
+} = createLeaguesModule({ state, normalizeId });
+
