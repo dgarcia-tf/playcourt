@@ -2320,28 +2320,60 @@ function resetCourtReservationForm() {
   setStatusMessage(courtReservationStatus, '', '');
 }
 
-function getPlayerDisplayName(player) {
-  if (!player) return 'Jugador';
+function resolvePlayerDisplayName(player, visited = new Set()) {
+  if (!player || visited.has(player)) {
+    return '';
+  }
+
+  if (typeof player === 'string') {
+    const trimmed = player.trim();
+    return trimmed;
+  }
+
+  if (typeof player !== 'object') {
+    return '';
+  }
+
+  visited.add(player);
+
   if (Array.isArray(player.players) && player.players.length) {
     const names = player.players
-      .map((member) => {
-        if (!member) return '';
-        if (typeof member === 'object') {
-          if (member.fullName) return member.fullName;
-          return '';
-        }
-        if (typeof member === 'string') {
-          return member;
-        }
-        return '';
-      })
+      .map((member) => resolvePlayerDisplayName(member, visited))
       .filter((name) => Boolean(name && name.trim()));
     if (names.length) {
       return names.join(' / ');
     }
   }
-  if (player.fullName) return player.fullName;
-  return 'Jugador';
+
+  const directFields = ['fullName', 'name', 'label', 'displayName'];
+  for (const field of directFields) {
+    const value = player[field];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  if (typeof player.email === 'string' && player.email.trim()) {
+    return player.email.trim();
+  }
+
+  const nestedFields = ['player', 'user', 'member', 'participant'];
+  for (const field of nestedFields) {
+    if (player[field]) {
+      const nestedName = resolvePlayerDisplayName(player[field], visited);
+      if (nestedName && nestedName.trim()) {
+        return nestedName;
+      }
+    }
+  }
+
+  visited.delete(player);
+  return '';
+}
+
+function getPlayerDisplayName(player) {
+  const name = resolvePlayerDisplayName(player);
+  return name && name.trim() ? name.trim() : 'Jugador';
 }
 
 function getPlayerInitial(player) {
