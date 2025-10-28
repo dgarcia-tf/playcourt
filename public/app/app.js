@@ -13,6 +13,7 @@ import { createTournamentsModule } from './features/tournaments/tournaments.js';
 import { createLeaguePaymentsModule } from './features/payments/league-payments.js';
 import { createProfileModule } from './features/profile/profile.js';
 import { createProfileSettingsModule } from './features/profile/settings.js';
+import { createFormComponents } from './components/forms.js';
 import { createAppState } from './core/state.js';
 import { createAuthModule } from './core/auth.js';
 import { createApiClient } from './core/api.js';
@@ -3571,4 +3572,66 @@ const {
   openConfirmationDialog,
   applyRichTextCommand,
 } = createDomUtils({ globalMessage, modalOverlay, modalBody, modalTitle });
+
+const {
+  openLeagueModal,
+  openPlayerModal,
+  openMatchModal,
+  openClubModal,
+  openRulesEditorModal,
+  openGenerateMatchesModal,
+  openResultModal,
+  openEnrollmentModal,
+  openSeasonModal,
+  populateMatchPlayerSelects,
+  createResultScoreboard,
+  formatMatchScore,
+  getMatchScores,
+  getMatchSets,
+  getResultConfirmation,
+  isUserMatchParticipant,
+} = createFormComponents({
+  state,
+  isAdmin,
+  normalizeId,
+  translateGender,
+  resolveLeague,
+  formatDateInput,
+  formatDate,
+  formatTime,
+  translateSchedule,
+  SCHEDULE_LABELS,
+  LEAGUE_STATUS_LABELS,
+  MAX_POSTER_SIZE,
+  request,
+  loadAllData,
+  setStatusMessage,
+  submitLeagueFormData,
+  submitPlayerFormData,
+  submitMatchFormData,
+  closeModal,
+  openModal,
+  showGlobalMessage,
+  toggleMembershipField,
+  STATUS_LABELS,
+  getClubMatchScheduleTemplates,
+  createMatchScheduleSlotPicker,
+  formatDateTimeLocal,
+  loadEnrollments,
+  loadEnrollmentRequests,
+  invalidateLeaguePaymentsByCategory,
+  reloadCategories,
+  extractPhotoFromForm,
+  renderClubProfile,
+  applyRichTextCommand,
+  sanitizeNoticeHtml,
+  getRegulationHtml,
+  entityHasRole,
+  DEFAULT_CATEGORY_MATCH_FORMAT,
+  MATCH_FORMAT_METADATA,
+  WEEKDAY_OPTIONS,
+  WEEKDAY_LABEL_BY_VALUE,
+  getPlayerDisplayName,
+  escapeHtml,
+});
 
