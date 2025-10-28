@@ -11,6 +11,8 @@ import { createNotificationsModule } from './features/notifications/notification
 import { createPushModule } from './features/notifications/push.js';
 import { createTournamentsModule } from './features/tournaments/tournaments.js';
 import { createLeaguePaymentsModule } from './features/payments/league-payments.js';
+import { createProfileModule } from './features/profile/profile.js';
+import { createProfileSettingsModule } from './features/profile/settings.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -3063,6 +3065,97 @@ const {
   disablePushNotifications,
 } = pushModule;
 
+const profileModule = createProfileModule({
+  state,
+  profileName,
+  profileAvatar,
+  profileForm,
+  profileIsMemberCheckbox,
+  profileMembershipWrapper,
+  profileMembershipNumberInput,
+  accountPhoto,
+  accountFullName,
+  accountEmail,
+  accountPhone,
+  accountMembershipStatus,
+  accountMembershipNumber,
+  accountMembershipNumberRow,
+  accountBirthDate,
+  accountShirtSize,
+  accountSchedule,
+  accountNotes,
+  accountPushStatus,
+  accountDashboardCard,
+  accountDashboard,
+  accountDashboardEmpty,
+  accountDashboardStatus,
+  accountDashboardRefresh,
+  accountEnrollmentsCount,
+  accountUpcomingCount,
+  accountRecentCount,
+  accountPaymentsCount,
+  accountPaymentsPaid,
+  accountPaymentsPending,
+  accountPaymentsTotal,
+  accountEnrollmentsList,
+  accountEnrollmentsEmpty,
+  accountUpcomingList,
+  accountUpcomingEmpty,
+  accountRecentList,
+  accountRecentEmpty,
+  accountPaymentsList,
+  accountPaymentsEmpty,
+  formatShortDate,
+  translateSchedule,
+  formatDateInput,
+  getPushStatusLabel,
+  formatCurrencyDisplay,
+  formatDate,
+  normalizeId,
+  getPlayerDisplayName,
+  createResultScoreboard,
+  formatMatchScore,
+  STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
+  setStatusMessage,
+  request,
+  persistSession,
+});
+const {
+  updateProfileCard,
+  fillProfileForm,
+  toggleMembershipField,
+  renderAccountSummary,
+  loadAccountSummary,
+} = profileModule;
+
+const profileSettingsModule = createProfileSettingsModule({
+  state,
+  profileForm,
+  profileEditButton,
+  profileCancelButton,
+  profileStatus,
+  profileIsMemberCheckbox,
+  profileMembershipWrapper,
+  profileMembershipNumberInput,
+  accountOverview,
+  setStatusMessage,
+  request,
+  extractPhotoFromForm,
+  persistSession,
+  showGlobalMessage,
+  fillProfileForm,
+  updateProfileCard,
+  toggleMembershipField,
+});
+const {
+  toggleProfileForm,
+  handleProfileMembershipChange,
+  handleProfileEditClick,
+  handleProfileCancelClick,
+  handleProfileFormSubmit,
+} = profileSettingsModule;
+
       clubLogoDisplay.textContent = name.charAt(0).toUpperCase();
     }
   }
@@ -4188,3 +4281,7 @@ function openClubModal() {
 
 
 
+profileIsMemberCheckbox?.addEventListener('change', handleProfileMembershipChange);
+profileEditButton?.addEventListener('click', handleProfileEditClick);
+profileCancelButton?.addEventListener('click', handleProfileCancelClick);
+profileForm?.addEventListener('submit', handleProfileFormSubmit);
