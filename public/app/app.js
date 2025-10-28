@@ -7,6 +7,8 @@ import { createLeagueCategoriesModule } from './features/leagues/categories.js';
 import { createLeagueRankingsModule } from './features/leagues/rankings.js';
 import { createMatchesModule } from './features/matches/matches.js';
 import { createMatchProposalsModule } from './features/matches/proposals.js';
+import { createNotificationsModule } from './features/notifications/notifications.js';
+import { createPushModule } from './features/notifications/push.js';
 import { createTournamentsModule } from './features/tournaments/tournaments.js';
 
 
@@ -2931,6 +2933,17 @@ function createRegulationEditor(
   const editor = document.createElement('div');
   editor.className = 'chat-editor-content';
   editor.contentEditable = 'true';
+const notificationsModule = createNotificationsModule({
+  state,
+  notificationsList,
+  notificationsMenuBadge,
+  metricNotifications,
+  formatDate,
+  normalizeId,
+  isAdmin,
+});
+const { renderNotifications, updateNotificationCounts } = notificationsModule;
+
   editor.setAttribute('role', 'textbox');
   editor.setAttribute('aria-multiline', 'true');
   editor.dataset.placeholder = placeholder;
@@ -3028,8 +3041,27 @@ function renderClubProfile(club = {}) {
     if (club.logo) {
       clubLogoDisplay.style.backgroundImage = `url(${club.logo})`;
       clubLogoDisplay.textContent = '';
-    } else {
-      clubLogoDisplay.style.backgroundImage = '';
+const pushModule = createPushModule({
+  state,
+  request,
+  showGlobalMessage,
+  accountPushStatus,
+  pushSettingsCard,
+  pushStatusText,
+  pushEnableButton,
+  pushDisableButton,
+  pushPermissionWarning,
+  pushUnsupportedWarning,
+});
+const {
+  getPushStatusLabel,
+  updatePushSettingsUI,
+  ensurePushServiceWorker,
+  syncPushSubscriptionState,
+  enablePushNotifications,
+  disablePushNotifications,
+} = pushModule;
+
       clubLogoDisplay.textContent = name.charAt(0).toUpperCase();
     }
   }
