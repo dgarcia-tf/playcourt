@@ -703,6 +703,2334 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
     nameSpan.className = 'bracket-player__name';
     if (player) {
       nameSpan.textContent = getPlayerDisplayName(player);
+function getPodiumEmoji(positionIndex) {
+  switch (positionIndex) {
+    case 0:
+      return '🥇';
+    case 1:
+      return '🥈';
+    case 2:
+      return '🥉';
+    default:
+      return '';
+  }
+}
+
+function normalizeMatchPlayer(player) {
+  if (!player) return null;
+  if (typeof player === 'object') return player;
+  if (typeof player === 'string') {
+    return { fullName: player };
+  }
+  return null;
+}
+
+function buildMatchTeams(players = []) {
+  if (!Array.isArray(players)) return [];
+
+  return players
+    .map((entry) => {
+      if (!entry) {
+        return [];
+      }
+
+      if (Array.isArray(entry.players) && entry.players.length) {
+        const members = entry.players
+          .map((member) => normalizeMatchPlayer(member))
+          .filter(Boolean);
+        if (members.length) {
+          return members;
+        }
+      }
+
+      const normalized = normalizeMatchPlayer(entry);
+      return normalized ? [normalized] : [];
+    })
+    .filter((team) => team.length);
+}
+
+function renderDashboardMatchList(
+  matches = [],
+  container,
+  emptyMessage,
+  { includeScope = false } = {}
+) {
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  const scheduledMatches = Array.isArray(matches)
+    ? matches.filter((match) => {
+        const status = (match?.status || '').toLowerCase();
+        const hasSchedule = Boolean(match?.scheduledAt);
+        return hasSchedule && (status === 'programado' || status === 'scheduled');
+      })
+    : [];
+
+  if (!scheduledMatches.length) {
+    container.innerHTML = `<li class="empty-state">${emptyMessage}</li>`;
+    return;
+  }
+
+  scheduledMatches.forEach((match) => {
+    const item = document.createElement('li');
+    item.classList.add('match-list-item');
+
+    const playerLabel = Array.isArray(match.players) && match.players.length
+      ? match.players.map((player) => getPlayerDisplayName(player)).join(' vs ')
+      : 'Jugadores por definir';
+
+    const accessibleTitle = document.createElement('strong');
+    accessibleTitle.className = 'sr-only';
+    accessibleTitle.textContent = playerLabel;
+    item.appendChild(accessibleTitle);
+
+    const teams = buildMatchTeams(match.players);
+
+    if (teams.length) {
+      const participants = document.createElement('div');
+      participants.className = 'match-list-item__participants';
+
+      teams.forEach((team, index) => {
+        if (index > 0) {
+          const separator = document.createElement('span');
+          separator.className = 'match-list-item__vs';
+          separator.textContent = 'vs';
+          participants.appendChild(separator);
+        }
+
+        const teamElement = document.createElement('div');
+        teamElement.className = 'match-list-item__team';
+
+        team.forEach((player) => {
+          const normalized = normalizeMatchPlayer(player);
+          if (!normalized) return;
+
+          const playerElement = document.createElement('div');
+          playerElement.className = 'match-list-item__player';
+          playerElement.title = getPlayerDisplayName(normalized);
+
+          playerElement.appendChild(createAvatarElement(normalized, { size: 'sm' }));
+
+          const name = document.createElement('span');
+          name.className = 'match-list-item__player-name';
+          name.textContent = getPlayerDisplayName(normalized);
+          playerElement.appendChild(name);
+
+          teamElement.appendChild(playerElement);
+        });
+
+        participants.appendChild(teamElement);
+      });
+
+      item.appendChild(participants);
+    } else {
+      const fallbackTitle = document.createElement('strong');
+      fallbackTitle.textContent = playerLabel;
+      item.appendChild(fallbackTitle);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'meta match-list-item__meta';
+
+    const dateLabel = formatDate(match.scheduledAt);
+    if (dateLabel) {
+      meta.appendChild(document.createElement('span')).textContent = dateLabel;
+    }
+
+    if (match.court) {
+      meta.appendChild(document.createElement('span')).textContent = `Pista ${match.court}`;
+    }
+
+    if (match.category?.name) {
+      const categoryTag = document.createElement('span');
+      categoryTag.className = 'tag match-category-tag';
+      categoryTag.textContent = match.category.name;
+      applyCategoryTagColor(categoryTag, match.category.color);
+      meta.appendChild(categoryTag);
+    }
+
+    if (includeScope) {
+      if (match.scope === 'tournament' && match.tournament?.name) {
+        const scopeTag = document.createElement('span');
+        scopeTag.className = 'tag';
+        scopeTag.textContent = match.tournament.name;
+        meta.appendChild(scopeTag);
+      } else if (match.scope === 'league' && match.league?.name) {
+        const scopeTag = document.createElement('span');
+        scopeTag.className = 'tag';
+        scopeTag.textContent = match.league.name;
+        meta.appendChild(scopeTag);
+      }
+    }
+
+    item.appendChild(meta);
+    container.appendChild(item);
+  });
+}
+
+function renderGlobalOverview(overview) {
+  state.globalOverview = overview || null;
+  const metrics = overview?.metrics || {};
+
+  if (globalLeaguesCount) {
+    globalLeaguesCount.textContent = String(metrics.leagues ?? 0);
+  }
+  if (globalTournamentsCount) {
+    globalTournamentsCount.textContent = String(metrics.tournaments ?? 0);
+  }
+  if (globalCategoriesCount) {
+    globalCategoriesCount.textContent = String(metrics.categories ?? 0);
+  }
+  if (globalCourtsCount) {
+    globalCourtsCount.textContent = String(metrics.courts ?? 0);
+  }
+
+  renderGlobalLeagues(overview?.leagues || []);
+  renderGlobalTournaments(overview?.tournaments || []);
+  renderGlobalUpcomingMatches(overview?.upcomingMatches || []);
+}
+
+function renderGlobalLeagues(leagues = []) {
+  if (!globalLeaguesList) return;
+  globalLeaguesList.innerHTML = '';
+
+  const list = Array.isArray(leagues) ? leagues : [];
+
+  if (!list.length) {
+    globalLeaguesList.innerHTML = '<li class="empty-state">No hay ligas registradas actualmente.</li>';
+    return;
+  }
+
+  list.forEach((league) => {
+    const leagueId = normalizeId(league);
+    const item = document.createElement('li');
+    item.classList.add('global-overview-item');
+
+    const content = document.createElement('div');
+    content.className = 'list-item__content';
+    item.appendChild(content);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'list-item-button';
+    if (leagueId) {
+      button.dataset.globalLeagueId = leagueId;
+      button.setAttribute(
+        'aria-label',
+        `Solicitar inscripción en la liga ${league.name || 'sin nombre'}`
+      );
+    } else {
+      button.disabled = true;
+    }
+    content.appendChild(button);
+
+    const title = document.createElement('strong');
+    title.textContent = league.name || 'Liga sin nombre';
+    button.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+
+    if (league.status) {
+      const statusLabel = LEAGUE_STATUS_LABELS[league.status] || league.status;
+      meta.appendChild(document.createElement('span')).textContent = statusLabel;
+    }
+
+    if (league.year) {
+      meta.appendChild(document.createElement('span')).textContent = `Temporada ${league.year}`;
+    }
+
+    const rangeLabel = formatDateRangeLabel(league.startDate, league.endDate);
+    if (rangeLabel) {
+      meta.appendChild(document.createElement('span')).textContent = rangeLabel;
+    }
+
+    const categoriesCount = Number(league.categoryCount ?? 0);
+    const activeCategories = Number(league.activeCategories ?? 0);
+    if (categoriesCount) {
+      const categoriesLabel =
+        activeCategories && activeCategories !== categoriesCount
+          ? `${categoriesCount} categorías (${activeCategories} activas)`
+          : `${categoriesCount} categorías`;
+      meta.appendChild(document.createElement('span')).textContent = categoriesLabel;
+    }
+
+    if (meta.childElementCount) {
+      button.appendChild(meta);
+    }
+
+    if (leagueId) {
+      const hint = document.createElement('span');
+      hint.className = 'note';
+      hint.textContent = 'Haz clic para inscribirte';
+      button.appendChild(hint);
+    }
+
+    const posterUrl = typeof league.poster === 'string' ? league.poster.trim() : '';
+    if (posterUrl) {
+      item.classList.add('list-item--with-poster');
+      const posterWrapper = document.createElement('div');
+      posterWrapper.className = 'list-item__poster';
+      const poster = document.createElement('img');
+      poster.className = 'list-item__poster-image';
+      poster.src = posterUrl;
+      poster.alt = league.name ? `Cartel de la liga ${league.name}` : 'Cartel de la liga';
+      poster.loading = 'lazy';
+      posterWrapper.appendChild(poster);
+      item.appendChild(posterWrapper);
+    }
+
+    globalLeaguesList.appendChild(item);
+  });
+}
+
+function renderGlobalTournaments(tournaments = []) {
+  if (!globalTournamentsList) return;
+  globalTournamentsList.innerHTML = '';
+
+  const list = Array.isArray(tournaments) ? tournaments : [];
+
+  if (!list.length) {
+    globalTournamentsList.innerHTML = '<li class="empty-state">No hay torneos programados.</li>';
+    return;
+  }
+
+  list.forEach((tournament) => {
+    const tournamentId = normalizeId(tournament);
+    const item = document.createElement('li');
+    item.classList.add('global-overview-item');
+
+    const content = document.createElement('div');
+    content.className = 'list-item__content';
+    item.appendChild(content);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'list-item-button';
+    if (tournamentId) {
+      button.dataset.globalTournamentId = tournamentId;
+      button.setAttribute(
+        'aria-label',
+        `Inscribirse en el torneo ${tournament.name || 'sin nombre'}`
+      );
+    } else {
+      button.disabled = true;
+    }
+    content.appendChild(button);
+
+    const title = document.createElement('strong');
+    title.textContent = tournament.name || 'Torneo sin nombre';
+    button.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+
+    if (tournament.status) {
+      const statusLabel = TOURNAMENT_STATUS_LABELS[tournament.status] || tournament.status;
+      meta.appendChild(document.createElement('span')).textContent = statusLabel;
+    }
+
+    const rangeLabel = formatDateRangeLabel(tournament.startDate, tournament.endDate);
+    if (rangeLabel) {
+      meta.appendChild(document.createElement('span')).textContent = rangeLabel;
+    }
+
+    const categoriesCount = Number(tournament.categoryCount ?? 0);
+    if (categoriesCount) {
+      meta.appendChild(document.createElement('span')).textContent =
+        categoriesCount === 1 ? '1 categoría' : `${categoriesCount} categorías`;
+    }
+
+    if (tournament.registrationCloseDate) {
+      meta.appendChild(document.createElement('span')).textContent = `Inscripciones hasta ${formatDateOnly(tournament.registrationCloseDate)}`;
+    }
+
+    if (meta.childElementCount) {
+      button.appendChild(meta);
+    }
+
+    if (tournamentId) {
+      const hint = document.createElement('span');
+      hint.className = 'note';
+      hint.textContent = 'Haz clic para inscribirte';
+      button.appendChild(hint);
+    }
+
+    const posterUrl = typeof tournament.poster === 'string' ? tournament.poster.trim() : '';
+    if (posterUrl) {
+      item.classList.add('list-item--with-poster');
+      const posterWrapper = document.createElement('div');
+      posterWrapper.className = 'list-item__poster';
+      const poster = document.createElement('img');
+      poster.className = 'list-item__poster-image';
+      poster.src = posterUrl;
+      poster.alt = tournament.name
+        ? `Cartel del torneo ${tournament.name}`
+        : 'Cartel del torneo';
+      poster.loading = 'lazy';
+      posterWrapper.appendChild(poster);
+      item.appendChild(posterWrapper);
+    }
+
+    globalTournamentsList.appendChild(item);
+  });
+}
+
+function renderGlobalUpcomingMatches(matches = []) {
+  renderDashboardMatchList(matches, globalUpcomingMatchesList, 'No hay partidos programados.', {
+    includeScope: true,
+  });
+}
+
+function getMatchDayKey(match) {
+  if (!match || !match.scheduledAt) {
+    return '';
+  }
+
+  const date = new Date(match.scheduledAt);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function hasActiveLeagues() {
+  return Array.isArray(state.leagues)
+    ? state.leagues.some((league) => league?.status !== 'cerrada')
+    : false;
+}
+
+function resolveLeague(reference) {
+  if (!reference) return null;
+  const leagueId = normalizeId(reference);
+  if (leagueId) {
+    const fromState = state.leagues.find((league) => normalizeId(league) === leagueId);
+    if (fromState) {
+      return fromState;
+    }
+  }
+  if (typeof reference === 'object') {
+    return reference;
+  }
+  return null;
+}
+
+function getExpirationWarningMessage(match) {
+  const deadlineDate = getMatchExpirationDate(match);
+  if (!deadlineDate) {
+    return null;
+  }
+
+  const deadlineLabel = formatExpirationDeadline(deadlineDate);
+  if (!deadlineLabel) {
+    return null;
+  }
+
+  return `Aviso: disponen de ${MATCH_EXPIRATION_DAYS} días desde la generación del partido. Fecha límite: ${deadlineLabel}. Si nadie confirma ni juega antes de esa fecha, el partido no sumará puntos. Si solo un jugador confirma la fecha y la otra parte no responde, se asignará 6-0 6-0 a quien confirmó.`;
+}
+
+function scheduleOnNextAnimationFrame(callback) {
+  if (typeof callback !== 'function') {
+    return;
+  }
+
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(callback);
+  } else {
+    setTimeout(callback, 16);
+  }
+}
+
+function setCalendarViewButtonState(buttons, activeView) {
+  if (!buttons) return;
+  buttons.forEach((button) => {
+    const view =
+      button.dataset.globalCalendarView ||
+      button.dataset.calendarView ||
+      button.dataset.courtCalendarView ||
+      '';
+    const isActive = view === activeView;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function bindCalendarEvent(element, matchId) {
+  if (!element || !matchId) return;
+  element.dataset.matchId = matchId;
+  element.tabIndex = 0;
+  element.setAttribute('role', 'button');
+  element.classList.add('calendar-event--actionable');
+  element.addEventListener('click', () => {
+    openCalendarMatch(matchId);
+  });
+  element.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openCalendarMatch(matchId);
+    }
+  });
+}
+
+function bracketMatchesHaveRecordedResults(matches = []) {
+  return matches.some((match) => {
+    if (!match || typeof match !== 'object') {
+      return false;
+    }
+
+    if (typeof match.resultStatus === 'string' && match.resultStatus !== 'sin_resultado') {
+      return true;
+    }
+
+    if (match.status === 'completado') {
+      return true;
+    }
+
+    if (match.result && match.result.winner) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
+function buildDoublesPairMap(pairs = []) {
+  const map = new Map();
+  (Array.isArray(pairs) ? pairs : []).forEach((pair) => {
+    const normalized = normalizeDoublesPair(pair);
+    if (normalized && normalized.id) {
+      map.set(normalized.id, normalized);
+    }
+  });
+  return map;
+}
+
+function cloneNormalizedDoublesPair(pair) {
+  if (!pair || typeof pair !== 'object') {
+    return null;
+  }
+
+  const players = Array.isArray(pair.players)
+    ? pair.players.map((member) => (member && typeof member === 'object' ? { ...member } : member))
+    : [];
+
+  return { ...pair, players };
+}
+
+function normalizeDoublesPair(pair) {
+  if (!pair || typeof pair !== 'object') {
+    return null;
+  }
+
+  const normalized = { ...pair };
+  const id = normalizeId(pair);
+  if (id) {
+    normalized.id = id;
+    if (!normalized._id) {
+      normalized._id = id;
+    }
+  }
+
+  const members = Array.isArray(pair.players)
+    ? pair.players
+        .map((member) => {
+          if (!member) {
+            return null;
+          }
+          if (typeof member === 'object') {
+            const memberId = normalizeId(member);
+            return {
+              ...member,
+              id: memberId || member.id || member._id || '',
+              _id: memberId || member._id || member.id || '',
+            };
+          }
+          if (typeof member === 'string') {
+            const trimmed = member.trim();
+            if (!trimmed) {
+              return null;
+            }
+            return { id: trimmed, _id: trimmed, fullName: trimmed };
+          }
+          return null;
+        })
+        .filter(Boolean)
+    : [];
+
+  normalized.players = members;
+
+  if (!normalized.fullName || !normalized.fullName.trim()) {
+    const names = members
+      .map((member) => {
+        if (!member || typeof member !== 'object') {
+          return '';
+        }
+        if (typeof member.fullName === 'string' && member.fullName.trim()) {
+          return member.fullName.trim();
+        }
+        if (typeof member.email === 'string' && member.email.trim()) {
+          return member.email.trim();
+        }
+        return '';
+      })
+      .filter((name) => Boolean(name && name.trim()));
+
+    if (names.length) {
+      normalized.fullName = names.join(' / ');
+    }
+  }
+
+  return normalized;
+}
+
+function matchesRequireDoublesPairs(matches = []) {
+  return matches.some((match) => {
+    if (!match || match.playerType !== 'TournamentDoublesPair') {
+      return false;
+    }
+
+    const players = Array.isArray(match.players) ? match.players : [];
+    if (!players.length) {
+      return false;
+    }
+
+    return players.some((player) => {
+      if (!player) {
+        return false;
+      }
+      if (typeof player === 'object') {
+        return !Array.isArray(player.players) || !player.players.length;
+      }
+      return true;
+    });
+  });
+}
+
+async function ensurePlayersLoaded() {
+  if (Array.isArray(state.players) && state.players.length) {
+    return state.players;
+  }
+
+  try {
+    const players = await request('/players');
+    state.players = Array.isArray(players) ? players : [];
+    return state.players;
+  } catch (error) {
+    showGlobalMessage('No fue posible cargar la lista de jugadores.', 'error');
+    throw error;
+  }
+}
+
+function determineInitialBracketRoundIndex(roundEntries = []) {
+  if (!Array.isArray(roundEntries) || roundEntries.length === 0) {
+    return 0;
+  }
+
+  for (let index = 0; index < roundEntries.length; index += 1) {
+    const roundMatches = Array.isArray(roundEntries[index]?.matches)
+      ? roundEntries[index].matches
+      : [];
+
+    const hasPendingMatch = roundMatches.some(
+      (match) => !bracketMatchesHaveRecordedResults([match])
+    );
+
+    if (hasPendingMatch) {
+      return index;
+    }
+  }
+
+  return roundEntries.length - 1;
+}
+
+function buildSeedLookup(category) {
+  const seeds = Array.isArray(category?.seeds) ? category.seeds : [];
+  const bySeed = new Map();
+  const byPlayer = new Map();
+
+  seeds.forEach((entry) => {
+    const playerId = normalizeId(entry?.player);
+    const seedNumber = Number(entry?.seedNumber);
+    if (playerId && Number.isFinite(seedNumber) && seedNumber > 0) {
+      if (!bySeed.has(seedNumber)) {
+        bySeed.set(seedNumber, playerId);
+      }
+      if (!byPlayer.has(playerId)) {
+        byPlayer.set(playerId, seedNumber);
+      }
+    }
+  });
+
+  return { bySeed, byPlayer };
+}
+
+function collectEnrollmentShirtSizes(enrollment) {
+  const sizes = new Set();
+  const pushSize = (value) => {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (normalized) {
+      sizes.add(normalized);
+    }
+  };
+
+  pushSize(enrollment?.shirtSize);
+
+  if (Array.isArray(enrollment?.shirtSizes)) {
+    enrollment.shirtSizes.forEach(pushSize);
+  }
+
+  const categories = Array.isArray(enrollment?.tournamentCategories)
+    ? enrollment.tournamentCategories
+    : [];
+  categories.forEach((category) => pushSize(category?.shirtSize));
+
+  pushSize(enrollment?.user?.shirtSize);
+
+  return Array.from(sizes.values());
+}
+
+function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
+  const {
+    roundIndex = 0,
+    totalRounds = 1,
+    slotIndex = 0,
+    isPlaceholder = false,
+    matchNumber = '',
+    placeholderLabels = [],
+    useConnectors = true,
+  } = options;
+
+  const matchId = match ? normalizeId(match) : '';
+  const editable = Boolean(matchId) && isAdmin();
+
+  const card = document.createElement('div');
+  card.className = 'bracket-match';
+
+  if (matchId) {
+    card.dataset.matchId = matchId;
+  }
+
+  const displayMatchNumber = match?.matchNumber || matchNumber;
+  if (displayMatchNumber) {
+    card.dataset.matchNumber = `${displayMatchNumber}`;
+  }
+
+  const previousMatchIds = Array.isArray(match?.previousMatches)
+    ? match.previousMatches
+        .map((previous) => normalizeId(previous))
+        .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
+    : [];
+  if (previousMatchIds.length) {
+    card.dataset.previousMatchIds = previousMatchIds.join(',');
+  }
+
+  const placeholderSources = [];
+  if (Array.isArray(placeholderLabels)) {
+    placeholderSources.push(...placeholderLabels);
+  }
+  if (typeof match?.placeholderA === 'string') {
+    placeholderSources.push(match.placeholderA);
+  }
+  if (typeof match?.placeholderB === 'string') {
+    placeholderSources.push(match.placeholderB);
+  }
+
+  const placeholderMatchNumbers = new Set();
+  placeholderSources.forEach((text) => {
+    if (typeof text !== 'string' || !/partido/i.test(text)) {
+      return;
+    }
+    const numberRegex = /\d+/g;
+    numberRegex.lastIndex = 0;
+    let matchResult = null;
+    while ((matchResult = numberRegex.exec(text))) {
+      const [numberValue] = matchResult;
+      if (numberValue) {
+        placeholderMatchNumbers.add(numberValue);
+      }
+    }
+  });
+  if (placeholderMatchNumbers.size) {
+    card.dataset.previousMatchNumbers = Array.from(placeholderMatchNumbers).join(',');
+  }
+
+  if (useConnectors && roundIndex > 0) {
+    card.classList.add('bracket-match--has-prev');
+  }
+  if (useConnectors && roundIndex < totalRounds - 1) {
+    card.classList.add('bracket-match--has-next');
+    card.classList.add(slotIndex % 2 === 0 ? 'bracket-match--top' : 'bracket-match--bottom');
+  }
+  if (isPlaceholder) {
+    card.classList.add('bracket-match--placeholder');
+  }
+
+  const header = document.createElement('div');
+  header.className = 'bracket-match__header';
+
+  const label = document.createElement('span');
+  label.className = 'bracket-match__label';
+  label.textContent = displayMatchNumber ? `Partido ${displayMatchNumber}` : 'Partido';
+  header.appendChild(label);
+
+  const statusValue = match?.status || 'pendiente';
+  const pendingLabel = formatTournamentMatchStatusLabel('pendiente') || 'Pendiente';
+  const statusLabel =
+    !isPlaceholder && typeof statusValue === 'string'
+      ? formatTournamentMatchStatusLabel(statusValue) || statusValue
+      : pendingLabel;
+  const statusSpan = document.createElement('span');
+  statusSpan.className = 'bracket-match__status';
+  statusSpan.textContent = statusLabel || pendingLabel;
+  header.appendChild(statusSpan);
+
+  card.appendChild(header);
+
+  const playersContainer = document.createElement('div');
+  playersContainer.className = 'bracket-match__players';
+
+  const players = Array.isArray(match?.players) ? match.players : [];
+  const winnerId = resolveWinnerId(match);
+
+  const sets = getMatchSets(match);
+  const scoreParticipants = getMatchScores(match);
+  const participantById = new Map();
+  scoreParticipants.forEach((participant) => {
+    if (participant?.id) {
+      participantById.set(participant.id, participant);
+    }
+  });
+
+  const canRenderInlineScores =
+    !isPlaceholder &&
+    sets.length > 0 &&
+    players.every((player) => {
+      if (!player) {
+        return false;
+      }
+      const playerId = normalizeId(player);
+      return Boolean(playerId && participantById.has(playerId));
+    });
+
+  for (let index = 0; index < 2; index += 1) {
+    const player = players[index];
+    const wrapper = document.createElement('div');
+    wrapper.className = 'bracket-player';
+
+    const seedSpan = document.createElement('span');
+    seedSpan.className = 'bracket-player__seed';
+
+    const rawPlaceholderLabel =
+      placeholderLabels[index] || (index === 0 ? match?.placeholderA : match?.placeholderB) || '';
+    const displayPlaceholder = rawPlaceholderLabel && rawPlaceholderLabel.trim() ? rawPlaceholderLabel : 'Pendiente';
+
+    if (player) {
+      const playerId = normalizeId(player);
+      const seedNumber = seedByPlayer.get(playerId);
+      seedSpan.textContent = seedNumber ? `#${seedNumber}` : '';
+    } else {
+      seedSpan.textContent = '';
+    }
+    wrapper.appendChild(seedSpan);
+
+    wrapper.appendChild(createBracketPlayerAvatar(player, player ? '' : displayPlaceholder));
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'bracket-player__name';
+    if (player) {
+      nameSpan.textContent = getPlayerDisplayName(player);
+    } else {
+      nameSpan.textContent = displayPlaceholder;
+      wrapper.classList.add('bracket-player--placeholder');
+      nameSpan.classList.add('bracket-player__name--placeholder');
+    }
+    wrapper.appendChild(nameSpan);
+
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'bracket-player__status';
+
+    let playerId = '';
+    if (player) {
+      playerId = normalizeId(player);
+      if (winnerId && playerId === winnerId) {
+        wrapper.classList.add('bracket-player--winner');
+        statusSpan.textContent = 'Ganador';
+      } else if (winnerId) {
+        wrapper.classList.add('bracket-player--eliminated');
+        statusSpan.textContent = 'Eliminado';
+      }
+    }
+
+    wrapper.appendChild(statusSpan);
+
+    if (player && playerId && canRenderInlineScores) {
+      const participant = participantById.get(playerId) || null;
+      if (participant) {
+        wrapper.classList.add('bracket-player--with-score');
+        wrapper.style.setProperty('--player-sets-count', Math.max(sets.length, 1));
+
+        const scoresContainer = document.createElement('div');
+        scoresContainer.className = 'bracket-player__scores';
+
+        sets.forEach((set, setIndex) => {
+          const scoreSpan = document.createElement('span');
+          scoreSpan.className = 'bracket-player__score';
+
+          const scoreValue = Number(set.scores?.[participant.id]);
+          const displayValue = Number.isFinite(scoreValue) && scoreValue >= 0 ? Math.floor(scoreValue) : '';
+          scoreSpan.textContent = displayValue;
+
+          if (set.tieBreak) {
+            scoreSpan.classList.add('bracket-player__score--tiebreak');
+            scoreSpan.setAttribute('aria-label', `Super tie-break set ${setIndex + 1}: ${displayValue}`);
+          } else if (displayValue !== '') {
+            scoreSpan.setAttribute('aria-label', `Set ${setIndex + 1}: ${displayValue}`);
+          }
+
+          if (winnerId && participant.id === winnerId) {
+            scoreSpan.classList.add('bracket-player__score--winner');
+          }
+
+          scoresContainer.appendChild(scoreSpan);
+        });
+
+        wrapper.appendChild(scoresContainer);
+      }
+    }
+
+    playersContainer.appendChild(wrapper);
+  }
+
+  card.appendChild(playersContainer);
+
+  const scoreboard = !isPlaceholder && !canRenderInlineScores ? createResultScoreboard(match) : null;
+  if (scoreboard) {
+    card.appendChild(scoreboard);
+  } else if (match?.result?.score) {
+    const scoreMeta = document.createElement('div');
+    scoreMeta.className = 'bracket-match__meta';
+    scoreMeta.textContent = match.result.score;
+    card.appendChild(scoreMeta);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'bracket-match__meta';
+  if (match?.scheduledAt) {
+    const dateSpan = document.createElement('span');
+    dateSpan.textContent = formatDate(match.scheduledAt);
+    meta.appendChild(dateSpan);
+  }
+  if (match?.court) {
+    const courtSpan = document.createElement('span');
+    courtSpan.textContent = `Pista: ${match.court}`;
+    meta.appendChild(courtSpan);
+  }
+  if (match?.result?.notes) {
+    const notesSpan = document.createElement('span');
+    notesSpan.textContent = match.result.notes;
+    meta.appendChild(notesSpan);
+  }
+
+  if (meta.childElementCount) {
+    card.appendChild(meta);
+  }
+
+  if (editable) {
+    const actions = document.createElement('div');
+    actions.className = 'bracket-match__actions';
+
+    const scheduleButton = document.createElement('button');
+    scheduleButton.type = 'button';
+    const hasSchedule = Boolean(match?.scheduledAt);
+    scheduleButton.className = hasSchedule
+      ? 'secondary bracket-match__action'
+      : 'primary bracket-match__action';
+    scheduleButton.dataset.action = 'schedule-tournament-match';
+    scheduleButton.dataset.matchId = matchId;
+    const bracketTournamentId =
+      normalizeId(match?.tournament) || state.selectedBracketTournamentId || '';
+    const bracketCategoryId =
+      normalizeId(match?.category) || state.selectedBracketCategoryId || '';
+    scheduleButton.dataset.tournamentId = bracketTournamentId;
+    scheduleButton.dataset.categoryId = bracketCategoryId;
+    scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
+
+    actions.appendChild(scheduleButton);
+
+    const resultWinnerId = normalizeId(match?.result?.winner);
+    const resultScore = typeof match?.result?.score === 'string' ? match.result.score.trim() : '';
+    const hasResult = Boolean(resultWinnerId || resultScore);
+    const resultButton = document.createElement('button');
+    resultButton.type = 'button';
+    resultButton.className = hasResult ? 'ghost bracket-match__action' : 'secondary bracket-match__action';
+    resultButton.dataset.action = 'record-tournament-result';
+    resultButton.dataset.matchId = matchId;
+    resultButton.dataset.tournamentId = bracketTournamentId;
+    resultButton.dataset.categoryId = bracketCategoryId;
+    resultButton.textContent = hasResult ? 'Editar resultado' : 'Registrar resultado';
+
+    actions.appendChild(resultButton);
+    card.appendChild(actions);
+  }
+
+  return card;
+}
+
+function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIndex = 0 } = {}) {
+  const sections = Array.isArray(roundSections)
+    ? roundSections.filter((section) => section instanceof HTMLElement)
+    : [];
+
+  if (!(grid instanceof HTMLElement) || sections.length <= 1) {
+    return null;
+  }
+
+  const nav = document.createElement('div');
+  nav.className = 'bracket-round-nav';
+  nav.setAttribute('aria-label', 'Navegación de rondas del cuadro');
+
+  const prevButton = document.createElement('button');
+  prevButton.type = 'button';
+  prevButton.className = 'bracket-round-nav__control bracket-round-nav__control--prev';
+  prevButton.setAttribute('aria-label', 'Ronda anterior');
+  prevButton.title = 'Ronda anterior';
+  prevButton.innerHTML = '<span aria-hidden="true">‹</span>';
+
+  const nextButton = document.createElement('button');
+  nextButton.type = 'button';
+  nextButton.className = 'bracket-round-nav__control bracket-round-nav__control--next';
+  nextButton.setAttribute('aria-label', 'Ronda siguiente');
+  nextButton.title = 'Ronda siguiente';
+  nextButton.innerHTML = '<span aria-hidden="true">›</span>';
+
+  const buttonList = document.createElement('div');
+  buttonList.className = 'bracket-round-nav__list';
+
+  nav.appendChild(prevButton);
+  nav.appendChild(buttonList);
+  nav.appendChild(nextButton);
+
+  const totalRounds = sections.length;
+  const useFocusMode = totalRounds > 5;
+  grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
+
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const roundButtons = sections.map((section, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'bracket-round-nav__button';
+    const rawLabel = section.dataset.roundName ||
+      section.querySelector('.bracket-round__title')?.textContent;
+    const label = typeof rawLabel === 'string' && rawLabel.trim() ? rawLabel.trim() : `Ronda ${
+      index + 1
+    }`;
+    button.textContent = label;
+    button.setAttribute('aria-label', label);
+    button.dataset.roundIndex = String(index);
+    button.addEventListener('click', () => {
+      setActiveRound(index);
+    });
+    buttonList.appendChild(button);
+    return button;
+  });
+
+  let activeRoundIndex = clamp(initialRoundIndex, 0, totalRounds - 1);
+
+  const setActiveRound = (index) => {
+    const clampedIndex = clamp(index, 0, totalRounds - 1);
+    activeRoundIndex = clampedIndex;
+    grid.dataset.activeRoundIndex = String(clampedIndex);
+    nav.dataset.activeRoundIndex = String(clampedIndex);
+
+    sections.forEach((section, sectionIndex) => {
+      const isActive = sectionIndex === clampedIndex;
+      const isPrevious = sectionIndex === clampedIndex - 1;
+      const isNext = sectionIndex === clampedIndex + 1;
+      const shouldHide = useFocusMode && Math.abs(sectionIndex - clampedIndex) > 1;
+
+      section.classList.toggle('bracket-round--active', isActive);
+      section.classList.toggle('bracket-round--previous', isPrevious);
+      section.classList.toggle('bracket-round--next', isNext);
+      section.classList.toggle('bracket-round--hidden', shouldHide);
+    });
+
+    roundButtons.forEach((button, buttonIndex) => {
+      const isActive = buttonIndex === clampedIndex;
+      button.classList.toggle('bracket-round-nav__button--active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      button.setAttribute('aria-current', isActive ? 'true' : 'false');
+    });
+
+    prevButton.disabled = clampedIndex <= 0;
+    nextButton.disabled = clampedIndex >= totalRounds - 1;
+
+    scheduleOnNextAnimationFrame(() => applyTournamentBracketRoundOffsets(grid));
+  };
+
+  prevButton.addEventListener('click', () => {
+    setActiveRound(activeRoundIndex - 1);
+  });
+
+  nextButton.addEventListener('click', () => {
+    setActiveRound(activeRoundIndex + 1);
+  });
+
+  nav.addEventListener('keydown', (event) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const buttonTarget = target ? target.closest('.bracket-round-nav__button') : null;
+    if (!buttonTarget) {
+      return;
+    }
+
+    let handled = false;
+    if (event.key === 'ArrowLeft') {
+      setActiveRound(activeRoundIndex - 1);
+      handled = true;
+    } else if (event.key === 'ArrowRight') {
+      setActiveRound(activeRoundIndex + 1);
+      handled = true;
+    } else if (event.key === 'Home') {
+      setActiveRound(0);
+      handled = true;
+    } else if (event.key === 'End') {
+      setActiveRound(totalRounds - 1);
+      handled = true;
+    }
+
+    if (handled) {
+      event.preventDefault();
+      const activeButton = roundButtons[activeRoundIndex];
+      if (activeButton) {
+        activeButton.focus();
+      }
+    }
+  });
+
+  setActiveRound(activeRoundIndex);
+
+  return nav;
+}
+
+function updateBracketSizeSelect(category) {
+  if (!tournamentBracketSizeSelect) {
+    return;
+  }
+
+  if (!tournamentBracketSizeSelect.childElementCount) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Selecciona un tamaño';
+    tournamentBracketSizeSelect.appendChild(placeholder);
+    TOURNAMENT_BRACKET_SIZES.forEach((size) => {
+      const option = document.createElement('option');
+      option.value = String(size);
+      option.textContent = `${size} jugadores`;
+      tournamentBracketSizeSelect.appendChild(option);
+    });
+  }
+
+  const drawSize = Number(category?.drawSize);
+  if (TOURNAMENT_BRACKET_SIZES.includes(drawSize)) {
+    tournamentBracketSizeSelect.value = String(drawSize);
+  } else {
+    tournamentBracketSizeSelect.value = '';
+  }
+
+  tournamentBracketSizeSelect.disabled = !isAdmin();
+
+  if (tournamentBracketSizeWrapper) {
+    tournamentBracketSizeWrapper.hidden = !isAdmin();
+  }
+}
+
+function updateEnrollmentCategoryOptions() {
+  if (!tournamentEnrollmentCategorySelect) return;
+
+  const tournamentId = state.selectedEnrollmentTournamentId;
+  const categories = getTournamentCategories(tournamentId);
+
+  tournamentEnrollmentCategorySelect.innerHTML = '';
+  const allOption = document.createElement('option');
+  allOption.value = TOURNAMENT_ENROLLMENT_ALL_OPTION;
+  allOption.textContent = 'Todos los jugadores';
+  tournamentEnrollmentCategorySelect.appendChild(allOption);
+
+  if (!tournamentId) {
+    tournamentEnrollmentCategorySelect.disabled = true;
+    state.selectedEnrollmentCategoryId = TOURNAMENT_ENROLLMENT_ALL_OPTION;
+    renderTournamentEnrollments([], { loading: false });
+    return;
+  }
+
+  categories
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+    .forEach((category) => {
+      const categoryId = normalizeId(category);
+      if (!categoryId) {
+        return;
+      }
+      const option = document.createElement('option');
+      option.value = categoryId;
+      option.textContent = category.menuTitle || category.name || 'Categoría';
+      tournamentEnrollmentCategorySelect.appendChild(option);
+    });
+
+  tournamentEnrollmentCategorySelect.disabled = false;
+
+  const availableIds = [TOURNAMENT_ENROLLMENT_ALL_OPTION].concat(
+    categories.map((category) => normalizeId(category)).filter(Boolean)
+  );
+
+  if (!availableIds.includes(state.selectedEnrollmentCategoryId)) {
+    state.selectedEnrollmentCategoryId = TOURNAMENT_ENROLLMENT_ALL_OPTION;
+    clearTournamentEnrollmentFilters();
+  }
+
+  tournamentEnrollmentCategorySelect.value = state.selectedEnrollmentCategoryId;
+  refreshTournamentEnrollments();
+}
+
+function updateMatchCategoryOptions() {
+  if (!tournamentMatchCategorySelect) return;
+
+  const tournamentId = state.selectedMatchTournamentId;
+  const categories = getTournamentCategories(tournamentId);
+
+  tournamentMatchCategorySelect.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = categories.length ? 'Selecciona una categoría' : 'Sin categorías disponibles';
+  tournamentMatchCategorySelect.appendChild(placeholder);
+
+  if (!tournamentId || !categories.length) {
+    tournamentMatchCategorySelect.disabled = true;
+    state.selectedMatchCategoryId = '';
+    renderTournamentMatches([], { loading: false });
+    return;
+  }
+
+  categories
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+    .forEach((category) => {
+      const categoryId = normalizeId(category);
+      if (!categoryId) {
+        return;
+      }
+      const option = document.createElement('option');
+      option.value = categoryId;
+      option.textContent = category.menuTitle || category.name || 'Categoría';
+      tournamentMatchCategorySelect.appendChild(option);
+    });
+
+  tournamentMatchCategorySelect.disabled = false;
+
+  const availableIds = categories.map((category) => normalizeId(category)).filter(Boolean);
+  if (!availableIds.includes(state.selectedMatchCategoryId)) {
+    state.selectedMatchCategoryId = availableIds[0] || '';
+  }
+
+  tournamentMatchCategorySelect.value = state.selectedMatchCategoryId || '';
+
+  if (state.selectedMatchCategoryId) {
+    refreshTournamentMatches();
+  } else {
+    renderTournamentMatches([], { loading: false });
+  }
+}
+
+async function submitTournamentMatchSchedule({
+  form,
+  tournamentId,
+  categoryId,
+  matchId,
+  statusElement,
+  submitButton,
+} = {}) {
+  if (!form || !tournamentId || !categoryId || !matchId) {
+    return false;
+  }
+
+  const normalizedTournamentId = normalizeId(tournamentId);
+  const normalizedCategoryId = normalizeId(categoryId);
+  const normalizedMatchId = normalizeId(matchId);
+
+  if (!normalizedTournamentId || !normalizedCategoryId || !normalizedMatchId) {
+    setStatusMessage(statusElement, 'error', 'Selecciona un torneo y partido válidos.');
+    return false;
+  }
+
+  const formData = new FormData(form);
+  const scheduledAtRaw = (formData.get('scheduledAt') || '').toString();
+  const statusValue = (formData.get('status') || '').toString();
+  const notifyPlayers = formData.get('notifyPlayers') === 'true';
+  const courtValue = (formData.get('court') || '').toString().trim();
+
+  if (scheduledAtRaw) {
+    const scheduledDate = new Date(scheduledAtRaw);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      setStatusMessage(statusElement, 'error', 'Selecciona una fecha y hora válidas.');
+      return false;
+    }
+    if (!isValidReservationSlotStart(scheduledDate)) {
+      setStatusMessage(
+        statusElement,
+        'error',
+        'Selecciona un horario válido de 75 minutos entre las 08:30 y las 22:15.'
+      );
+      return false;
+    }
+  }
+
+  if (!scheduledAtRaw && ['programado', 'confirmado'].includes(statusValue)) {
+    setStatusMessage(
+      statusElement,
+      'error',
+      'Asigna día y hora antes de marcar el partido como programado o confirmado.'
+    );
+    return false;
+  }
+
+  const payload = {
+    scheduledAt: scheduledAtRaw || null,
+  };
+
+  if (statusValue) {
+    payload.status = statusValue;
+  }
+
+  payload.court = courtValue || null;
+
+  if (notifyPlayers) {
+    payload.notifyPlayers = true;
+  }
+
+  setStatusMessage(statusElement, 'info', 'Guardando horario del partido...');
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    const updated = await request(
+      `/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}/matches/${normalizedMatchId}`,
+      {
+        method: 'PATCH',
+        body: payload,
+      }
+    );
+
+    await applyTournamentMatchUpdate(updated);
+
+    const listKey = `${normalizedTournamentId}:${normalizedCategoryId}`;
+    if (state.tournamentMatches instanceof Map && state.tournamentMatches.has(listKey)) {
+      renderTournamentMatches(state.tournamentMatches.get(listKey) || []);
+    }
+
+    const bracketKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
+    if (bracketKey && state.tournamentBracketMatches instanceof Map) {
+      const matches = state.tournamentBracketMatches.get(bracketKey);
+      if (matches) {
+        renderTournamentBracket(matches);
+      }
+    }
+
+    setStatusMessage(statusElement, 'success', 'Horario guardado correctamente.');
+    showGlobalMessage('Horario del partido actualizado.', 'success');
+    return true;
+  } catch (error) {
+    setStatusMessage(statusElement, 'error', error.message);
+    return false;
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
+  }
+}
+
+async function submitTournamentMatchResult({
+  form,
+  tournamentId,
+  categoryId,
+  matchId,
+  statusElement,
+  submitButton,
+} = {}) {
+  if (!form || !tournamentId || !categoryId || !matchId) {
+    return false;
+  }
+
+  const normalizedTournamentId = normalizeId(tournamentId);
+  const normalizedCategoryId = normalizeId(categoryId);
+  const normalizedMatchId = normalizeId(matchId);
+
+  if (!normalizedTournamentId || !normalizedCategoryId || !normalizedMatchId) {
+    setStatusMessage(statusElement, 'error', 'Selecciona un torneo y partido válidos.');
+    return false;
+  }
+
+  const formData = new FormData(form);
+  const winnerId = (formData.get('winner') || '').toString().trim();
+  const scoreValue = (formData.get('score') || '').toString().trim();
+  const notesValue = (formData.get('notes') || '').toString().trim();
+
+  if (!winnerId) {
+    setStatusMessage(statusElement, 'error', 'Selecciona el ganador del partido.');
+    return false;
+  }
+
+  const payload = { winner: winnerId };
+  if (scoreValue) {
+    payload.score = scoreValue;
+  }
+  if (notesValue) {
+    payload.notes = notesValue;
+  }
+
+  setStatusMessage(statusElement, 'info', 'Guardando resultado del partido...');
+  if (submitButton) {
+    submitButton.disabled = true;
+  }
+
+  try {
+    const updated = await request(
+      `/tournaments/${normalizedTournamentId}/categories/${normalizedCategoryId}/matches/${normalizedMatchId}/result/approve`,
+      {
+        method: 'POST',
+        body: payload,
+      }
+    );
+
+    await applyTournamentMatchUpdate(updated);
+
+    const listKey = `${normalizedTournamentId}:${normalizedCategoryId}`;
+    const hasMatchCache =
+      state.tournamentMatches instanceof Map && state.tournamentMatches.has(listKey);
+    if (hasMatchCache) {
+      renderTournamentMatches(state.tournamentMatches.get(listKey) || []);
+    }
+
+    const bracketKey = getTournamentBracketCacheKey(normalizedTournamentId, normalizedCategoryId);
+    const hasBracketCache =
+      Boolean(bracketKey) &&
+      state.tournamentBracketMatches instanceof Map &&
+      state.tournamentBracketMatches.has(bracketKey);
+    if (hasBracketCache) {
+      renderTournamentBracket(state.tournamentBracketMatches.get(bracketKey) || []);
+    }
+
+    const matchesActive =
+      hasMatchCache &&
+      state.selectedMatchTournamentId === normalizedTournamentId &&
+      state.selectedMatchCategoryId === normalizedCategoryId;
+    if (matchesActive) {
+      await refreshTournamentMatches({ forceReload: true });
+    } else if (hasMatchCache) {
+      state.tournamentMatches.delete(listKey);
+      recomputeTournamentOrderOfPlayDays(normalizedTournamentId);
+    }
+
+    const bracketActive =
+      hasBracketCache &&
+      state.selectedBracketTournamentId === normalizedTournamentId &&
+      state.selectedBracketCategoryId === normalizedCategoryId;
+    if (bracketActive) {
+      await refreshTournamentBracketMatches({ forceReload: true });
+    } else if (hasBracketCache) {
+      state.tournamentBracketMatches.delete(bracketKey);
+    }
+
+    setStatusMessage(statusElement, 'success', 'Resultado guardado correctamente.');
+    showGlobalMessage('Resultado del partido actualizado.', 'success');
+    return true;
+  } catch (error) {
+    setStatusMessage(statusElement, 'error', error.message);
+    return false;
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
+  }
+}
+
+async function loadGlobalOverview({ force = true } = {}) {
+  if (!state.token) return;
+
+  if (!force && state.globalOverview) {
+    renderGlobalOverview(state.globalOverview);
+    return;
+  }
+
+  try {
+    const overview = await request('/dashboard/overview');
+    renderGlobalOverview(overview);
+  } catch (error) {
+    renderGlobalOverview(null);
+    showGlobalMessage(error.message, 'error');
+  }
+}
+
+async function loadLeagueDashboard({ force = true } = {}) {
+  if (!state.token) return;
+
+  if (!force && state.leagueDashboard) {
+    renderLeagueDashboard(state.leagueDashboard);
+    return;
+  }
+
+  try {
+    const summary = await request('/dashboard/leagues');
+    renderLeagueDashboard(summary);
+  } catch (error) {
+    renderLeagueDashboard(null);
+    showGlobalMessage(error.message, 'error');
+  }
+}
+
+async function loadTournamentDashboard({ force = true } = {}) {
+  if (!state.token) return;
+
+  if (!force && state.tournamentDashboard) {
+    renderTournamentDashboard(state.tournamentDashboard);
+    return;
+  }
+
+  try {
+    const summary = await request('/dashboard/tournaments');
+    renderTournamentDashboard(summary);
+  } catch (error) {
+    renderTournamentDashboard(null);
+    showGlobalMessage(error.message, 'error');
+  }
+}
+
+function renderLeagueDashboard(summary) {
+  const previousSummary = state.leagueDashboard;
+  const nextSummary = summary || null;
+  const isSameReference = previousSummary && nextSummary && previousSummary === nextSummary;
+
+  state.leagueDashboard = nextSummary;
+  if (!isSameReference) {
+    state.leagueDashboardPlayersPage = 1;
+  }
+  const metrics = summary?.metrics || {};
+
+  if (leagueMetricPlayers) {
+    leagueMetricPlayers.textContent = String(metrics.players ?? 0);
+  }
+  if (leagueMetricCategories) {
+    leagueMetricCategories.textContent = String(metrics.categories ?? 0);
+  }
+  if (leagueMetricUpcoming) {
+    leagueMetricUpcoming.textContent = String(metrics.upcomingMatches ?? 0);
+  }
+
+  const leagueGroups = Array.isArray(summary?.leagueRankings) ? summary.leagueRankings : [];
+  const activeLeaguesValue = Number(metrics.activeLeagues);
+  const activeLeaguesCount = Number.isFinite(activeLeaguesValue)
+    ? activeLeaguesValue
+    : leagueGroups.length;
+
+  renderLeagueActiveSummary(leagueGroups, activeLeaguesCount);
+  renderLeagueRankingCards(leagueGroups);
+  renderLeagueEnrolledPlayers(nextSummary?.enrolledPlayers || []);
+  renderDashboardMatchList(
+    summary?.upcomingMatches || [],
+    leagueUpcomingMatchesList,
+    'Todavía no hay partidos programados.'
+  );
+}
+
+function renderLeagueActiveSummary(leagueGroups = [], activeLeagues = 0) {
+  if (!leagueActiveSummary) return;
+
+  const parsedActive = Number(activeLeagues);
+  const activeCount = Number.isFinite(parsedActive) ? parsedActive : 0;
+  if (leagueActiveCount) {
+    leagueActiveCount.textContent = String(activeCount);
+  }
+
+  if (leagueActiveList) {
+    leagueActiveList.innerHTML = '';
+
+    const seen = new Set();
+    const leagues = [];
+
+    leagueGroups.forEach((group) => {
+      const categories = Array.isArray(group?.categories) ? group.categories : [];
+      if (!categories.length) {
+        return;
+      }
+      const leagueId = normalizeId(group?.league);
+      if (!leagueId || seen.has(leagueId)) {
+        return;
+      }
+      seen.add(leagueId);
+      leagues.push(group.league);
+    });
+
+    if (!leagues.length) {
+      const empty = document.createElement('span');
+      empty.className = 'empty-state';
+      empty.textContent = 'No hay ligas activas registradas.';
+      leagueActiveList.appendChild(empty);
+    } else {
+      leagues
+        .sort((a, b) => a?.name?.localeCompare?.(b?.name || '') || 0)
+        .forEach((league) => {
+          const leagueId = normalizeId(league);
+          if (!leagueId) {
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            tag.textContent = league?.name || 'Liga';
+            leagueActiveList.appendChild(tag);
+            return;
+          }
+
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'tag tag--link';
+          button.textContent = league?.name || 'Liga';
+          button.dataset.leagueId = leagueId;
+          button.title = `Ver ${league?.name || 'liga'}`;
+          leagueActiveList.appendChild(button);
+        });
+    }
+  }
+
+  leagueActiveSummary.hidden = false;
+}
+
+function createLeagueRankingCategoryCard(categorySummary) {
+  const card = document.createElement('div');
+  card.className = 'collection-card';
+
+  const header = document.createElement('div');
+  header.className = 'collection-card__header';
+
+  const title = document.createElement('div');
+  title.className = 'collection-card__title';
+  if (categorySummary.category?.color) {
+    const indicator = createCategoryColorIndicator(
+      categorySummary.category.color,
+      categorySummary.category?.name
+    );
+    if (indicator) {
+      title.appendChild(indicator);
+    }
+  }
+  title.appendChild(document.createTextNode(categorySummary.category?.name || 'Categoría'));
+  header.appendChild(title);
+
+  if (categorySummary.league?.name) {
+    const subtitle = document.createElement('span');
+    subtitle.className = 'collection-card__subtitle';
+    subtitle.textContent = categorySummary.league.name;
+    header.appendChild(subtitle);
+  }
+
+  card.appendChild(header);
+
+  const meta = document.createElement('div');
+  meta.className = 'collection-card__meta';
+  const playerCount = Number(categorySummary.playerCount ?? 0);
+  const upcomingCount = Number(categorySummary.upcomingMatches ?? 0);
+  meta.textContent = `${playerCount} jugadores · ${upcomingCount} partidos próximos`;
+  card.appendChild(meta);
+
+  const ranking = Array.isArray(categorySummary.ranking)
+    ? categorySummary.ranking.slice(0, 3)
+    : [];
+
+  if (!ranking.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'Sin resultados registrados.';
+    card.appendChild(empty);
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'collection-card__list';
+
+    ranking.forEach((entry, index) => {
+      const listItem = document.createElement('li');
+      listItem.className = 'collection-card__list-item';
+
+      const position = document.createElement('span');
+      position.className = 'collection-card__position';
+      const podiumEmoji = getPodiumEmoji(index);
+      position.textContent = podiumEmoji ? `${index + 1}. ${podiumEmoji}` : `${index + 1}.`;
+      listItem.appendChild(position);
+
+      const playerInfo = document.createElement('div');
+      playerInfo.className = 'collection-card__player';
+      const name = document.createElement('strong');
+      name.textContent = entry.player?.fullName || 'Jugador';
+      playerInfo.appendChild(name);
+      const stats = document.createElement('span');
+      stats.textContent = `${entry.points ?? 0} pts · ${entry.wins ?? 0} victorias`;
+      playerInfo.appendChild(stats);
+      listItem.appendChild(playerInfo);
+
+      const matchesPlayed = document.createElement('span');
+      matchesPlayed.className = 'collection-card__points';
+      matchesPlayed.textContent = `${entry.matchesPlayed ?? 0} jugados`;
+      listItem.appendChild(matchesPlayed);
+
+      list.appendChild(listItem);
+    });
+
+    card.appendChild(list);
+  }
+
+  return card;
+}
+
+function renderLeagueRankingCards(groups = []) {
+  if (!leagueRankingCards) return;
+  leagueRankingCards.innerHTML = '';
+
+  if (!Array.isArray(groups) || !groups.length) {
+    leagueRankingCards.innerHTML = '<p class="empty-state">Aún no hay categorías disponibles.</p>';
+    return;
+  }
+
+  let hasContent = false;
+
+  groups.forEach((group) => {
+    const categories = Array.isArray(group?.categories) ? group.categories : [];
+    if (!categories.length) {
+      return;
+    }
+
+    const wrapper = document.createElement('section');
+    wrapper.className = 'league-ranking-group';
+
+    const header = document.createElement('div');
+    header.className = 'league-ranking-group__header';
+
+    const title = document.createElement('h4');
+    title.className = 'league-ranking-group__title';
+    title.textContent = group?.league?.name || 'Liga';
+    header.appendChild(title);
+
+    const meta = document.createElement('span');
+    meta.className = 'league-ranking-group__meta';
+    const totalCategories = categories.length;
+    meta.textContent = `${totalCategories} ${
+      totalCategories === 1 ? 'categoría' : 'categorías'
+    }`;
+    header.appendChild(meta);
+
+    wrapper.appendChild(header);
+
+    const categoryContainer = document.createElement('div');
+    categoryContainer.className = 'league-ranking-group__categories';
+
+    categories.forEach((categorySummary) => {
+      const card = createLeagueRankingCategoryCard({
+        ...categorySummary,
+        league: categorySummary.league || group.league,
+      });
+      categoryContainer.appendChild(card);
+    });
+
+    wrapper.appendChild(categoryContainer);
+    leagueRankingCards.appendChild(wrapper);
+    hasContent = true;
+  });
+
+  if (!hasContent) {
+    leagueRankingCards.innerHTML = '<p class="empty-state">Aún no hay categorías disponibles.</p>';
+  }
+}
+
+function renderLeagueEnrolledPagination(totalPages, currentPage) {
+  if (!leagueEnrolledPagination) return;
+
+  if (!Number.isFinite(totalPages) || totalPages <= 1) {
+    leagueEnrolledPagination.innerHTML = '';
+    leagueEnrolledPagination.hidden = true;
+    return;
+  }
+
+  leagueEnrolledPagination.hidden = false;
+  leagueEnrolledPagination.innerHTML = '';
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'league-enrolled-pagination__button';
+    button.dataset.page = String(page);
+    button.textContent = String(page);
+    if (page === currentPage) {
+      button.classList.add('is-active');
+      button.setAttribute('aria-current', 'page');
+    }
+    leagueEnrolledPagination.appendChild(button);
+  }
+}
+
+function renderLeagueEnrolledPlayers(entries = []) {
+  if (!leagueEnrolledPlayersList) return;
+
+  const players = Array.isArray(entries) ? entries : [];
+  const pageSize = LEAGUE_ENROLLED_PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(players.length / pageSize));
+
+  const desiredPage = Number(state.leagueDashboardPlayersPage) || 1;
+  const currentPage = Math.min(Math.max(desiredPage, 1), totalPages);
+  state.leagueDashboardPlayersPage = currentPage;
+
+  leagueEnrolledPlayersList.innerHTML = '';
+
+  if (!players.length) {
+    leagueEnrolledPlayersList.innerHTML =
+      '<li class="empty-state">Aún no hay jugadores inscritos.</li>';
+    if (leagueEnrolledPagination) {
+      leagueEnrolledPagination.hidden = true;
+      leagueEnrolledPagination.innerHTML = '';
+    }
+    return;
+  }
+
+  const startIndex = (currentPage - 1) * pageSize;
+  const pagePlayers = players.slice(startIndex, startIndex + pageSize);
+
+  pagePlayers.forEach((entry) => {
+    const item = document.createElement('li');
+    item.className = 'league-enrolled-item';
+
+    const playerInfo = document.createElement('div');
+    playerInfo.className = 'league-enrolled-player';
+    const player = entry?.player || {};
+    playerInfo.appendChild(createAvatarElement(player, { size: 'sm' }));
+
+    const name = document.createElement('strong');
+    name.textContent = getPlayerDisplayName(player);
+    playerInfo.appendChild(name);
+
+    item.appendChild(playerInfo);
+
+    if (entry?.category?.name) {
+      const categoryTag = document.createElement('span');
+      categoryTag.className = 'tag league-enrolled-category';
+      categoryTag.textContent = entry.category.name;
+      applyCategoryTagColor(categoryTag, entry.category.color, { backgroundAlpha: 0.22 });
+      item.appendChild(categoryTag);
+    }
+
+    leagueEnrolledPlayersList.appendChild(item);
+  });
+
+  renderLeagueEnrolledPagination(totalPages, currentPage);
+}
+
+function renderLeagues(leagues = []) {
+  if (!leaguesList) return;
+  const { filtersReset } = pruneLeagueCaches();
+  updateLeaguePaymentControls({ resetSelection: filtersReset });
+  leaguesList.innerHTML = '';
+
+  const list = Array.isArray(leagues) ? leagues.slice() : [];
+  if (!list.length) {
+    leaguesList.innerHTML =
+      '<li class="empty-state">Crea una liga para iniciar una nueva temporada.</li>';
+    state.selectedLeagueId = '';
+    renderLeagueDetail();
+    updateLeagueActionAvailability();
+    updateCategoryFilterControls();
+    updateRankingFilterControls();
+    return;
+  }
+
+  const sorted = list.sort((a, b) => {
+    if (a.status !== b.status) {
+      return a.status === 'activa' ? -1 : 1;
+    }
+    const yearA = Number(a.year) || 0;
+    const yearB = Number(b.year) || 0;
+    if (yearA !== yearB) {
+      return yearB - yearA;
+    }
+    const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
+    const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
+    return dateB - dateA;
+  });
+
+  const availableIds = sorted
+    .map((league) => normalizeId(league))
+    .filter((value) => Boolean(value));
+
+  if (!availableIds.includes(state.selectedLeagueId)) {
+    state.selectedLeagueId = availableIds[0] || '';
+  }
+
+  const activeId = state.selectedLeagueId;
+  const admin = isAdmin();
+
+  sorted.forEach((league) => {
+    const leagueId = normalizeId(league);
+    if (!leagueId) {
+      return;
+    }
+
+    const item = document.createElement('li');
+    if (leagueId === activeId) {
+      item.classList.add('is-active');
+    }
+    item.dataset.leagueId = leagueId;
+
+    const content = document.createElement('div');
+    content.className = 'list-item__content';
+    item.appendChild(content);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'list-item-button';
+    button.dataset.leagueId = leagueId;
+    content.appendChild(button);
+
+    const title = document.createElement('strong');
+    title.textContent = league.name || 'Liga';
+    button.appendChild(title);
+
+    const statusMeta = document.createElement('div');
+    statusMeta.className = 'meta meta-league';
+    if (league.year) {
+      statusMeta.appendChild(document.createElement('span')).textContent = `Temporada ${league.year}`;
+    }
+    const statusValue = league.status || 'activa';
+    const statusBadge = document.createElement('span');
+    statusBadge.className = `tag league-status league-status--${statusValue}`;
+    statusBadge.textContent = LEAGUE_STATUS_LABELS[statusValue] || LEAGUE_STATUS_LABELS.activa;
+    statusMeta.appendChild(statusBadge);
+    button.appendChild(statusMeta);
+
+    const dateParts = [];
+    if (league.startDate) {
+      dateParts.push(`Inicio: ${formatDate(league.startDate)}`);
+    }
+    if (league.endDate) {
+      dateParts.push(`Fin: ${formatDate(league.endDate)}`);
+    }
+    if (league.status === 'cerrada' && league.closedAt) {
+      dateParts.push(`Cierre: ${formatDate(league.closedAt)}`);
+    }
+    if (dateParts.length) {
+      const datesMeta = document.createElement('div');
+      datesMeta.className = 'meta meta-league-dates';
+      datesMeta.textContent = dateParts.join(' · ');
+      button.appendChild(datesMeta);
+    }
+
+
+
+    const categories = Array.isArray(league.categories) ? league.categories : [];
+    if (categories.length) {
+      const categoryList = document.createElement('ul');
+      categoryList.className = 'inline-list league-category-list';
+      categories.forEach((category) => {
+        const chip = document.createElement('li');
+        chip.textContent = category.name || 'Categoría';
+        categoryList.appendChild(chip);
+      });
+      button.appendChild(categoryList);
+    } else {
+      const emptyMeta = document.createElement('div');
+      emptyMeta.className = 'meta note';
+      emptyMeta.textContent = 'Sin categorías asociadas por el momento.';
+      button.appendChild(emptyMeta);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'actions league-actions';
+    let hasActions = false;
+
+    if (admin) {
+      const editButton = document.createElement('button');
+      editButton.type = 'button';
+      editButton.className = 'secondary';
+      editButton.textContent = 'Editar';
+      editButton.dataset.action = 'edit';
+      editButton.dataset.leagueId = leagueId;
+      actions.appendChild(editButton);
+
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'danger';
+      deleteButton.textContent = 'Eliminar';
+      deleteButton.dataset.action = 'delete';
+      deleteButton.dataset.leagueId = leagueId;
+      actions.appendChild(deleteButton);
+
+      hasActions = true;
+    } else {
+      const access = getLeagueCategoryAccessSnapshot(leagueId);
+      const isUserEnrolled = access.enrolled.length > 0;
+      const hasPending = access.pending.length > 0;
+      const hasAvailable = access.available.length > 0;
+
+      if (isUserEnrolled) {
+        const enrolledBadge = document.createElement('span');
+        enrolledBadge.className = 'tag tag--success';
+        enrolledBadge.textContent = 'Inscrito';
+        actions.appendChild(enrolledBadge);
+        hasActions = true;
+      } else {
+        if (hasPending) {
+          const pendingBadge = document.createElement('span');
+          pendingBadge.className = 'tag';
+          pendingBadge.textContent =
+            access.pending.length === 1 ? 'Solicitud enviada' : 'Solicitudes enviadas';
+          actions.appendChild(pendingBadge);
+          hasActions = true;
+        }
+
+        if (hasAvailable) {
+          const requestButton = document.createElement('button');
+          requestButton.type = 'button';
+          requestButton.className = 'primary';
+          requestButton.dataset.action = 'request-league-enrollment';
+          requestButton.textContent = 'Solicitar inscripción';
+          requestButton.dataset.leagueId = leagueId;
+          actions.appendChild(requestButton);
+          hasActions = true;
+        } else if (state.categoriesLoaded && access.hasAnyCategory && !hasPending) {
+          const note = document.createElement('span');
+          note.className = 'note';
+          note.textContent = 'No hay categorías disponibles para tu perfil.';
+          actions.appendChild(note);
+          hasActions = true;
+        }
+      }
+    }
+
+    if (hasActions) {
+      content.appendChild(actions);
+    }
+
+    leaguesList.appendChild(item);
+  });
+
+  updateCategoryFilterControls();
+  updateRankingFilterControls({ renderOnChange: false });
+  renderLeagueDetail();
+  updateLeagueActionAvailability();
+
+  if (
+    state.selectedLeagueId &&
+    !(state.leagueDetails instanceof Map && state.leagueDetails.has(state.selectedLeagueId))
+  ) {
+    refreshLeagueDetail(state.selectedLeagueId).catch((error) => {
+      console.warn('No se pudo cargar el detalle de la liga', error);
+    });
+  }
+}
+
+function renderLeagueDetail() {
+  if (!leagueDetailBody) return;
+
+  const leagueId = state.selectedLeagueId || '';
+  updateLeagueActionAvailability();
+
+  if (!leagueId) {
+    if (leagueDetailTitle) {
+      leagueDetailTitle.textContent = 'Detalle de la liga';
+    }
+    if (leagueDetailSubtitle) {
+      leagueDetailSubtitle.textContent = 'Selecciona una liga para ver la información ampliada.';
+    }
+    leagueDetailBody.innerHTML =
+      '<p class="empty-state">Selecciona una liga de la lista para ver sus detalles.</p>';
+    return;
+  }
+
+  const baseLeague = getLeagueById(leagueId);
+  const detail = state.leagueDetails instanceof Map ? state.leagueDetails.get(leagueId) : null;
+  const info = detail || baseLeague;
+
+  if (!info) {
+    if (leagueDetailTitle) {
+      leagueDetailTitle.textContent = 'Detalle de la liga';
+    }
+    if (leagueDetailSubtitle) {
+      leagueDetailSubtitle.textContent = 'Selecciona una liga para ver la información ampliada.';
+    }
+    leagueDetailBody.innerHTML =
+      '<p class="empty-state">No se encontró información de la liga seleccionada.</p>';
+    return;
+  }
+
+  if (leagueDetailTitle) {
+    leagueDetailTitle.textContent = info.name || 'Liga';
+  }
+
+  const subtitleParts = [];
+  const seasonValue = detail?.year ?? baseLeague?.year;
+  if (seasonValue) {
+    subtitleParts.push(`Temporada ${seasonValue}`);
+  }
+  const rangeLabel = formatDateRangeLabel(
+    detail?.startDate ?? baseLeague?.startDate,
+    detail?.endDate ?? baseLeague?.endDate
+  );
+  if (rangeLabel) {
+    subtitleParts.push(rangeLabel);
+  }
+  if (leagueDetailSubtitle) {
+    leagueDetailSubtitle.textContent = subtitleParts.length
+      ? subtitleParts.join(' · ')
+      : 'Liga del club';
+  }
+
+  leagueDetailBody.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+  const layout = document.createElement('div');
+  layout.className = 'league-detail__layout';
+  const content = document.createElement('div');
+  content.className = 'league-detail__content';
+  layout.appendChild(content);
+
+  const posterSource =
+    typeof detail?.poster === 'string' && detail.poster.trim()
+      ? detail.poster.trim()
+      : typeof baseLeague?.poster === 'string' && baseLeague.poster.trim()
+      ? baseLeague.poster.trim()
+      : '';
+  if (posterSource) {
+    const poster = document.createElement('img');
+    poster.className = 'league-detail__poster';
+    poster.src = posterSource;
+    poster.alt = info.name ? `Cartel de la liga ${info.name}` : 'Cartel de la liga';
+    layout.appendChild(poster);
+  }
+
+  const header = document.createElement('div');
+  header.className = 'league-detail__header';
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+
+  const statusValue = detail?.status || baseLeague?.status || 'activa';
+  const statusTag = document.createElement('span');
+  statusTag.className = `tag league-status league-status--${statusValue}`;
+  statusTag.textContent = LEAGUE_STATUS_LABELS[statusValue] || LEAGUE_STATUS_LABELS.activa;
+  meta.appendChild(statusTag);
+
+
+
+  const registrationClose = detail?.registrationCloseDate || baseLeague?.registrationCloseDate;
+
+
+  header.appendChild(meta);
+
+  const descriptionText = detail?.description || baseLeague?.description;
+
+
+  content.appendChild(header);
+
+  const metaItems = [];
+  const startValue = detail?.startDate || baseLeague?.startDate;
+  const endValue = detail?.endDate || baseLeague?.endDate;
+  if (startValue) {
+    metaItems.push(['Inicio', formatShortDate(startValue)]);
+  }
+  if (endValue) {
+    metaItems.push(['Finalización', formatShortDate(endValue)]);
+  }
+  if (registrationClose) {
+    metaItems.push(['Cierre de inscripciones', formatShortDate(registrationClose)]);
+  }
+  const closedAtValue = detail?.closedAt || baseLeague?.closedAt;
+  if (closedAtValue) {
+    metaItems.push(['Cierre administrativo', formatShortDate(closedAtValue)]);
+  }
+  const enrollmentFeeValue = detail?.enrollmentFee ?? baseLeague?.enrollmentFee;
+  if (enrollmentFeeValue !== undefined && enrollmentFeeValue !== null) {
+    const formattedFee = formatCurrencyValue(enrollmentFeeValue);
+    metaItems.push([
+      'Cuota de inscripción',
+      formattedFee || `${Number(enrollmentFeeValue) || 0}`,
+    ]);
+  }
+  const createdAtValue = detail?.createdAt || baseLeague?.createdAt;
+  if (createdAtValue) {
+    metaItems.push(['Creada', formatDate(createdAtValue)]);
+  }
+
+  if (metaItems.length) {
+    const metaContainer = document.createElement('div');
+    metaContainer.className = 'league-detail__meta';
+    metaItems.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'league-detail__meta-item';
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'league-detail__meta-label';
+      labelSpan.textContent = label;
+      const valueSpan = document.createElement('span');
+      valueSpan.textContent = value;
+      row.appendChild(labelSpan);
+      row.appendChild(valueSpan);
+      metaContainer.appendChild(row);
+    });
+    content.appendChild(metaContainer);
+  }
+
+  fragment.appendChild(layout);
+
+  const categories = getLeagueCategories(leagueId);
+  if (categories.length) {
+    const categoryWrapper = document.createElement('div');
+    const heading = document.createElement('h4');
+    heading.className = 'league-section-title';
+    heading.textContent = `Categorías (${categories.length})`;
+    categoryWrapper.appendChild(heading);
+
+    const categoryList = document.createElement('div');
+    categoryList.className = 'league-detail__categories';
+
+    categories
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+      .forEach((category) => {
+        const categoryCard = document.createElement('div');
+        categoryCard.className = 'league-detail__category';
+
+        const name = document.createElement('strong');
+        name.textContent = category.name || 'Categoría';
+        categoryCard.appendChild(name);
+
+        const metaLine = document.createElement('div');
+        metaLine.className = 'meta';
+
+        if (category.gender) {
+          const genderSpan = document.createElement('span');
+          genderSpan.textContent = translateGender(category.gender);
+          metaLine.appendChild(genderSpan);
+        }
+
+        if (category.matchType) {
+          const typeSpan = document.createElement('span');
+          typeSpan.textContent = formatTournamentMatchType(category.matchType);
+          metaLine.appendChild(typeSpan);
+        }
+
+        if (category.matchFormat) {
+          const formatSpan = document.createElement('span');
+          formatSpan.textContent = formatTournamentMatchFormat(category.matchFormat);
+          metaLine.appendChild(formatSpan);
+        }
+
+        const enrollmentCount = Number.isFinite(Number(category.enrollmentCount))
+          ? Number(category.enrollmentCount)
+          : Number.isFinite(Number(category.playerCount))
+          ? Number(category.playerCount)
+          : null;
+
+        if (enrollmentCount !== null) {
+          const enrollmentSpan = document.createElement('span');
+          enrollmentSpan.textContent =
+            enrollmentCount === 1
+              ? '1 jugador inscrito'
+              : `${enrollmentCount} jugadores inscritos`;
+          metaLine.appendChild(enrollmentSpan);
+        }
+
+        if (metaLine.childNodes.length) {
+          categoryCard.appendChild(metaLine);
+        }
+
+        categoryList.appendChild(categoryCard);
+      });
+
+    categoryWrapper.appendChild(categoryList);
+    fragment.appendChild(categoryWrapper);
+  } else {
+    const note = document.createElement('p');
+    note.className = 'league-section-note';
+    note.textContent = state.categoriesLoaded
+      ? 'Esta liga aún no tiene categorías asociadas.'
+      : 'Cargando categorías de la liga...';
+    fragment.appendChild(note);
+  }
+
+  leagueDetailBody.appendChild(fragment);
+}
+
+ = {}) {
+  if (!Array.isArray(options) || !options.length) {
+    return options;
+  }
+
+  if (!dateValue || !Array.isArray(availability) || !availability.length) {
+    return options;
+  }
+
+  const availabilityDateValue = formatDateInput(availabilityDate);
+  if (!availabilityDateValue || availabilityDateValue !== dateValue) {
+    return options;
+  }
+
+  const normalizedCourt = typeof availabilityCourt === 'string' ? availabilityCourt.trim() : '';
+  const normalizedCourtLower = normalizedCourt.toLowerCase();
+  const availabilityList = normalizedCourt
+    ? availability.filter((entry) => {
+        if (!entry || typeof entry.court !== 'string') {
+          return false;
+        }
+        return entry.court.trim().toLowerCase() === normalizedCourtLower;
+      })
+    : availability;
+
+  if (!availabilityList.length) {
+    return [];
+  }
+
+  const availableSlotTimes = new Set();
+  availabilityList.forEach((entry) => {
+    const slots = Array.isArray(entry?.availableSlots) ? entry.availableSlots : [];
+    slots.forEach((slot) => {
+      const slotStart = parseDateSafe(slot?.startsAt);
+      if (!slotStart) {
+        return;
+      }
+      const slotDateValue = formatDateInput(slotStart);
+      if (slotDateValue !== dateValue) {
+        return;
+      }
+      const timeValue = formatTimeInputValue(slotStart);
+      if (timeValue) {
+        availableSlotTimes.add(timeValue);
+      }
+    });
+  });
+
+  if (availableSlotTimes.size) {
+    return options.filter((slot) => availableSlotTimes.has(slot.value));
+  }
+
+  return options.filter((slot) => {
+    const slotStart = combineDateAndTime(dateValue, slot.value);
+    if (!(slotStart instanceof Date) || Number.isNaN(slotStart.getTime())) {
+      return true;
+    }
+
+    const slotEnd = addMinutes(slotStart, COURT_RESERVATION_DEFAULT_DURATION);
+    return availabilityList.some((entry) =>
+      isCourtAvailableForSlot(slotStart, slotEnd, {
+        reservations: Array.isArray(entry?.reservations) ? entry.reservations : [],
+        blocks: Array.isArray(entry?.blocks) ? entry.blocks : [],
+      })
+    );
+  });
+}
+
     } else {
       nameSpan.textContent = displayPlaceholder;
       wrapper.classList.add('bracket-player--placeholder');
