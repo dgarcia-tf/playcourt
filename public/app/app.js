@@ -5,6 +5,8 @@ import { createCourtsModule } from './features/courts/courts.js';
 import { createLeaguesModule } from './features/leagues/leagues.js';
 import { createLeagueCategoriesModule } from './features/leagues/categories.js';
 import { createLeagueRankingsModule } from './features/leagues/rankings.js';
+import { createMatchesModule } from './features/matches/matches.js';
+import { createMatchProposalsModule } from './features/matches/proposals.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -329,3 +331,59 @@ const {
   openRankingPrintModal,
   updateRankingFilterControls,
 } = leagueRankingsModule;
+const matchProposalsModule = createMatchProposalsModule({
+  request,
+  showGlobalMessage,
+  loadAllData,
+  createMatchScheduleSlotPicker,
+  getClubMatchScheduleTemplates,
+  roundDateUpToInterval,
+  formatDateInput,
+  formatTimeInputValue,
+  isValidReservationSlotStart,
+  CALENDAR_TIME_SLOT_MINUTES,
+});
+const {
+  openProposalForm,
+  closeProposalForm,
+  hasActiveProposalForm,
+  attachActiveProposalForm,
+} = matchProposalsModule;
+const matchesModule = createMatchesModule({
+  state,
+  MATCHES_PER_PAGE,
+  UNCATEGORIZED_CATEGORY_KEY,
+  UNCATEGORIZED_CATEGORY_LABEL,
+  MATCH_CALENDAR_DEFAULT_DURATION_MINUTES,
+  STATUS_LABELS,
+  upcomingList,
+  pendingApprovalsList,
+  completedMatchesList,
+  myMatchesList,
+  getCategoryColor,
+  createCategoryColorIndicator,
+  applyCategoryColorStyles,
+  applyCategoryTagColor,
+  formatDate,
+  getExpirationWarningMessage,
+  getMatchExpirationDate,
+  formatExpirationDeadline,
+  getPlayerDisplayName,
+  formatMatchScore,
+  createResultScoreboard,
+  isAdmin,
+  normalizeId,
+  getResultConfirmation,
+  updateMatchesMenuBadge,
+  matchProposals: {
+    closeProposalForm,
+    hasActiveProposalForm,
+    attachActiveProposalForm,
+  },
+});
+const {
+  renderMatches,
+  renderMyMatches,
+  resetAllMatchPagination,
+  handleMatchPagination,
+} = matchesModule;
