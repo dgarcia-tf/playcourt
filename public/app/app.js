@@ -15,6 +15,7 @@ import { createProfileModule } from './features/profile/profile.js';
 import { createProfileSettingsModule } from './features/profile/settings.js';
 import { createFormComponents } from './components/forms.js';
 import { createModalManager } from './components/modals.js';
+import { createNavigationManager } from './components/navigation.js';
 import { createAppState } from './core/state.js';
 import { createAuthModule } from './core/auth.js';
 import { createApiClient } from './core/api.js';
@@ -139,6 +140,80 @@ import {
   syncSectionRoute,
 } from './config/routes.js';
 setAppBasePath(APP_BASE_PATH);
+let showSectionHandler = () => {};
+let updateMatchesMenuBadgeHandler = () => {};
+let closeMobileMenuHandler = () => {};
+let isMobileMenuOpenHandler = () => false;
+let updateAuthUIHandler = () => {};
+let setActiveMenuHandler = () => {};
+let updateAdminMenuVisibilityHandler = () => {};
+let updateCourtManagerMenuVisibilityHandler = () => {};
+let applyCourtManagerMenuRestrictionsHandler = () => {};
+
+function showSection(sectionId, options) {
+  if (typeof showSectionHandler === 'function') {
+    return showSectionHandler(sectionId, options);
+  }
+  return undefined;
+}
+
+function updateMatchesMenuBadge(value) {
+  if (typeof updateMatchesMenuBadgeHandler === 'function') {
+    return updateMatchesMenuBadgeHandler(value);
+  }
+  return undefined;
+}
+
+function closeMobileMenu(options) {
+  if (typeof closeMobileMenuHandler === 'function') {
+    return closeMobileMenuHandler(options);
+  }
+  return undefined;
+}
+
+function isMobileMenuOpen() {
+  if (typeof isMobileMenuOpenHandler === 'function') {
+    return isMobileMenuOpenHandler();
+  }
+  return false;
+}
+
+function updateAuthUI(...args) {
+  if (typeof updateAuthUIHandler === 'function') {
+    return updateAuthUIHandler(...args);
+  }
+  return undefined;
+}
+
+function setActiveMenu(...args) {
+  if (typeof setActiveMenuHandler === 'function') {
+    return setActiveMenuHandler(...args);
+  }
+  return undefined;
+}
+
+function updateAdminMenuVisibility(...args) {
+  if (typeof updateAdminMenuVisibilityHandler === 'function') {
+    return updateAdminMenuVisibilityHandler(...args);
+  }
+  return undefined;
+}
+
+function updateCourtManagerMenuVisibility(...args) {
+  if (typeof updateCourtManagerMenuVisibilityHandler === 'function') {
+    return updateCourtManagerMenuVisibilityHandler(...args);
+  }
+  return undefined;
+}
+
+function applyCourtManagerMenuRestrictions(...args) {
+  if (typeof applyCourtManagerMenuRestrictionsHandler === 'function') {
+    return applyCourtManagerMenuRestrictionsHandler(...args);
+  }
+  return undefined;
+}
+
+
   header.className = 'league-payment-header';
   const playerCell = buildPlayerCell(entry.player || {}, { includeSchedule: false, size: 'sm' });
   header.appendChild(playerCell);
@@ -2059,6 +2134,66 @@ function createSchedulesEditor(initialSchedules = []) {
     WEEKDAY_OPTIONS.forEach((option) => {
       const opt = document.createElement('option');
       opt.value = option.value;
+
+function switchTab(target) {
+  tabButtons.forEach((button) => {
+    const isActive = button.dataset.target === target;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  tabPanes.forEach((pane) => {
+    pane.hidden = pane.dataset.pane !== target;
+  });
+}
+
+function updateAppSwitcherButtons() {
+  if (!appSwitcherButtons.length) return;
+
+  let activeIndex = 0;
+
+  appSwitcherButtons.forEach((button, index) => {
+    const isActive = button.dataset.app === state.selectedApp;
+    button.classList.toggle('app-switcher__button--active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    if (isActive) {
+      activeIndex = index;
+    }
+  });
+
+  if (appSwitcher) {
+    appSwitcher.style.setProperty('--active-index', activeIndex);
+  }
+}
+
+function handleAppSwitcherClick(event) {
+  const button = event.target.closest('.app-switcher__button');
+  if (!button) return;
+
+  const { app } = button.dataset;
+  if (!app || app === state.selectedApp) {
+    return;
+  }
+
+  if (app === 'padel') {
+    window.alert('La aplicación de Pádel estará disponible próximamente.');
+    updateAppSwitcherButtons();
+    return;
+  }
+
+  state.selectedApp = app;
+  updateAppSwitcherButtons();
+}
+
+if (appSwitcher) {
+  appSwitcher.addEventListener('click', handleAppSwitcherClick);
+}
+
+updateAppSwitcherButtons();
+
+tabButtons.forEach((button) => {
+  button.addEventListener('click', () => switchTab(button.dataset.target));
+});
       opt.textContent = option.label;
       daySelect.appendChild(opt);
     });
@@ -2319,6 +2454,15 @@ function createRegulationEditor(
     { command: 'underline', label: 'Subrayado', content: 'U' },
     { command: 'heading', label: 'Encabezado nivel 1', content: 'H1', level: '1' },
     { command: 'heading', label: 'Encabezado nivel 2', content: 'H2', level: '2' },
+const leaguePaymentsMenuButton = appMenu
+  ? appMenu.querySelector('[data-target="section-league-payments"]')
+  : null;
+const tournamentPaymentsMenuButton = appMenu
+  ? appMenu.querySelector('[data-target="section-tournament-payments"]')
+  : null;
+const leaguePaymentsSection = document.getElementById('section-league-payments');
+const tournamentPaymentsSection = document.getElementById('section-tournament-payments');
+const adminToggleElements = document.querySelectorAll('[data-admin-visible="toggle"]');
     { command: 'list', label: 'Lista con viñetas', content: '•', list: 'unordered' },
     { command: 'list', label: 'Lista numerada', content: '1.', list: 'ordered' },
     { command: 'quote', label: 'Cita', content: '“ ”' },
@@ -2948,458 +3092,6 @@ function populateAdminSelects() {
   if (form.elements.registrationCloseDate) {
     form.elements.registrationCloseDate.value = formatDateInput(league?.registrationCloseDate);
   }
-  if (form.elements.enrollmentFee) {
-    form.elements.enrollmentFee.value =
-      typeof league?.enrollmentFee === 'number' ? String(league.enrollmentFee) : '';
-  const categoriesSelect = form.elements.categories;
-  if (categoriesSelect) {
-    const categories = Array.isArray(state.categories) ? [...state.categories] : [];
-    const selectedIds = league
-      ? Array.isArray(league.categories)
-        ? league.categories.map((category) => normalizeId(category))
-        : []
-      : [];
-
-    categories
-      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
-      .forEach((category) => {
-        const categoryId = normalizeId(category);
-        if (!categoryId) return;
-        const option = document.createElement('option');
-        option.value = categoryId;
-        const parts = [category.name || 'Categoría', translateGender(category.gender)];
-        const linkedLeague = resolveLeague(category.league);
-        const linkedLeagueId = normalizeId(linkedLeague);
-        if (linkedLeagueId && linkedLeagueId !== normalizedId) {
-          const linkedLeagueName = linkedLeague?.name || 'Asignada';
-          parts.push(`Liga ${linkedLeagueName}`);
-          option.disabled = true;
-        }
-        option.textContent = parts.join(' · ');
-        option.selected = selectedIds.includes(categoryId);
-        categoriesSelect.appendChild(option);
-      });
-
-    const optionCount = categoriesSelect.options.length || 3;
-    categoriesSelect.size = Math.min(8, Math.max(3, optionCount));
-  const formActions = form.querySelector('.form-actions');
-  if (league && normalizedId && formActions) {
-    const uploadSection = document.createElement('div');
-    uploadSection.className = 'form-section league-poster-upload';
-    uploadSection.innerHTML = `
-      <h3>Cartel de la liga</h3>
-      <p class="form-hint">Sube una imagen en formato JPG o PNG (máximo 5&nbsp;MB).</p>
-      <label>
-        Selecciona una imagen
-        <input type="file" name="posterFile" accept="image/*" />
-      </label>
-      <div class="form-actions">
-        <button type="button" class="secondary" data-action="upload-poster">Subir cartel</button>
-      </div>
-    `;
-    const posterUploadStatus = document.createElement('p');
-    posterUploadStatus.className = 'status-message';
-    posterUploadStatus.style.display = 'none';
-    uploadSection.appendChild(posterUploadStatus);
-    formActions.before(uploadSection);
-    const uploadButton = uploadSection.querySelector('[data-action="upload-poster"]');
-    const fileInput = uploadSection.querySelector('input[name="posterFile"]');
-    uploadButton?.addEventListener('click', async () => {
-      if (!fileInput?.files?.length) {
-        setStatusMessage(posterUploadStatus, 'error', 'Selecciona una imagen para el cartel.');
-        return;
-      }
-      const file = fileInput.files[0];
-      if (!file.type.startsWith('image/')) {
-        setStatusMessage(posterUploadStatus, 'error', 'El archivo seleccionado debe ser una imagen.');
-        return;
-      }
-      if (file.size > MAX_POSTER_SIZE) {
-        setStatusMessage(
-          posterUploadStatus,
-          'error',
-          'La imagen supera el tamaño máximo permitido (5 MB).'
-        );
-        return;
-      const formData = new FormData();
-      formData.append('poster', file);
-
-      setStatusMessage(posterUploadStatus, 'info', 'Subiendo cartel...');
-
-      try {
-        const result = await request(`/leagues/${normalizedId}/poster`, {
-          method: 'POST',
-          body: formData,
-        });
-        setStatusMessage(posterUploadStatus, 'success', 'Cartel actualizado.');
-        if (form.elements.poster) {
-          form.elements.poster.value = result?.poster || '';
-        }
-        fileInput.value = '';
-        await loadAllData();
-      } catch (error) {
-        setStatusMessage(posterUploadStatus, 'error', error.message);
-    const succeeded = await submitLeagueFormData({
-      leagueId: normalizedId,
-    title: league ? 'Editar liga' : 'Nueva liga',
-function openPlayerModal(playerId = '') {
-  const normalizedId = playerId || '';
-  const player = normalizedId
-    ? state.players.find((item) => normalizeId(item) === normalizedId)
-    : null;
-  const scheduleOptions = Object.entries(SCHEDULE_LABELS)
-  form.enctype = 'multipart/form-data';
-      Nombre completo
-      <input type="text" name="fullName" required />
-      Correo electrónico
-      <input type="email" name="email" required />
-    </label>
-    <label>
-      Contraseña
-      <input type="password" name="password" minlength="8" ${player ? '' : 'required'} />
-      <span class="form-hint">${
-        player
-          ? 'Deja vacío para mantener la contraseña actual.'
-          : 'Mínimo 8 caracteres para nuevos usuarios.'
-      }</span>
-        Género
-        <select name="gender" required>
-          <option value="masculino">Masculino</option>
-          <option value="femenino">Femenino</option>
-          <option value="mixto">Mixto</option>
-      <fieldset class="checkbox-group">
-        <legend>Roles</legend>
-        <label class="checkbox-option">
-          <input type="checkbox" name="roles" value="player" />
-          Jugador
-        </label>
-        <label class="checkbox-option">
-          <input type="checkbox" name="roles" value="court_manager" />
-          Gestor de pistas
-        </label>
-        <label class="checkbox-option">
-          <input type="checkbox" name="roles" value="admin" />
-          Administrador
-        </label>
-      </fieldset>
-      Fecha de nacimiento
-      <input type="date" name="birthDate" required />
-    </label>
-    <label>
-      Teléfono
-      <input type="tel" name="phone" required />
-    </label>
-    <label>
-      Fotografía
-      <input type="file" name="photo" accept="image/*" />
-      <span class="form-hint">Imágenes en Base64 hasta 2&nbsp;MB. Deja vacío para conservar la actual.</span>
-    </label>
-    <label>
-      Horario preferido
-      <select name="preferredSchedule" required>${scheduleOptions}</select>
-    </label>
-    <label>
-      Talla de camiseta
-      <select name="shirtSize" required>
-        <option value="">Selecciona</option>
-        <option value="XS">XS</option>
-        <option value="S">S</option>
-        <option value="M">M</option>
-        <option value="L">L</option>
-        <option value="XL">XL</option>
-        <option value="XXL">XXL</option>
-    <div class="form-grid">
-      <label class="checkbox-option checkbox-option--stacked">
-        <input type="checkbox" name="isMember" value="true" />
-        Es socio del club
-        <span class="form-hint">Marca esta opción si dispone de número de socio.</span>
-      </label>
-      <label data-membership-wrapper hidden>
-        Nº de socio
-        <input type="text" name="membershipNumber" maxlength="50" />
-        <span class="form-hint">Introduce el número asignado por el club.</span>
-      </label>
-      <label class="checkbox-option" data-membership-verified-wrapper hidden>
-        <input type="checkbox" name="membershipNumberVerified" value="true" />
-        Nº de socio verificado
-        <span class="form-hint">
-          Marca esta casilla cuando hayas comprobado el número con el registro del club.
-        </span>
-      </label>
-    </div>
-      Notas
-      <textarea name="notes" rows="2" maxlength="500" placeholder="Preferencias adicionales"></textarea>
-    <div class="form-grid form-grid--stacked">
-      <label class="checkbox-option">
-        <input type="checkbox" name="notifyMatchRequests" value="true" />
-        Enviar notificaciones cuando reciba solicitudes de partido
-      </label>
-      <label class="checkbox-option">
-        <input type="checkbox" name="notifyMatchResults" value="true" />
-        Avisar cuando se confirme el resultado de un partido
-      </label>
-    </div>
-      <button type="submit" class="primary">${player ? 'Actualizar' : 'Crear'}</button>
-      ${
-        player ? '<button type="button" class="danger" data-action="delete">Eliminar</button>' : ''
-      }
-  form.elements.fullName.value = player?.fullName || '';
-  form.elements.email.value = player?.email || '';
-  form.elements.gender.value = player?.gender || 'masculino';
-  form.elements.birthDate.value = formatDateInput(player?.birthDate);
-  form.elements.phone.value = player?.phone || '';
-  form.elements.preferredSchedule.value = player?.preferredSchedule || 'flexible';
-  form.elements.shirtSize.value = player?.shirtSize || '';
-  form.elements.notes.value = player?.notes || '';
-  form.elements.notifyMatchRequests.checked = player ? player.notifyMatchRequests !== false : true;
-  form.elements.notifyMatchResults.checked = player ? player.notifyMatchResults !== false : true;
-  const roleInputs = Array.from(form.querySelectorAll('input[name="roles"]'));
-  const adminInput = roleInputs.find((input) => input.value === 'admin');
-  const playerInput = roleInputs.find((input) => input.value === 'player');
-  const currentRolesRaw = Array.isArray(player?.roles)
-    ? player.roles
-    : player?.role
-    ? [player.role]
-    : [];
-  let currentRoles = currentRolesRaw
-    .map((role) => (typeof role === 'string' ? role.toLowerCase() : ''))
-    .filter(Boolean);
-  if (!currentRoles.length) {
-    currentRoles = ['player'];
-  if (currentRoles.includes('admin')) {
-    currentRoles = currentRoles.filter((role) => role !== 'player');
-  roleInputs.forEach((input) => {
-    input.checked = currentRoles.includes(input.value);
-  function enforceRoleExclusivity() {
-    if (adminInput?.checked) {
-      if (playerInput) {
-        playerInput.checked = false;
-        playerInput.disabled = true;
-    } else if (playerInput) {
-      playerInput.disabled = false;
-      if (!roleInputs.some((input) => input !== playerInput && input.checked)) {
-        playerInput.checked = true;
-    }
-  }
-  roleInputs.forEach((input) => {
-    input.addEventListener('change', enforceRoleExclusivity);
-  });
-  enforceRoleExclusivity();
-
-  const membershipCheckbox = form.elements.isMember;
-  const membershipWrapper = form.querySelector('[data-membership-wrapper]');
-  const membershipInput = form.elements.membershipNumber;
-  const membershipVerifiedWrapper = form.querySelector('[data-membership-verified-wrapper]');
-  const membershipVerifiedInput = form.elements.membershipNumberVerified;
-
-  if (membershipCheckbox) {
-    membershipCheckbox.checked = Boolean(player?.isMember);
-
-  if (membershipInput) {
-    membershipInput.value = player?.membershipNumber || '';
-  if (membershipVerifiedInput) {
-    membershipVerifiedInput.checked = Boolean(player?.membershipNumberVerified);
-  }
-  function updateMembershipControls({ clearWhenDisabled = false } = {}) {
-    toggleMembershipField(membershipCheckbox, membershipWrapper, membershipInput, {
-      clearWhenDisabled,
-    });
-    if (!membershipVerifiedWrapper) {
-      return;
-    }
-
-    const isMemberSelected = Boolean(membershipCheckbox?.checked);
-    membershipVerifiedWrapper.hidden = !isMemberSelected;
-
-    if (membershipVerifiedInput) {
-      membershipVerifiedInput.disabled = !isMemberSelected;
-      if (!isMemberSelected && (clearWhenDisabled || !player)) {
-        membershipVerifiedInput.checked = false;
-      }
-    }
-  }
-
-  if (membershipCheckbox) {
-    updateMembershipControls({ clearWhenDisabled: !player });
-    membershipCheckbox.addEventListener('change', () => {
-      updateMembershipControls({ clearWhenDisabled: false });
-      if (!membershipCheckbox.checked && membershipVerifiedInput) {
-        membershipVerifiedInput.checked = false;
-      }
-  } else {
-    updateMembershipControls({ clearWhenDisabled: true });
-  }
-
-  const status = document.createElement('p');
-  status.className = 'status-message';
-  status.style.display = 'none';
-    const succeeded = await submitPlayerFormData({
-      playerId: normalizedId,
-  const deleteButton = form.querySelector('[data-action="delete"]');
-  deleteButton?.addEventListener('click', async () => {
-    if (!normalizedId) return;
-    const confirmed = window.confirm('¿Seguro que deseas eliminar este jugador?');
-    if (!confirmed) return;
-    setStatusMessage(status, 'info', 'Eliminando jugador...');
-      await request(`/players/${normalizedId}`, { method: 'DELETE' });
-      setStatusMessage(status, 'success', 'Jugador eliminado.');
-      await loadAllData();
-    title: player ? 'Editar usuario' : 'Nuevo usuario',
-function openMatchModal(matchId = '') {
-  const normalizedId = normalizeId(matchId);
-  const match = normalizedId ? findMatchById(normalizedId) : null;
-  const categories = Array.isArray(state.categories) ? [...state.categories] : [];
-  const leagues = Array.isArray(state.leagues) ? [...state.leagues] : [];
-  const currentMatchLeagueId = match ? normalizeId(match.league) : '';
-  const stateLeagueMap = new Map();
-  leagues.forEach((league) => {
-    const id = normalizeId(league);
-    if (id && !stateLeagueMap.has(id)) {
-      stateLeagueMap.set(id, league);
-  });
-  const categoriesByLeague = new Map();
-  const leagueDetailsMap = new Map();
-  const UNASSIGNED_LEAGUE_VALUE = '__unassigned__';
-  const registerLeague = (league) => {
-    if (!league) return;
-    const id = normalizeId(league);
-    if (!id || leagueDetailsMap.has(id)) return;
-    if (typeof league === 'object') {
-      leagueDetailsMap.set(id, league);
-    } else if (stateLeagueMap.has(id)) {
-      leagueDetailsMap.set(id, stateLeagueMap.get(id));
-    } else {
-      leagueDetailsMap.set(id, { _id: id });
-    }
-  };
-  categories.forEach((category) => {
-    const leagueId = normalizeId(category.league);
-    const key = leagueId || UNASSIGNED_LEAGUE_VALUE;
-    if (!categoriesByLeague.has(key)) {
-      categoriesByLeague.set(key, []);
-    categoriesByLeague.get(key).push(category);
-    if (leagueId) {
-      registerLeague(category.league || stateLeagueMap.get(leagueId));
-  });
-  if (match?.league) {
-    registerLeague(match.league);
-  const statusOptions = Object.entries(STATUS_LABELS)
-    .map(([value, label]) => `<option value="${value}">${label}</option>`)
-    .join('');
-      Liga
-      <select name="leagueId" required>
-        <option value="">Selecciona una liga</option>
-      </select>
-      <select name="categoryId" required disabled>
-        <option value="">Selecciona una categoría</option>
-      </select>
-        <select name="player1" required>
-          <option value="">Selecciona jugador 1</option>
-        </select>
-        <select name="player2" required>
-          <option value="">Selecciona jugador 2</option>
-        </select>
-    <label>
-      Notas internas
-      <textarea name="notes" rows="3" maxlength="500" placeholder="Comentarios o recordatorios"></textarea>
-      <button type="submit" class="primary">${match ? 'Actualizar' : 'Crear'} partido</button>
-  const status = document.createElement('p');
-  status.className = 'status-message';
-  status.style.display = 'none';
-  const leagueField = form.elements.leagueId;
-  const categoryField = form.elements.categoryId;
-  const statusField = form.elements.status;
-  const notesField = form.elements.notes;
-  const formatLeagueLabel = (league) => {
-    if (!league || typeof league !== 'object') {
-      return 'Liga';
-    }
-    const parts = [];
-    const name = typeof league.name === 'string' && league.name.trim() ? league.name.trim() : 'Liga';
-    parts.push(name);
-    if (league.year) {
-      parts.push(league.year);
-    }
-    return parts.join(' · ');
-  };
-
-  if (leagueField) {
-    const leagueOptionEntries = [];
-    categoriesByLeague.forEach((list, key) => {
-      if (key === UNASSIGNED_LEAGUE_VALUE) return;
-      if (!Array.isArray(list) || !list.length) return;
-      const info =
-        leagueDetailsMap.get(key) || stateLeagueMap.get(key) || { _id: key };
-      leagueOptionEntries.push({ id: key, info });
-    });
-
-    leagueOptionEntries
-      .sort((a, b) => (a.info?.name || '').localeCompare(b.info?.name || '', 'es'))
-      .forEach(({ id, info }) => {
-        const isClosed = info?.status === 'cerrada';
-        const isCurrentSelection = currentMatchLeagueId && currentMatchLeagueId === id;
-        if (isClosed && !isCurrentSelection) {
-          return;
-
-        const option = document.createElement('option');
-        option.value = id;
-        option.textContent = formatLeagueLabel(info);
-        if (isClosed) {
-          option.textContent += ' (cerrada)';
-        leagueField.appendChild(option);
-      });
-    if (categoriesByLeague.has(UNASSIGNED_LEAGUE_VALUE)) {
-      const option = document.createElement('option');
-      option.value = UNASSIGNED_LEAGUE_VALUE;
-      option.textContent = 'Sin liga asignada';
-      leagueField.appendChild(option);
-    }
-    const enabledLeagueOptions = Array.from(leagueField.options || []).filter(
-      (option) => option.value && !option.disabled
-    );
-    if (!match && !enabledLeagueOptions.length) {
-      leagueField.disabled = true;
-      if (submitButton) {
-        submitButton.disabled = true;
-      }
-      setStatusMessage(
-        status,
-        'warning',
-        'Todas las ligas activas están cerradas. No es posible crear nuevos partidos.'
-      );
-    }
-  const resolveCategoriesForLeague = (leagueId) => {
-    if (!leagueId) return [];
-    if (leagueId === UNASSIGNED_LEAGUE_VALUE) {
-      return categoriesByLeague.get(UNASSIGNED_LEAGUE_VALUE) || [];
-    }
-    return categoriesByLeague.get(leagueId) || [];
-  };
-  const updateCategoryOptions = ({ leagueId, targetCategoryId, preserveSelection = false } = {}) => {
-    if (!categoryField) return '';
-    const previousValue = categoryField.value || '';
-    categoryField.innerHTML = '<option value="">Selecciona una categoría</option>';
-    categoryField.disabled = true;
-    const categoryList = resolveCategoriesForLeague(leagueId);
-    if (!categoryList.length) {
-      return '';
-
-    const normalizedCategories = categoryList
-      .map((entry) => ({ id: normalizeId(entry), category: entry }))
-      .filter((entry) => entry.id)
-      .sort((a, b) => (a.category.name || '').localeCompare(b.category.name || '', 'es'));
-
-    if (!normalizedCategories.length) {
-      return '';
-
-    normalizedCategories.forEach((entry) => {
-      const option = new Option(entry.category.name || 'Categoría', entry.id);
-      categoryField.appendChild(option);
-    });
-
-    categoryField.disabled = false;
-
-    const desiredValue = targetCategoryId || (preserveSelection ? previousValue : '');
     if (desiredValue && normalizedCategories.some((entry) => entry.id === desiredValue)) {
       categoryField.value = desiredValue;
     } else if (normalizedCategories.length === 1) {
@@ -3540,6 +3232,755 @@ const {
     notesField.value = match?.result?.notes || match?.notes || '';
   }
   const selectedPlayers = Array.isArray(match?.players)
+
+function resetDemoModeResults() {
+  if (demoModeResults) {
+    demoModeResults.hidden = true;
+  }
+  if (demoModeCreated) {
+    demoModeCreated.textContent = '';
+    demoModeCreated.removeAttribute('title');
+  }
+  if (demoModeSkipped) {
+    demoModeSkipped.textContent = '';
+    demoModeSkipped.removeAttribute('title');
+  }
+  if (demoModePassword) {
+    demoModePassword.textContent = '';
+    demoModePassword.hidden = true;
+  }
+}
+
+function renderDemoModeResults(result) {
+  if (!demoModeResults || !result) {
+    return;
+  }
+
+function resetData() {
+  toggleProfileForm(false);
+  state.selectedApp = 'tennis';
+  updateAppSwitcherButtons();
+  state.accountSummary = null;
+  state.accountSummaryLoading = false;
+  renderAccountSummary(null);
+  if (accountDashboardStatus) {
+    setStatusMessage(accountDashboardStatus, '', '');
+  }
+  state.enrollments.clear();
+  state.myMatches = [];
+  state.upcomingMatches = [];
+  state.pendingApprovalMatches = [];
+  state.completedMatches = [];
+  state.leagues = [];
+  state.categoryFilters = { league: '' };
+  state.globalOverview = null;
+  state.leagueDashboard = null;
+  state.leagueDashboardPlayersPage = 1;
+  if (state.leagueDetails instanceof Map) {
+    state.leagueDetails.clear();
+  } else {
+    state.leagueDetails = new Map();
+  }
+  if (state.leaguePayments instanceof Map) {
+    state.leaguePayments.clear();
+  } else {
+    state.leaguePayments = new Map();
+  }
+  state.leaguePaymentFilters = {
+    league: '',
+    search: '',
+  };
+  state.leaguePaymentsLoading = false;
+  state.tournamentDashboard = null;
+  state.tournaments = [];
+  state.tournamentDetails = new Map();
+  state.selectedTournamentId = '';
+  state.selectedTournamentCategoriesId = '';
+  state.selectedEnrollmentTournamentId = '';
+  state.selectedEnrollmentCategoryId = TOURNAMENT_ENROLLMENT_ALL_OPTION;
+  state.selectedMatchTournamentId = '';
+  state.selectedMatchCategoryId = '';
+  state.selectedDoublesTournamentId = '';
+  if (state.tournamentDoubles instanceof Map) {
+    state.tournamentDoubles.clear();
+  } else {
+    state.tournamentDoubles = new Map();
+  }
+  if (state.tournamentDoublesPairs instanceof Map) {
+    state.tournamentDoublesPairs.clear();
+  } else {
+    state.tournamentDoublesPairs = new Map();
+  }
+  if (state.tournamentEnrollments instanceof Map) {
+    state.tournamentEnrollments.clear();
+  } else {
+    state.tournamentEnrollments = new Map();
+  }
+  state.tournamentEnrollmentFilters = {
+    search: '',
+    gender: '',
+  };
+  if (state.tournamentMatches instanceof Map) {
+    state.tournamentMatches.clear();
+  } else {
+    state.tournamentMatches = new Map();
+  }
+  if (state.tournamentOrderOfPlayDays instanceof Map) {
+    state.tournamentOrderOfPlayDays.clear();
+  } else {
+    state.tournamentOrderOfPlayDays = new Map();
+  }
+  state.selectedOrderOfPlayDay = '';
+  updateTournamentOrderOfPlayControls();
+  if (state.tournamentPayments instanceof Map) {
+    state.tournamentPayments.clear();
+  } else {
+    state.tournamentPayments = new Map();
+  }
+  state.tournamentPaymentFilters = {
+    tournament: '',
+    search: '',
+  };
+  state.tournamentPaymentsLoading = false;
+  state.courtReservations = [];
+  state.courtAvailability = [];
+  state.courtAvailabilityCourt = '';
+  state.courtAvailabilityDate = new Date();
+  state.playerCourtCalendarDate = new Date();
+  state.courtAdminSchedule = [];
+  state.courtAdminBlocks = [];
+  state.courtCalendarEvents = [];
+  state.courtCalendarViewMode = 'month';
+  state.courtBlocks = [];
+  state.courtCalendarDate = new Date();
+  state.reservationPlayers = [];
+  state.generalChatMessages = [];
+  state.noticeUnreadCount = 0;
+  updateCategoryControlsAvailability();
+  if (categoryLeagueFilter) {
+    categoryLeagueFilter.innerHTML = '';
+    categoryLeagueFilter.value = '';
+    categoryLeagueFilter.disabled = true;
+  }
+  if (leaguesList) {
+    leaguesList.innerHTML =
+      '<li class="empty-state">Inicia sesión para revisar las ligas disponibles.</li>';
+  }
+  categoriesList.innerHTML = '<li class="empty-state">Inicia sesión para ver las categorías.</li>';
+  if (tournamentsList) {
+    tournamentsList.innerHTML =
+      '<li class="empty-state">Inicia sesión para consultar los torneos disponibles.</li>';
+  }
+  if (tournamentDetailTitle) {
+    tournamentDetailTitle.textContent = 'Detalle del torneo';
+  }
+  if (tournamentDetailSubtitle) {
+    tournamentDetailSubtitle.textContent = 'Selecciona un torneo para ver la información ampliada.';
+  }
+  if (tournamentDetailBody) {
+    tournamentDetailBody.innerHTML =
+      '<p class="empty-state">Inicia sesión para conocer la información de los torneos.</p>';
+  }
+  if (tournamentCategoriesList) {
+    tournamentCategoriesList.innerHTML = '';
+  }
+  if (tournamentCategoriesEmpty) {
+    tournamentCategoriesEmpty.hidden = false;
+    tournamentCategoriesEmpty.textContent = 'Inicia sesión para revisar las categorías de los torneos.';
+  }
+  if (tournamentCategoryTournamentSelect) {
+    tournamentCategoryTournamentSelect.innerHTML = '';
+    tournamentCategoryTournamentSelect.disabled = true;
+  }
+  if (tournamentEnrollmentTournamentSelect) {
+    tournamentEnrollmentTournamentSelect.innerHTML = '';
+    tournamentEnrollmentTournamentSelect.disabled = true;
+  }
+  if (tournamentEnrollmentCategorySelect) {
+    tournamentEnrollmentCategorySelect.innerHTML = '';
+    tournamentEnrollmentCategorySelect.disabled = true;
+  }
+  if (tournamentEnrollmentCount) {
+    tournamentEnrollmentCount.textContent = '0';
+  }
+  if (tournamentEnrollmentSearch) {
+    tournamentEnrollmentSearch.value = '';
+    tournamentEnrollmentSearch.disabled = true;
+  }
+  if (tournamentEnrollmentGender) {
+    tournamentEnrollmentGender.value = '';
+    tournamentEnrollmentGender.disabled = true;
+  }
+  if (tournamentEnrollmentList) {
+    tournamentEnrollmentList.innerHTML = '';
+  }
+  if (tournamentEnrollmentEmpty) {
+    tournamentEnrollmentEmpty.hidden = false;
+    tournamentEnrollmentEmpty.textContent = 'Selecciona un torneo para consultar los jugadores inscritos.';
+  }
+  if (tournamentDoublesTournamentSelect) {
+    tournamentDoublesTournamentSelect.innerHTML = '';
+    tournamentDoublesTournamentSelect.disabled = true;
+  }
+  if (tournamentDoublesContainer) {
+    tournamentDoublesContainer.innerHTML = '';
+  }
+  if (tournamentDoublesEmpty) {
+    tournamentDoublesEmpty.hidden = false;
+    tournamentDoublesEmpty.textContent = 'Selecciona un torneo para ver las inscripciones de dobles.';
+  }
+  if (tournamentMatchTournamentSelect) {
+    tournamentMatchTournamentSelect.innerHTML = '';
+    tournamentMatchTournamentSelect.disabled = true;
+  }
+  if (tournamentMatchCategorySelect) {
+    tournamentMatchCategorySelect.innerHTML = '';
+    tournamentMatchCategorySelect.disabled = true;
+  }
+  if (tournamentMatchesList) {
+    tournamentMatchesList.innerHTML = '';
+  }
+  if (tournamentMatchesEmpty) {
+    tournamentMatchesEmpty.hidden = false;
+    tournamentMatchesEmpty.textContent = 'Selecciona un torneo para revisar sus partidos.';
+  }
+  if (tournamentPaymentsTournamentSelect) {
+    tournamentPaymentsTournamentSelect.innerHTML =
+      '<option value="">Selecciona un torneo con cuotas</option>';
+    tournamentPaymentsTournamentSelect.disabled = true;
+  }
+  if (tournamentPaymentsSearchInput) {
+    tournamentPaymentsSearchInput.value = '';
+    tournamentPaymentsSearchInput.disabled = true;
+  }
+  resetTournamentPaymentGroups();
+  if (tournamentPaymentsCount) {
+    tournamentPaymentsCount.textContent = '0';
+  }
+    if (tournamentPaymentsEmpty) {
+      tournamentPaymentsEmpty.hidden = false;
+      tournamentPaymentsEmpty.textContent =
+        'Inicia sesión para gestionar los pagos de inscripción de los torneos.';
+    }
+    updateTournamentPaymentFeeIndicator(null);
+    setStatusMessage(tournamentPaymentsStatusMessage, '', '');
+    notificationsList.innerHTML = '<li class="empty-state">Inicia sesión para ver tus notificaciones.</li>';
+  upcomingList.innerHTML = '<li class="empty-state">Inicia sesión para consultar el calendario.</li>';
+  myMatchesList.innerHTML = '<li class="empty-state">Inicia sesión para consultar tus partidos.</li>';
+  updateMatchesMenuBadge(0);
+  updateNoticesMenuBadge(0);
+  if (pendingApprovalsList) {
+    pendingApprovalsList.innerHTML =
+      '<li class="empty-state">Inicia sesión para consultar los resultados pendientes.</li>';
+  }
+  if (courtReservationList) {
+    courtReservationList.innerHTML =
+      '<li class="empty-state">Inicia sesión para gestionar tus reservas.</li>';
+  }
+  if (courtAvailabilityList) {
+    courtAvailabilityList.innerHTML =
+      '<li class="empty-state">Inicia sesión para consultar la disponibilidad de pistas.</li>';
+  }
+  if (courtAvailabilityEmpty) {
+    courtAvailabilityEmpty.hidden = false;
+  }
+  if (courtAdminSchedule) {
+    courtAdminSchedule.innerHTML =
+      '<p class="meta">Inicia sesión con una cuenta administradora para ver el detalle de reservas.</p>';
+  }
+  if (courtAdminEmpty) {
+    courtAdminEmpty.hidden = false;
+  }
+  if (courtCalendarContainer) {
+    courtCalendarContainer.innerHTML =
+      '<p class="meta">Inicia sesión con una cuenta autorizada para revisar el calendario de pistas.</p>';
+  }
+  if (courtCalendarLabel) {
+    courtCalendarLabel.textContent = '';
+  }
+  if (courtCalendarStatus) {
+    setStatusMessage(courtCalendarStatus, '', '');
+  }
+  if (courtBlockForm) {
+    courtBlockForm.reset();
+    setCourtBlockDefaultRange();
+  }
+  if (courtBlockStatus) {
+    setStatusMessage(courtBlockStatus, '', '');
+  }
+  if (courtBlocksList) {
+    courtBlocksList.innerHTML =
+      '<li class="empty-state">Inicia sesión con una cuenta autorizada para gestionar bloqueos.</li>';
+  }
+  if (courtBlocksEmpty) {
+    courtBlocksEmpty.hidden = true;
+  }
+  if (courtReservationParticipantsContainer) {
+    courtReservationParticipantsContainer.innerHTML = '';
+    courtReservationParticipantsContainer.hidden = true;
+  }
+  if (courtReservationParticipantsHint) {
+    courtReservationParticipantsHint.hidden = true;
+    courtReservationParticipantsHint.textContent = defaultCourtReservationParticipantsHint;
+  }
+  if (completedMatchesList) {
+    completedMatchesList.innerHTML =
+      '<li class="empty-state">Inicia sesión para revisar los partidos disputados.</li>';
+  }
+  state.club = null;
+  populateAdminMatchCourtOptions('');
+  renderRules();
+  if (clubNameDisplay) {
+    clubNameDisplay.textContent = APP_BRAND_NAME;
+  }
+  if (clubSloganDisplay) {
+    clubSloganDisplay.textContent = APP_BRAND_SLOGAN;
+  }
+  if (clubDescription) {
+    clubDescription.textContent = '';
+  }
+  if (clubAddress) {
+    clubAddress.textContent = '—';
+  }
+  if (clubContact) {
+    clubContact.textContent = '—';
+  }
+  if (clubWebsite) {
+    clubWebsite.textContent = '—';
+  }
+  if (clubScheduleList) {
+    clubScheduleList.innerHTML = '';
+  }
+  if (clubScheduleEmpty) {
+    clubScheduleEmpty.hidden = false;
+  }
+  if (clubCourtsList) {
+    clubCourtsList.innerHTML = '';
+  }
+  if (clubCourtsEmpty) {
+    clubCourtsEmpty.hidden = false;
+  }
+  if (clubFacilitiesList) {
+    clubFacilitiesList.innerHTML = '';
+  }
+  if (clubFacilitiesEmpty) {
+    clubFacilitiesEmpty.hidden = false;
+  }
+  if (clubStatus) {
+    setStatusMessage(clubStatus, '', '');
+  }
+  if (topbarLogo) {
+    topbarLogo.src = 'assets/club-logo.png';
+  }
+  if (clubNameHeading) {
+    clubNameHeading.textContent = APP_BRAND_NAME;
+  }
+  if (clubSloganHeading) {
+    clubSloganHeading.textContent = APP_BRAND_SLOGAN;
+  }
+  if (mobileTopbarTitle) {
+    mobileTopbarTitle.textContent = APP_BRAND_NAME;
+  }
+  if (clubLogoDisplay) {
+    clubLogoDisplay.style.backgroundImage = '';
+  }
+  if (mobileTopbarLogo) {
+    mobileTopbarLogo.src = 'assets/club-logo.svg';
+  }
+  state.rankingsByCategory.clear();
+  state.rankingsLoading = false;
+  state.selectedCategoryId = null;
+  if (rankingCategoryList) {
+    rankingCategoryList.innerHTML = '';
+  }
+  if (rankingEmpty) {
+    rankingEmpty.hidden = false;
+    rankingEmpty.textContent = 'Inicia sesión para consultar los rankings disponibles.';
+  }
+  setRankingStatusMessage('', '');
+  if (globalLeaguesList) {
+    globalLeaguesList.innerHTML = '<li class="empty-state">Inicia sesión para ver las ligas activas.</li>';
+  }
+  if (globalTournamentsList) {
+    globalTournamentsList.innerHTML = '<li class="empty-state">Inicia sesión para conocer los torneos disponibles.</li>';
+  }
+  if (globalUpcomingMatchesList) {
+    globalUpcomingMatchesList.innerHTML = '<li class="empty-state">Inicia sesión para ver los próximos partidos.</li>';
+  }
+  if (leagueRankingCards) {
+    leagueRankingCards.innerHTML = '<p class="empty-state">Inicia sesión para consultar los rankings de liga.</p>';
+  }
+  if (leagueUpcomingMatchesList) {
+    leagueUpcomingMatchesList.innerHTML = '<li class="empty-state">Inicia sesión para ver los partidos de liga.</li>';
+  }
+  if (tournamentDrawCards) {
+    tournamentDrawCards.innerHTML = '<p class="empty-state">Inicia sesión para revisar los cuadros de torneo.</p>';
+  }
+  if (tournamentUpcomingMatchesList) {
+    tournamentUpcomingMatchesList.innerHTML = '<li class="empty-state">Inicia sesión para ver los partidos de torneo.</li>';
+  }
+  if (generalChatMessagesList) {
+    generalChatMessagesList.innerHTML =
+      '<li class="empty-state">Inicia sesión para revisar los avisos del club.</li>';
+  }
+  if (generalChatInput) {
+    generalChatInput.value = '';
+  }
+  if (globalLeaguesCount) {
+    globalLeaguesCount.textContent = '0';
+  }
+  if (globalTournamentsCount) {
+    globalTournamentsCount.textContent = '0';
+  }
+  if (globalCategoriesCount) {
+    globalCategoriesCount.textContent = '0';
+  }
+  if (globalCourtsCount) {
+    globalCourtsCount.textContent = '0';
+  }
+  if (leagueMetricPlayers) {
+    leagueMetricPlayers.textContent = '0';
+  }
+  if (leagueMetricCategories) {
+    leagueMetricCategories.textContent = '0';
+  }
+  if (leagueMetricUpcoming) {
+    leagueMetricUpcoming.textContent = '0';
+  }
+  if (tournamentMetricActive) {
+    tournamentMetricActive.textContent = '0';
+  }
+  if (tournamentMetricCategories) {
+    tournamentMetricCategories.textContent = '0';
+  }
+  if (tournamentMetricUpcoming) {
+    tournamentMetricUpcoming.textContent = '0';
+  }
+  updateNotificationCounts(0);
+  if (calendarContainer) {
+    calendarContainer.innerHTML = '<div class="calendar-empty">Inicia sesión para ver el calendario.</div>';
+  }
+  if (calendarLabel) {
+    calendarLabel.textContent = '';
+  }
+  if (globalCalendarContainer) {
+    globalCalendarContainer.innerHTML =
+      '<div class="calendar-empty">Inicia sesión para ver el calendario general.</div>';
+  }
+  if (globalCalendarLabel) {
+    globalCalendarLabel.textContent = '';
+  }
+  if (leaguePlayersList) {
+    leaguePlayersList.innerHTML = '';
+  }
+  if (leaguePlayersEmpty) {
+    leaguePlayersEmpty.hidden = false;
+    leaguePlayersEmpty.textContent = 'Inicia sesión para consultar los jugadores inscritos.';
+  }
+  if (leaguePlayersCount) {
+    leaguePlayersCount.textContent = '0';
+  }
+  if (leaguePlayersLeagueSelect) {
+    leaguePlayersLeagueSelect.innerHTML = '<option value="">Selecciona una liga</option>';
+    leaguePlayersLeagueSelect.disabled = true;
+  }
+  if (leaguePlayersCategorySelect) {
+    leaguePlayersCategorySelect.innerHTML = '<option value="">Todas las categorías</option>';
+    leaguePlayersCategorySelect.disabled = true;
+  }
+  if (leaguePlayersSearch) {
+    leaguePlayersSearch.value = '';
+    leaguePlayersSearch.disabled = true;
+  }
+  if (leaguePlayersGender) {
+    leaguePlayersGender.value = '';
+    leaguePlayersGender.disabled = true;
+  }
+  state.leaguePlayersFilters = {
+    league: '',
+    category: '',
+    search: '',
+    gender: '',
+  };
+  leaguePlayersRequestToken = 0;
+  state.leaguePlayersLoading = false;
+  updateLeaguePaymentControls({ resetSelection: true });
+  resetLeaguePaymentGroups();
+  if (leaguePaymentsCount) {
+    leaguePaymentsCount.textContent = '0';
+  }
+  if (leaguePaymentsEmpty) {
+    leaguePaymentsEmpty.hidden = false;
+    leaguePaymentsEmpty.textContent = 'Inicia sesión para gestionar los pagos de inscripción.';
+  }
+  setStatusMessage(leaguePaymentsStatusMessage, '', '');
+  if (playerDirectoryList) {
+    playerDirectoryList.innerHTML = '';
+  }
+  if (playerDirectoryEmpty) {
+    playerDirectoryEmpty.hidden = false;
+    playerDirectoryEmpty.textContent = 'Inicia sesión para ver el directorio de usuarios.';
+  }
+  if (playerDirectoryCount) {
+    playerDirectoryCount.textContent = '0';
+  }
+  if (playerDirectorySearch) {
+    playerDirectorySearch.value = '';
+  }
+  if (playerDirectoryGender) {
+    playerDirectoryGender.value = '';
+  }
+  if (playerDirectoryRole) {
+    playerDirectoryRole.value = '';
+  }
+  if (playerDirectoryCategory) {
+    playerDirectoryCategory.value = '';
+  }
+  state.players = [];
+  state.playerDirectoryFilters = {
+    search: '',
+    gender: '',
+    role: '',
+    category: '',
+  };
+  resetAdminCategoryForm();
+  resetAdminPlayerForm();
+  resetAdminMatchForm();
+  if (adminCategoryList) {
+    adminCategoryList.innerHTML =
+      '<li class="empty-state">Inicia sesión para gestionar las categorías.</li>';
+  }
+  if (adminPlayerList) {
+    adminPlayerList.innerHTML =
+      '<li class="empty-state">Inicia sesión para gestionar los usuarios.</li>';
+  }
+  if (adminMatchList) {
+    adminMatchList.innerHTML =
+      '<li class="empty-state">Inicia sesión para gestionar los partidos.</li>';
+  }
+  if (accountFullName) {
+    accountFullName.textContent = '—';
+  }
+  if (accountEmail) {
+    accountEmail.textContent = '—';
+  }
+  if (accountPhone) {
+    accountPhone.textContent = '—';
+  }
+  if (accountMembershipStatus) {
+    accountMembershipStatus.textContent = 'No es socio';
+  }
+  if (accountMembershipNumber) {
+    accountMembershipNumber.textContent = '—';
+  }
+  if (accountMembershipNumberRow) {
+    accountMembershipNumberRow.hidden = true;
+  }
+  if (accountBirthDate) {
+    accountBirthDate.textContent = '—';
+  }
+  if (accountSchedule) {
+    accountSchedule.textContent = '—';
+  }
+  if (accountNotes) {
+    accountNotes.textContent = 'Sin notas registradas.';
+  }
+  if (profileAvatar) {
+    profileAvatar.style.backgroundImage = '';
+  }
+  if (accountPhoto) {
+    accountPhoto.style.backgroundImage = '';
+  }
+  setStatusMessage(adminStatus, '', '');
+  setStatusMessage(adminMatchStatusMessage, '', '');
+  if (adminEnrollmentForm) {
+    adminEnrollmentForm.reset();
+  }
+  if (adminEnrollmentList) {
+    adminEnrollmentList.innerHTML =
+      '<li class="empty-state">Inicia sesión para gestionar las inscripciones.</li>';
+  }
+  setStatusMessage(adminEnrollmentStatus, '', '');
+  setStatusMessage(demoModeStatus, '', '');
+  resetDemoModeResults();
+  state.push.enabled = false;
+  state.push.subscriptionEndpoint = null;
+  state.push.publicKey = null;
+  state.push.serverEnabled = false;
+  state.push.configLoaded = false;
+  state.push.permission = state.push.supported && typeof Notification !== 'undefined' ? Notification.permission : 'default';
+  updatePushSettingsUI();
+  updateTournamentActionAvailability();
+}
+
+function applySetupState() {
+  const roleInputs = registerForm
+    ? Array.from(registerForm.querySelectorAll('input[name="roles"]'))
+    : [];
+  if (!roleInputs.length) return;
+
+  if (state.needsSetup) {
+    authDescription.textContent =
+      'No hay administradores configurados todavía. Crea el usuario inicial para activar la aplicación.';
+    roleInputs.forEach((input) => {
+      const isAdminOption = input.value === 'admin';
+      const wrapper = input.closest('.checkbox-option');
+      input.checked = isAdminOption;
+      input.disabled = true;
+      if (wrapper) {
+        wrapper.hidden = false;
+      }
+    });
+    registerRoleWrapper.dataset.locked = 'true';
+    switchTab('register');
+    return;
+  }
+
+  authDescription.textContent = 'Inicia sesión con tu cuenta o regístrate para participar en la liga.';
+  roleInputs.forEach((input) => {
+    const isPlayerOption = input.value === 'player';
+    const isAdminOption = input.value === 'admin';
+    const isCourtManagerOption = input.value === 'court_manager';
+    const isRestrictedOption = isAdminOption || isCourtManagerOption;
+    input.disabled = isRestrictedOption;
+    input.checked = isPlayerOption;
+    const wrapper = input.closest('.checkbox-option');
+    if (wrapper) {
+      wrapper.hidden = isRestrictedOption;
+    }
+  });
+  registerRoleWrapper.dataset.locked = 'false';
+}
+
+
+
+  const {
+    totalCreated = 0,
+    totalSkipped = 0,
+    created = [],
+    skipped = [],
+    password = '',
+  } = result;
+
+  if (demoModeCreated) {
+    demoModeCreated.textContent = `Jugadores creados: ${totalCreated}`;
+    if (Array.isArray(created) && created.length) {
+      demoModeCreated.title = created.join(', ');
+    } else {
+      demoModeCreated.removeAttribute('title');
+    }
+  }
+
+  if (demoModeSkipped) {
+    demoModeSkipped.textContent = `Jugadores ya existentes: ${totalSkipped}`;
+    if (Array.isArray(skipped) && skipped.length) {
+      demoModeSkipped.title = skipped.join(', ');
+    } else {
+      demoModeSkipped.removeAttribute('title');
+    }
+  }
+
+  if (demoModePassword) {
+    if (password) {
+      demoModePassword.textContent = `Contraseña de las cuentas demo: ${password}`;
+      demoModePassword.hidden = false;
+    } else {
+      demoModePassword.textContent = '';
+      demoModePassword.hidden = true;
+    }
+  }
+
+  demoModeResults.hidden = false;
+}
+const navigation = createNavigationManager({
+  state,
+  authView,
+  appView,
+  appMenu,
+  appSidebar,
+  appSections,
+  mobileMenuToggle,
+  mobileMenuBackdrop,
+  mobileMenuClose,
+  mobileTopbarLogo,
+  mobileTopbarTitle,
+  matchesMenuBadge,
+  adminToggleElements,
+  generalChatForm,
+  generalChatInput,
+  showGlobalMessage,
+  toggleProfileForm,
+  syncNoticeBoardState,
+  loadGlobalOverview,
+  loadLeagueDashboard,
+  refreshLeaguePayments,
+  loadTournamentDashboard,
+  refreshTournamentDoubles,
+  refreshTournamentDetail,
+  updateBracketCategoryOptions,
+  loadTournamentBracketContext,
+  loadAccountSummary,
+  getLeaguesWithEnrollmentFee,
+  getTournamentsWithEnrollmentFee,
+  isAdmin,
+  isCourtManager,
+  hasCourtManagementAccess,
+  refreshTournamentBracketLayoutColumns,
+  updateProfileCard,
+  updatePushSettingsUI,
+  resetData,
+  setStatusMessage,
+  tournamentBracketStatus,
+  getShouldReplaceHistory: () => shouldReplaceHistoryOnNextSection,
+  setShouldReplaceHistory: (value) => {
+    shouldReplaceHistoryOnNextSection = Boolean(value);
+  },
+  syncSectionRoute,
+  buildPathFromSection,
+  normalizeHistoryPath,
+  getSectionIdFromPath,
+});
+
+const {
+  showSection: navigationShowSection,
+  updateAuthUI: navigationUpdateAuthUI,
+  updateMatchesMenuBadge: navigationUpdateMatchesMenuBadge,
+  closeMobileMenu: navigationCloseMobileMenu,
+  isMobileMenuOpen: navigationIsMobileMenuOpen,
+  updateHandlers: navigationUpdateHandlers,
+  setActiveMenu: navigationSetActiveMenu,
+  updateAdminMenuVisibility: navigationUpdateAdminMenuVisibility,
+  updateCourtManagerMenuVisibility: navigationUpdateCourtManagerMenuVisibility,
+  applyCourtManagerMenuRestrictions: navigationApplyCourtManagerMenuRestrictions,
+} = navigation;
+
+showSectionHandler = navigationShowSection;
+updateAuthUIHandler = navigationUpdateAuthUI;
+updateMatchesMenuBadgeHandler = navigationUpdateMatchesMenuBadge;
+closeMobileMenuHandler = navigationCloseMobileMenu;
+isMobileMenuOpenHandler = navigationIsMobileMenuOpen;
+setActiveMenuHandler = navigationSetActiveMenu;
+updateAdminMenuVisibilityHandler = navigationUpdateAdminMenuVisibility;
+updateCourtManagerMenuVisibilityHandler = navigationUpdateCourtManagerMenuVisibility;
+applyCourtManagerMenuRestrictionsHandler = navigationApplyCourtManagerMenuRestrictions;
+
+navigationUpdateHandlers({
+  loadGlobalOverview,
+  loadLeagueDashboard,
+  refreshLeaguePayments,
+  loadTournamentDashboard,
+  refreshTournamentDoubles,
+  refreshTournamentDetail,
+  updateBracketCategoryOptions,
+  loadTournamentBracketContext,
+  loadAccountSummary,
+  getLeaguesWithEnrollmentFee,
+  getTournamentsWithEnrollmentFee,
+  refreshTournamentBracketLayoutColumns,
+  updateLeaguePaymentMenuVisibility,
+  updateTournamentPaymentMenuVisibility,
+});
+
     ? match.players.map((player) => normalizeId(player))
     : [];
   const initialCategoryId = initialCategorySelection || categoryField.value;
