@@ -4,6 +4,7 @@ import { createChatModule } from './features/chat/chat.js';
 import { createCourtsModule } from './features/courts/courts.js';
 import { createLeaguesModule } from './features/leagues/leagues.js';
 import { createLeagueCategoriesModule } from './features/leagues/categories.js';
+import { createLeagueRankingsModule } from './features/leagues/rankings.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -292,3 +293,39 @@ const {
   resolveCategoryColor,
 });
 
+const leagueRankingsModule = createLeagueRankingsModule({
+  state,
+  request,
+  ensureRankingFilters,
+  getCategoryColor,
+  createCategoryColorIndicator,
+  translateGender,
+  formatSkillLevelLabel,
+  CATEGORY_STATUS_LABELS,
+  resolveLeague,
+  buildPlayerCell,
+  buildPlayerCellMarkup,
+  createMovementBadge,
+  getPodiumEmoji,
+  normalizeId,
+  isAdmin,
+  rankingCategoryList,
+  rankingEmpty,
+  rankingStatus,
+  rankingLeagueFilter,
+  setStatusMessage,
+  showGlobalMessage,
+  getLeagueCategories,
+  getLeagueIdForCategory,
+  formatLeagueOptionLabel,
+  openModal,
+  closeModal,
+  escapeHtml,
+});
+const {
+  setRankingStatusMessage,
+  renderRankingSections,
+  refreshAllRankings,
+  openRankingPrintModal,
+  updateRankingFilterControls,
+} = leagueRankingsModule;
