@@ -153,6 +153,28 @@ const {
   buildMovementBadgeMarkup,
 } = createUiComponents({ SCHEDULE_LABELS });
 
+function normalizeId(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value);
+  }
+
+  if (typeof value === 'object') {
+    if (value._id) {
+      return String(value._id);
+    }
+
+    if (value.id) {
+      return String(value.id);
+    }
+  }
+
+  return '';
+}
+
 let showSectionHandler = () => {};
 let updateMatchesMenuBadgeHandler = () => {};
 let closeMobileMenuHandler = () => {};
