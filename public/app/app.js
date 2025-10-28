@@ -14,6 +14,7 @@ import { createLeaguePaymentsModule } from './features/payments/league-payments.
 import { createProfileModule } from './features/profile/profile.js';
 import { createProfileSettingsModule } from './features/profile/settings.js';
 import { createFormComponents } from './components/forms.js';
+import { createModalManager } from './components/modals.js';
 import { createAppState } from './core/state.js';
 import { createAuthModule } from './core/auth.js';
 import { createApiClient } from './core/api.js';
@@ -54,7 +55,6 @@ import {
   getCategoryColor,
 } from './utils/format.js';
 import {
-  createDomUtils,
   readFileAsDataUrl,
   extractPhotoFromForm,
   applyCategoryColorStyles,
@@ -3571,7 +3571,15 @@ const {
   closeModal,
   openConfirmationDialog,
   applyRichTextCommand,
-} = createDomUtils({ globalMessage, modalOverlay, modalBody, modalTitle });
+} = createModalManager({
+  globalMessage,
+  modalOverlay,
+  modalBody,
+  modalTitle,
+  modalClose,
+  isMobileMenuOpen,
+  closeMobileMenu,
+});
 
 const {
   openLeagueModal,
