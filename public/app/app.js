@@ -3,6 +3,7 @@ import { createCalendarModule } from './features/calendar/calendar.js';
 import { createChatModule } from './features/chat/chat.js';
 import { createCourtsModule } from './features/courts/courts.js';
 import { createLeaguesModule } from './features/leagues/leagues.js';
+import { createLeagueCategoriesModule } from './features/leagues/categories.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -244,4 +245,50 @@ const {
   invalidateLeaguePaymentsByCategory,
   pruneLeagueCaches,
 } = createLeaguesModule({ state, normalizeId });
+
+const {
+  updateCategoryControlsAvailability,
+  updateCategoryFilterControls,
+  renderCategories,
+  submitCategoryFormData,
+  renderAdminCategoryList,
+  resetAdminCategoryForm,
+  setAdminCategoryEditing,
+  openCategoryModal,
+} = createLeagueCategoriesModule({
+  state,
+  request,
+  loadAllData,
+  ensureCategoryFilters,
+  formatLeagueOptionLabel,
+  hasActiveLeagues,
+  isAdmin,
+  normalizeId,
+  renderNotifications,
+  categoriesList,
+  categoryLeagueFilter,
+  categoryCreateButton,
+  getCategoryColor,
+  applyCategoryColorStyles,
+  createCategoryColorIndicator,
+  translateGender,
+  formatDate,
+  formatCurrencyValue,
+  resolveLeague,
+  LEAGUE_STATUS_LABELS,
+  CATEGORY_STATUS_LABELS,
+  DEFAULT_CATEGORY_COLOR,
+  DEFAULT_CATEGORY_MATCH_FORMAT,
+  CATEGORY_SKILL_LEVEL_OPTIONS,
+  CATEGORY_MATCH_FORMAT_OPTIONS,
+  renderCategoryColorField,
+  openModal,
+  closeModal,
+  adminCategoryList,
+  adminCategoryForm,
+  adminCategoryCancel,
+  formatDateInput,
+  setStatusMessage,
+  resolveCategoryColor,
+});
 
