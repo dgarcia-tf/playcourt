@@ -10,6 +10,7 @@ import { createMatchProposalsModule } from './features/matches/proposals.js';
 import { createNotificationsModule } from './features/notifications/notifications.js';
 import { createPushModule } from './features/notifications/push.js';
 import { createTournamentsModule } from './features/tournaments/tournaments.js';
+import { createLeaguePaymentsModule } from './features/payments/league-payments.js';
 
 
 const calendarEventsModule = createCalendarEventsModule({
@@ -3962,6 +3963,56 @@ function openMatchModal(matchId = '') {
     });
   }
   if (statusField) {
+
+const leaguePaymentsModule = createLeaguePaymentsModule({
+  state,
+  DEFAULT_LEAGUE_CURRENCY,
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUS_ORDER,
+  ensureLeaguePaymentFilters,
+  getLeaguesWithEnrollmentFee,
+  compareLeaguesByHistory,
+  getLeagueCategories,
+  resolveLeague,
+  normalizeId,
+  loadEnrollments,
+  fetchLeagueDetail,
+  renderLeagueDetail,
+  buildPlayerCell,
+  formatCurrencyValue,
+  formatShortDate,
+  formatDateInput,
+  setStatusMessage,
+  request,
+  isAdmin,
+  showSection,
+  leaguePaymentsMenuButton,
+  leaguePaymentsSection,
+  leaguePaymentsGroups,
+  leaguePaymentsPendingList,
+  leaguePaymentsPendingEmpty,
+  leaguePaymentsPendingCount,
+  leaguePaymentsPendingTotal,
+  leaguePaymentsPaidList,
+  leaguePaymentsPaidEmpty,
+  leaguePaymentsPaidCount,
+  leaguePaymentsPaidTotal,
+  leaguePaymentsCount,
+  leaguePaymentsLeagueSelect,
+  leaguePaymentsSearchInput,
+  leaguePaymentsEmpty,
+  leaguePaymentsFeeBadge,
+  leaguePaymentsStatusMessage,
+});
+
+const {
+  updateLeaguePaymentControls,
+  refreshLeaguePayments,
+  handleLeaguePaymentFormSubmit,
+  updateLeaguePaymentMenuVisibility,
+  resetLeaguePaymentGroups,
+} = leaguePaymentsModule;
+
     statusField.value = match?.status || 'pendiente';
   }
   if (scheduledField) {
