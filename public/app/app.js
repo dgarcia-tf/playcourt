@@ -13,12 +13,13 @@ import { createTournamentsModule } from './features/tournaments/tournaments.js';
 import { createLeaguePaymentsModule } from './features/payments/league-payments.js';
 import { createProfileModule } from './features/profile/profile.js';
 import { createProfileSettingsModule } from './features/profile/settings.js';
+import { createAppState } from './core/state.js';
+import { createAuthModule } from './core/auth.js';
+import { createApiClient } from './core/api.js';
 import {
   API_BASE,
   APP_BRAND_NAME,
   APP_BRAND_SLOGAN,
-  STORAGE_KEY,
-  REMEMBER_CREDENTIALS_KEY,
   NOTICE_LAST_SEEN_PREFIX,
   MAX_PHOTO_SIZE,
   MAX_POSTER_SIZE,
@@ -2115,129 +2116,29 @@ async
 function renderNotifications(notifications = []) {
   const baseList = Array.isArray(notifications) ? [...notifications] : [];
   state.notificationBase = baseList;
-  const combined = combineNotificationsWithEnrollmentRequests(baseList);
-  state.notifications = combined;
-  updateNotificationCounts(combined);
-  notificationsList.innerHTML = '';
-  if (!combined.length) {
-    notificationsList.innerHTML = '<li class="empty-state">No tienes notificaciones pendientes.</li>';
-    return;
-  }
-  combined.forEach((notification) => {
-    const item = document.createElement('li');
-    const title = document.createElement('strong');
-    const isLeagueEnrollment = notification.type === 'enrollment-request';
-    const isTournamentEnrollment = notification.type === 'tournament-enrollment-request';
-    const isEnrollmentAlert = isLeagueEnrollment || isTournamentEnrollment;
-    title.textContent = isEnrollmentAlert
-      ? notification.title || `Solicitudes de inscripción · ${notification.categoryName || 'Categoría'}`
-      : notification.title;
-    item.appendChild(title);
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.appendChild(document.createElement('span')).textContent = formatDate(notification.scheduledFor);
-    const channelLabel = (() => {
-      if (isTournamentEnrollment) return 'TORNEOS';
-      if (isLeagueEnrollment) return 'SOLICITUDES';
-      return (notification.channel || 'app').toUpperCase();
-    })();
-    meta.appendChild(document.createElement('span')).textContent = channelLabel;
-    if (isEnrollmentAlert && Number(notification.pendingCount) > 0) {
-      meta.appendChild(document.createElement('span')).textContent = `Pendientes: ${notification.pendingCount}`;
-    item.appendChild(meta);
-    const messageText = notification.message;
-    if (messageText) {
-      const message = document.createElement('p');
-      message.textContent = messageText;
-      item.appendChild(message);
-    }
-    if (!isEnrollmentAlert && notification.match?.scheduledAt) {
-      const info = document.createElement('div');
-      info.className = 'meta';
-      info.textContent = `Partido: ${formatDate(notification.match.scheduledAt)} · Pista ${
-        notification.match.court || 'por confirmar'
-      }`;
-      item.appendChild(info);
-    }
-    if (isEnrollmentAlert) {
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      const reviewButton = document.createElement('button');
-      reviewButton.type = 'button';
-      reviewButton.className = 'primary';
-      let hasTarget = false;
-      if (isTournamentEnrollment && notification.tournamentId) {
-        reviewButton.dataset.reviewTournament = notification.tournamentId;
-        if (notification.categoryId) {
-          reviewButton.dataset.reviewTournamentCategory = notification.categoryId;
-        }
-        hasTarget = true;
-      } else if (notification.categoryId) {
-        reviewButton.dataset.reviewCategory = notification.categoryId;
-        hasTarget = true;
-      }
-      if (hasTarget) {
-        reviewButton.textContent =
-          Number(notification.pendingCount) === 1 ? 'Revisar solicitud' : 'Revisar solicitudes';
-        actions.appendChild(reviewButton);
-        item.appendChild(actions);
-      }
-      notificationsList.appendChild(item);
-      return;
-    const notificationId = normalizeId(notification);
-    if (notificationId) {
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      const dismiss = document.createElement('button');
-      dismiss.type = 'button';
-      dismiss.className = 'secondary';
-      dismiss.dataset.notificationId = notificationId;
-      dismiss.textContent = 'Marcar como leída';
-      actions.appendChild(dismiss);
-      item.appendChild(actions);
-    }
-    notificationsList.appendChild(item);
-}
-function normalizeWebsiteUrl(value) {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  try {
-    const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
-    return url.toString();
-  } catch (error) {
-    return trimmed;
-function normalizeDayLabel(label) {
-  if (typeof label !== 'string') return '';
-  return label
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-const WEEKDAY_VALUE_BY_LABEL = WEEKDAY_OPTIONS.reduce((map, option) => {
-  map[normalizeDayLabel(option.label)] = option.value;
-  return map;
-}, {});
-function getDayValueFromLabel(label) {
-  const normalized = normalizeDayLabel(label);
-  return WEEKDAY_VALUE_BY_LABEL[normalized] || '';
-function normalizeScheduleForEditor(entry = {}) {
-  const label = typeof entry.label === 'string' ? entry.label.trim() : '';
-  const opensAt = typeof entry.opensAt === 'string' ? entry.opensAt.trim() : '';
-  const closesAt = typeof entry.closesAt === 'string' ? entry.closesAt.trim() : '';
-  const dayValue = getDayValueFromLabel(label);
-  if (dayValue) {
-    return {
-      dayValue,
-      customLabel: '',
-      opensAt,
-      closesAt,
-    };
-  return {
-    dayValue: label ? 'custom' : '',
-    customLabel: label,
-    opensAt,
+const state = createAppState();
+
+const {
+  entityHasRole,
+  isAdmin,
+  isCourtManager,
+  hasCourtManagementAccess,
+  persistSession,
+  clearSession,
+  restoreSession,
+  persistRememberedCredentials,
+  clearRememberedCredentials,
+  getRememberedCredentials,
+} = createAuthModule({ state });
+
+const { request } = createApiClient({
+  state,
+  onUnauthorized: () => {
+    clearSession();
+    state.token = null;
+    state.user = null;
+    updateAuthUI();
+});
     closesAt,
 }
 function createSchedulesEditor(initialSchedules = []) {
@@ -3878,16 +3779,6 @@ function openClubModal() {
     try {
       const updated = await request('/club', { method: 'PUT', body: payload });
       const fallbackClub = {
-        ...(state.club || {}),
-        ...payload,
-      };
-      const nextClub = updated && typeof updated === 'object' ? updated : fallbackClub;
-      renderClubProfile(nextClub);
-      setStatusMessage(status, 'success', 'Información actualizada correctamente.');
-      showGlobalMessage('Información del club actualizada.');
-    } catch (error) {
-      setStatusMessage(status, 'error', error.message);
-  form.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
     setStatusMessage(status, '', '');
     closeModal();
   });
@@ -3903,3 +3794,11 @@ profileIsMemberCheckbox?.addEventListener('change', handleProfileMembershipChang
 profileEditButton?.addEventListener('click', handleProfileEditClick);
 profileCancelButton?.addEventListener('click', handleProfileCancelClick);
 profileForm?.addEventListener('submit', handleProfileFormSubmit);
+  const remembered = getRememberedCredentials();
+  if (!remembered) {
+    loginEmailInput.value = '';
+    loginPasswordInput.value = '';
+  const { email = '', password = '' } = remembered;
+  loginEmailInput.value = email;
+  loginPasswordInput.value = password;
+  loginRememberCheckbox.checked = Boolean(email || password);
