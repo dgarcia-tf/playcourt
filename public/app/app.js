@@ -17,11 +17,56 @@ import { createAppState } from './core/state.js';
 import { createAuthModule } from './core/auth.js';
 import { createApiClient } from './core/api.js';
 import {
+  formatDate,
+  formatShortDate,
+  formatTime,
+  formatTimeRangeLabel,
+  formatDateOnly,
+  formatMonthLabel,
+  formatDayLabel,
+  startOfDay,
+  startOfWeek,
+  startOfMonth,
+  endOfMonth,
+  addMinutes,
+  addDays,
+  addMonths,
+  formatDateInput,
+  roundDateToInterval,
+  roundDateUpToInterval,
+  formatDateTimeLocal,
+  formatTimeInputValue,
+  combineDateAndTime,
+  formatDateRangeLabel,
+  getMatchExpirationDate,
+  formatExpirationDeadline,
+  formatChatTimestamp,
+} from './utils/date.js';
+import {
+  formatCurrencyValue,
+  formatCurrencyDisplay,
+  translateGender,
+  translateSchedule,
+  formatSkillLevelLabel,
+  formatRoles,
+  resolveCategoryColor,
+  getCategoryColor,
+} from './utils/format.js';
+import {
+  createDomUtils,
+  readFileAsDataUrl,
+  extractPhotoFromForm,
+  applyCategoryColorStyles,
+  applyCategoryTagColor,
+  createCategoryColorIndicator,
+  renderCategoryColorField,
+} from './utils/dom.js';
+import { sanitizeNoticeHtml } from './utils/sanitize.js';
+import {
   API_BASE,
   APP_BRAND_NAME,
   APP_BRAND_SLOGAN,
   NOTICE_LAST_SEEN_PREFIX,
-  MAX_PHOTO_SIZE,
   MAX_POSTER_SIZE,
   MAX_NOTICE_ATTACHMENT_SIZE,
   MAX_NOTICE_ATTACHMENTS,
@@ -93,165 +138,6 @@ import {
   syncSectionRoute,
 } from './config/routes.js';
 setAppBasePath(APP_BASE_PATH);
-  tournamentConsolationViewCard,
-  tournamentDetailBody,
-  tournamentDetailSubtitle,
-  tournamentDetailTitle,
-  tournamentDoublesContainer,
-  tournamentDoublesEmpty,
-  tournamentDoublesTournamentSelect,
-  tournamentDrawCards,
-  tournamentDrawGenerateButton,
-  tournamentEditButton,
-  tournamentEnrollmentAddButton,
-  tournamentEnrollmentCount,
-  tournamentEnrollmentEmpty,
-  tournamentEnrollmentGender,
-  tournamentEnrollmentList,
-  tournamentEnrollmentSearch,
-  tournamentEnrollmentTournamentSelect,
-  tournamentMatchTournamentSelect,
-  tournamentMatchesEmpty,
-  tournamentMatchesList,
-  tournamentMetricActive,
-  tournamentMetricCategories,
-  tournamentMetricUpcoming,
-  tournamentOrderDayInput,
-  tournamentOrderDownloadButton,
-  tournamentPaymentsCount,
-  tournamentPaymentsEmpty,
-  tournamentPaymentsFeeBadge,
-  tournamentPaymentsGroups,
-  tournamentPaymentsMenuButton,
-  tournamentPaymentsPaidCount,
-  tournamentPaymentsPaidEmpty,
-  tournamentPaymentsPaidList,
-  tournamentPaymentsPaidTotal,
-  tournamentPaymentsPendingCount,
-  tournamentPaymentsPendingEmpty,
-  tournamentPaymentsPendingList,
-  tournamentPaymentsPendingTotal,
-  tournamentPaymentsSearchInput,
-  tournamentPaymentsSection,
-  tournamentPaymentsStatusMessage,
-  tournamentPaymentsTournamentSelect,
-  tournamentUpcomingMatchesList,
-  tournamentsList,
-  translateGender,
-  translateSchedule,
-  updateBracketCategoryOptions,
-  updateBracketSizeSelect,
-  updateEnrollmentCategoryOptions,
-  updateMatchCategoryOptions
-});
-const {
-  applyTournamentBracketRoundOffsets,
-  applyTournamentMatchUpdate,
-  buildTournamentBracketGrid,
-  calculateTournamentPaymentTotal,
-  clearTournamentEnrollmentFilters,
-  clearTournamentState,
-  collectTournamentSeedAssignments,
-  compareTournamentsBySchedule,
-  createEmptyTournamentFeeInfo,
-  createTournamentBracketSection,
-  createTournamentDoublesCategoryCard,
-  createTournamentPaymentItem,
-  ensureTournamentBracketResizeHandler,
-  ensureTournamentEnrollmentFilters,
-  ensureTournamentPaymentFilters,
-  fetchTournamentDoublesPairs,
-  fetchTournamentEnrollments,
-  fillTournamentSelect,
-  findTournamentMatchContext,
-  formatTournamentCategoryStatusLabel,
-  formatTournamentDateRange,
-  formatTournamentEnrollmentStatusLabel,
-  formatTournamentMatchFormat,
-  formatTournamentMatchStatusLabel,
-  formatTournamentMatchType,
-  formatTournamentPaymentTotal,
-  formatTournamentResultStatusLabel,
-  formatTournamentStatusLabel,
-  getCachedTournamentBracketMatches,
-  getTournamentBracketCacheKey,
-  getTournamentById,
-  getTournamentCategories,
-  getTournamentCategoryById,
-  getTournamentDoublesPairCacheKey,
-  getTournamentEnrollmentCacheKey,
-  getTournamentOrderOfPlayDays,
-  getTournamentPaymentData,
-  getTournamentsWithEnrollmentFee,
-  handleTournamentPaymentFormSubmit,
-  hydrateTournamentMatchesWithPairs,
-  loadTournamentBracketContext,
-  loadTournamentDashboard,
-  loadTournamentDetail,
-  openTournamentAdminEnrollmentModal,
-  openTournamentMatchResultModal,
-  openTournamentMatchScheduleModal,
-  openTournamentSelfEnrollmentModal,
-  persistTournamentBracketSeeds,
-  recomputeTournamentOrderOfPlayDays,
-  refreshTournamentBracketLayoutColumns,
-  refreshTournamentBracketMatches,
-  refreshTournamentDetail,
-  refreshTournamentDoubles,
-  refreshTournamentEnrollments,
-  refreshTournamentMatches,
-  refreshTournamentPayments,
-  reloadTournaments,
-  renderGlobalTournaments,
-  renderTournamentBracket,
-  renderTournamentBracketSeeds,
-  renderTournamentCategories,
-  renderTournamentDashboard,
-  renderTournamentDetail,
-  renderTournamentDoubles,
-  renderTournamentDrawCards,
-  renderTournamentEnrollments,
-  renderTournamentMatches,
-  renderTournamentPayments,
-  renderTournaments,
-  resetTournamentPaymentGroups,
-  resolveTournamentFeeInfo,
-  runTournamentBracketAlignmentCallbacks,
-  scheduleTournamentBracketAlignment,
-  setTournamentEnrollmentFilterAvailability,
-  tournamentHasEnrollmentFee,
-  updateTournamentActionAvailability,
-  updateTournamentCategoriesPoster,
-  updateTournamentCategoryCache,
-  updateTournamentEnrollmentCount,
-  updateTournamentOrderOfPlayControls,
-  updateTournamentPaymentControls,
-  updateTournamentPaymentFeeIndicator,
-  updateTournamentPaymentMenuVisibility,
-  updateTournamentPaymentTotalElement,
-  updateTournamentSelectors,
-  validateTournamentSeedAssignments
-} = tournamentsModule;
-
-
-
-
-
-
-
-
-function createLeaguePaymentItem(entry, { fee = null } = {}) {
-  const listItem = document.createElement('li');
-  listItem.className = 'league-payment-entry';
-  const item = document.createElement('details');
-  item.className = 'league-payment-item';
-  const statusValue = entry.status || 'pendiente';
-  item.dataset.paymentStatus = statusValue;
-  if (statusValue !== 'pagado') {
-    item.open = true;
-  }
-  const summary = document.createElement('summary');
-  const header = document.createElement('div');
   header.className = 'league-payment-header';
   const playerCell = buildPlayerCell(entry.player || {}, { includeSchedule: false, size: 'sm' });
   header.appendChild(playerCell);
@@ -3677,128 +3563,12 @@ const {
   });
 
     title: match ? 'Editar partido' : 'Nuevo partido',
-      body.appendChild(status);
-      setStatusMessage(status, '', '');
-function openClubModal() {
-  const club = state.club || {};
-        Nombre del club
-        <input type="text" name="name" required />
-        Lema o eslogan
-        <input type="text" name="slogan" maxlength="120" />
-      Descripción
-      <textarea name="description" rows="3" maxlength="600" placeholder="Presentación del club y servicios principales"></textarea>
-    <div class="form-grid">
-      <label>
-        Dirección
-        <input type="text" name="address" maxlength="160" />
-      </label>
-      <label>
-        Teléfono de contacto
-        <input type="text" name="contactPhone" maxlength="40" />
-      </label>
-    </div>
-    <div class="form-grid">
-      <label>
-        Correo electrónico
-        <input type="email" name="contactEmail" maxlength="160" />
-      </label>
-      <label>
-        Sitio web
-        <input type="text" name="website" placeholder="ej. clubtenis.com" maxlength="160" />
-      </label>
-    </div>
-      Logotipo
-      <input type="file" name="logo" accept="image/*" />
-      <span class="form-hint">El logotipo se almacena en la base de datos (máx. 2&nbsp;MB).</span>
-    <section class="form-section">
-      <div class="form-section__header">
-        <h3>Horarios preferentes</h3>
-        <p class="form-hint">Define franjas horarias por día y ajusta su horario.</p>
-      </div>
-      <div data-mount="schedules"></div>
-    </section>
-    <section class="form-section">
-      <div class="form-section__header">
-        <h3>Pistas disponibles</h3>
-        <p class="form-hint">Añade cada pista con sus características principales.</p>
-      </div>
-      <div data-mount="courts"></div>
-    </section>
-      Servicios del club
-      <textarea
-        name="facilities"
-        rows="3"
-        placeholder="Una línea por servicio destacado"
-      ></textarea>
-      <button type="submit" class="primary">Guardar cambios</button>
-  const status = document.createElement('p');
-  status.className = 'status-message';
-  status.style.display = 'none';
-  const schedulesMount = form.querySelector('[data-mount="schedules"]');
-  const schedulesEditor = createSchedulesEditor(club.schedules);
-  schedulesMount?.appendChild(schedulesEditor.element);
-  const courtsMount = form.querySelector('[data-mount="courts"]');
-  const courtsEditor = createCourtsEditor(club.courts);
-  courtsMount?.appendChild(courtsEditor.element);
-  form.elements.name.value = club.name || '';
-  form.elements.slogan.value = club.slogan || '';
-  form.elements.description.value = club.description || '';
-  form.elements.address.value = club.address || '';
-  form.elements.contactPhone.value = club.contactPhone || '';
-  form.elements.contactEmail.value = club.contactEmail || '';
-  form.elements.website.value = club.website || '';
-  form.elements.facilities.value = Array.isArray(club.facilities) ? club.facilities.join('\n') : '';
-    const formData = new FormData(form);
-    const schedules = schedulesEditor?.getValue?.() || [];
-    const courts = courtsEditor?.getValue?.() || [];
-    const payload = {
-      name: formData.get('name')?.toString().trim() || '',
-      slogan: formData.get('slogan')?.toString().trim() || '',
-      description: formData.get('description')?.toString().trim() || '',
-      address: formData.get('address')?.toString().trim() || '',
-      contactPhone: formData.get('contactPhone')?.toString().trim() || '',
-      contactEmail: formData.get('contactEmail')?.toString().trim() || '',
-      website: formData.get('website')?.toString().trim() || '',
-      schedules,
-      courts,
-      facilities: parseFacilitiesInput(formData.get('facilities')?.toString() || ''),
-    };
+const {
+  setStatusMessage,
+  showGlobalMessage,
+  openModal,
+  closeModal,
+  openConfirmationDialog,
+  applyRichTextCommand,
+} = createDomUtils({ globalMessage, modalOverlay, modalBody, modalTitle });
 
-    try {
-      const logoData = await extractPhotoFromForm(form, 'logo');
-      if (logoData !== undefined) {
-        payload.logo = logoData;
-      }
-    } catch (error) {
-      setStatusMessage(status, 'error', error.message);
-      return;
-    }
-
-    setStatusMessage(status, 'info', 'Guardando cambios del club...');
-
-    try {
-      const updated = await request('/club', { method: 'PUT', body: payload });
-      const fallbackClub = {
-    setStatusMessage(status, '', '');
-    closeModal();
-  });
-
-    title: 'Editar información del club',
-      body.appendChild(status);
-    onClose: () => setStatusMessage(status, '', ''),
-
-
-
-
-profileIsMemberCheckbox?.addEventListener('change', handleProfileMembershipChange);
-profileEditButton?.addEventListener('click', handleProfileEditClick);
-profileCancelButton?.addEventListener('click', handleProfileCancelClick);
-profileForm?.addEventListener('submit', handleProfileFormSubmit);
-  const remembered = getRememberedCredentials();
-  if (!remembered) {
-    loginEmailInput.value = '';
-    loginPasswordInput.value = '';
-  const { email = '', password = '' } = remembered;
-  loginEmailInput.value = email;
-  loginPasswordInput.value = password;
-  loginRememberCheckbox.checked = Boolean(email || password);
