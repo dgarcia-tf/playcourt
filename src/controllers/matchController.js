@@ -26,6 +26,7 @@ const {
   autoAssignCourt,
 } = require('../services/courtReservationService');
 const { generateCalendarMetadata } = require('../utils/calendarLinks');
+const { publishEntityChange } = require('../services/liveUpdateService');
 
 const MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado'];
 const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caducado'].includes(status));
@@ -34,6 +35,61 @@ const MIN_MATCH_DURATION_MS = 75 * 60 * 1000;
 const MATCH_EXPIRATION_MS = MATCH_EXPIRATION_DAYS * DAY_IN_MS;
 const MATCH_RESULT_AUTO_CONFIRM_TIMEOUT_MS = MATCH_RESULT_AUTO_CONFIRM_MS;
 const ACTIVE_RESERVATION_STATUSES = [RESERVATION_STATUS.RESERVED, RESERVATION_STATUS.PRE_RESERVED];
+
+function respondWithMatch(
+  res,
+  matchDoc,
+  { action = 'match.updated', triggeredBy, extras, userIds } = {}
+) {
+  if (!matchDoc) {
+    return res.status(404).json({ message: 'Partido no encontrado' });
+  }
+
+  const basePayload =
+    typeof matchDoc.toObject === 'function'
+      ? matchDoc.toObject({ virtuals: true, flattenMaps: true })
+      : { ...matchDoc };
+
+  if (extras && typeof extras === 'object') {
+    Object.entries(extras).forEach(([key, value]) => {
+      if (value !== undefined) {
+        basePayload[key] = value;
+      }
+    });
+  }
+
+  const derivedUserIds =
+    (!userIds || (Array.isArray(userIds) && !userIds.length)) && Array.isArray(basePayload.players)
+      ? basePayload.players
+          .map((player) => {
+            if (!player) {
+              return null;
+            }
+            if (typeof player === 'string') {
+              return player;
+            }
+            if (player._id) {
+              return player._id.toString();
+            }
+            if (typeof player.toString === 'function') {
+              return player.toString();
+            }
+            return null;
+          })
+          .filter(Boolean)
+      : userIds;
+
+  publishEntityChange({
+    entity: 'match',
+    action,
+    entityId: basePayload._id ? basePayload._id.toString() : undefined,
+    data: basePayload,
+    triggeredBy,
+    userIds: derivedUserIds,
+  });
+
+  return res.json(basePayload);
+}
 
 async function ensureCategoryLeagueAllowsChanges(category, message) {
   if (!category || !category.league) {
@@ -1018,13 +1074,16 @@ async function updateMatch(req, res) {
     }
   }
 
-  if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
-    const responseBody = updated.toObject({ virtuals: true, flattenMaps: true });
-    responseBody.calendarLinks = responseCalendarLinks;
-    return res.json(responseBody);
-  }
+  const extras =
+    responseCalendarLinks && Object.keys(responseCalendarLinks).length
+      ? { calendarLinks: responseCalendarLinks }
+      : undefined;
 
-  return res.json(updated);
+  return respondWithMatch(res, updated, {
+    action: 'match.updated',
+    triggeredBy: req.user?.id,
+    extras,
+  });
 }
 
 async function deleteMatch(req, res) {
@@ -1061,6 +1120,16 @@ async function deleteMatch(req, res) {
     Notification.deleteMany({ match: matchId }),
     Match.deleteOne({ _id: matchId }),
   ]);
+
+  publishEntityChange({
+    entity: 'match',
+    action: 'match.deleted',
+    entityId: matchId,
+    triggeredBy: req.user?.id,
+    userIds: match.players?.map((player) =>
+      typeof player === 'string' ? player : player?.toString?.()
+    ),
+  });
 
   return res.json({ message: 'Partido eliminado correctamente' });
 }
@@ -1189,7 +1258,15 @@ async function reportResult(req, res) {
     await notifyPendingResultConfirmation(populated, requesterId);
   }
 
-  return res.json(populated);
+  const action =
+    match.result.status === 'confirmado'
+      ? 'match.result.confirmed'
+      : 'match.result.reported';
+
+  return respondWithMatch(res, populated, {
+    action,
+    triggeredBy: requesterId,
+  });
 }
 
 async function confirmResult(req, res) {
@@ -1259,7 +1336,10 @@ async function confirmResult(req, res) {
       .populate('proposal.requestedTo', 'fullName email phone')
       .populate('result.winner', 'fullName email');
 
-    return res.json(populated);
+    return respondWithMatch(res, populated, {
+      action: 'match.result.rejected',
+      triggeredBy: userId,
+    });
   }
 
   if (decision !== 'approve') {
@@ -1322,7 +1402,15 @@ async function confirmResult(req, res) {
     await notifyResultConfirmed(populated, userId);
   }
 
-  return res.json(populated);
+  const action =
+    match.result.status === 'confirmado'
+      ? 'match.result.confirmed'
+      : 'match.result.pendingApproval';
+
+  return respondWithMatch(res, populated, {
+    action,
+    triggeredBy: userId,
+  });
 }
 
 async function respondToScheduleConfirmation(req, res) {
@@ -1481,12 +1569,24 @@ async function respondToScheduleConfirmation(req, res) {
     }
   }
 
-  const responsePayload = populated.toObject({ virtuals: true, flattenMaps: true });
-  if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
-    responsePayload.calendarLinks = responseCalendarLinks;
+  const extras =
+    responseCalendarLinks && Object.keys(responseCalendarLinks).length
+      ? { calendarLinks: responseCalendarLinks }
+      : undefined;
+
+  const confirmationStatus = match.scheduleConfirmation?.status;
+  let action = 'match.schedule.updated';
+  if (confirmationStatus === 'confirmado') {
+    action = 'match.schedule.confirmed';
+  } else if (confirmationStatus === 'rechazado') {
+    action = 'match.schedule.rejected';
   }
 
-  return res.json(responsePayload);
+  return respondWithMatch(res, populated, {
+    action,
+    triggeredBy: userId,
+    extras,
+  });
 }
 
 async function generateCategoryMatches(req, res) {
@@ -1758,7 +1858,10 @@ async function proposeMatch(req, res) {
     console.error('No se pudo crear la notificación de propuesta de partido', error);
   }
 
-  return res.json(populated);
+  return respondWithMatch(res, populated, {
+    action: 'match.proposal.created',
+    triggeredBy: requesterId,
+  });
 }
 
 async function respondToProposal(req, res) {
@@ -1987,12 +2090,19 @@ async function respondToProposal(req, res) {
     }
   }
 
-  const responsePayload = populated.toObject({ virtuals: true, flattenMaps: true });
-  if (responseCalendarLinks && Object.keys(responseCalendarLinks).length) {
-    responsePayload.calendarLinks = responseCalendarLinks;
-  }
+  const extras =
+    responseCalendarLinks && Object.keys(responseCalendarLinks).length
+      ? { calendarLinks: responseCalendarLinks }
+      : undefined;
 
-  return res.json(responsePayload);
+  const action =
+    decision === 'accept' ? 'match.proposal.accepted' : 'match.proposal.rejected';
+
+  return respondWithMatch(res, populated, {
+    action,
+    triggeredBy: userId,
+    extras,
+  });
 }
 
 module.exports = {
