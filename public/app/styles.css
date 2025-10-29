@@ -766,16 +766,17 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 }
 
 .app-header__logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 60px;
-  height: 60px;
-  padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 290px;
+    height: 82px;
+    padding: 0;
 }
 
+
 .app-header__logo-image {
-  width: 60px;
+  width: 120px;
   height: auto;
 }
 
@@ -5122,12 +5123,13 @@ body.tournament-fullscreen-active {
   }
 
   .mobile-topbar__logo {
-    width: 34px;
-    height: 34px;
+    width: 100px;
+    height: 100px;
   }
 
   .mobile-topbar__title {
     font-size: 1.05rem;
+    display: none;
   }
 
   .mobile-menu-toggle {

@@ -8432,7 +8432,7 @@ function applySetupState() {
     return;
   }
 
-  authDescription.textContent = 'Inicia sesión con tu cuenta o regístrate para participar en la liga.';
+  authDescription.textContent = 'Inicia sesión con tu cuenta o regístrate.';
   roleInputs.forEach((input) => {
     const isPlayerOption = input.value === 'player';
     const isAdminOption = input.value === 'admin';
