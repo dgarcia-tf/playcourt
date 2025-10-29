@@ -13,6 +13,7 @@ const pushRoutes = require('./pushRoutes');
 const courtRoutes = require('./courtRoutes');
 const tournamentRoutes = require('./tournamentRoutes');
 const accountRoutes = require('./accountRoutes');
+const liveUpdateRoutes = require('./liveUpdateRoutes');
 
 const router = express.Router();
 
@@ -30,5 +31,6 @@ router.use('/push', pushRoutes);
 router.use('/courts', courtRoutes);
 router.use('/tournaments', tournamentRoutes);
 router.use('/account', accountRoutes);
+router.use('/live-updates', liveUpdateRoutes);
 
 module.exports = router;
