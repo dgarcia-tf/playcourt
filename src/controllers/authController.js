@@ -3,11 +3,9 @@ const { validationResult } = require('express-validator');
 const { sequelize } = require('../config/db');
 const {
   User,
+  UserRole,
   USER_ROLES,
-  normalizeRoles,
-  normalizePreferredSchedule,
-  normalizeShirtSize,
-} = require('../models/sequelize/User');
+} = require('../models/sequelize');
 const { hashPassword, verifyPassword } = require('../utils/password');
 const { notifyAdminsOfNewUser } = require('../services/sequelize/userNotificationService');
 
@@ -140,7 +138,6 @@ async function register(req, res) {
     photo: normalizedPhoto || undefined,
     preferredSchedule: selectedSchedule,
     notes: normalizedNotes || undefined,
-    roles,
     role: roles.includes(USER_ROLES.ADMIN) ? USER_ROLES.ADMIN : roles[0],
     isMember: memberFlag,
     membershipNumber: memberFlag && normalizedMembershipNumber ? normalizedMembershipNumber : undefined,
@@ -150,6 +147,16 @@ async function register(req, res) {
       Boolean(memberFlag && normalizedMembershipNumber && roles.includes(USER_ROLES.ADMIN)),
     shirtSize: normalizedShirtSize,
   });
+
+  // Crear los roles del usuario
+  await Promise.all(
+    roles.map(role => 
+      UserRole.create({
+        userId: user.id,
+        role: role
+      })
+    )
+  );
 
   await notifyAdminsOfNewUser(user);
 
@@ -189,9 +196,13 @@ async function login(req, res) {
 
 async function getSetupStatus(_req, res) {
   const adminExists = await User.findOne({
-    where: {
-      roles: JSON.stringify([USER_ROLES.ADMIN])
-    }
+    include: [{
+      model: UserRole,
+      as: 'userRoles',
+      where: {
+        role: USER_ROLES.ADMIN
+      }
+    }]
   });
 
   return res.json({
