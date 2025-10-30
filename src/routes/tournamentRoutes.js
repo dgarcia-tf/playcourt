@@ -38,6 +38,7 @@ const {
   listTournamentMatches,
   generateTournamentMatches,
   autoGenerateTournamentBracket,
+  clearTournamentBracket,
   recalculateTournamentBracket,
   updateTournamentMatch,
   confirmTournamentMatch,
@@ -302,6 +303,13 @@ router.post(
   authorizeRoles('admin'),
   [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
   autoGenerateTournamentBracket
+);
+
+router.delete(
+  '/:tournamentId/categories/:categoryId/brackets',
+  authorizeRoles('admin'),
+  [param('tournamentId').isMongoId(), param('categoryId').isMongoId()],
+  clearTournamentBracket
 );
 
 router.post(
