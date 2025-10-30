@@ -17628,7 +17628,7 @@ function buildAppleCalendarDataUrl(match, summary, description, location, startD
   if (!dtStart || !dtEnd) {
     return null;
   }
-  lines.push(`UID:match-${uidSource}@cnplayasanmarcos`);
+  lines.push(`UID:match-${uidSource}@playcourt`);
   lines.push(`DTSTAMP:${formatCalendarDateTimeUTC(new Date())}`);
   lines.push(`DTSTART:${dtStart}`);
   lines.push(`DTEND:${dtEnd}`);

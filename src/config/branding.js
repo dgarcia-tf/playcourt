@@ -5,7 +5,7 @@ const BRAND_EMAIL_DOMAIN = 'playcourt.local';
 const BRAND_NOTIFICATION_SUBJECT = `Notificación ${BRAND_NAME}`;
 const BRAND_GENERIC_NOTIFICATION = `Tienes una nueva notificación en ${BRAND_NAME}.`;
 const BRAND_CALENDAR_PRODID = 'PRODID:-//PlayCourt//Tenis & Padel//ES';
-const BRAND_CALENDAR_UID_DOMAIN = 'cnplayasanmarcos';
+const BRAND_CALENDAR_UID_DOMAIN = 'playcourt';
 
 module.exports = {
   BRAND_NAME,
