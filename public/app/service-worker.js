@@ -6,7 +6,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-const APP_BRAND_NAME = 'PlayCourt';
+const APP_BRAND_NAME = 'C.N. Playa San Marcos';
 const GENERIC_NOTIFICATION_MESSAGE = `Tienes una nueva notificación en ${APP_BRAND_NAME}.`;
 
 function getNotificationPayload(event) {

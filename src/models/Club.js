@@ -55,12 +55,12 @@ const clubSchema = new mongoose.Schema(
     name: {
       type: String,
       trim: true,
-      default: 'PlayCourt',
+      default: 'Liga Social de Tenis',
     },
     slogan: {
       type: String,
       trim: true,
-      default: 'Tenis & Padel',
+      default: 'Pasión por el tenis y la comunidad.',
     },
     description: {
       type: String,

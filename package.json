@@ -1,7 +1,7 @@
 {
-  "name": "playcourt",
+  "name": "cn-playa-san-marcos",
   "version": "1.0.0",
-  "description": "PlayCourt - Tenis & Padel",
+  "description": "Liga social C.N. Playa San Marcos",
   "type": "commonjs",
   "main": "src/server.mjs",
   "scripts": {

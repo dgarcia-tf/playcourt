@@ -1,7 +1,7 @@
 const API_BASE = '/app/api';
-const APP_BRAND_NAME = 'PlayCourt';
-const APP_BRAND_SLOGAN = 'Tenis & Padel';
-const STORAGE_PREFIX = 'playcourt';
+const APP_BRAND_NAME = 'C.N. Playa San Marcos';
+const APP_BRAND_SLOGAN = 'Liga social de tenis';
+const STORAGE_PREFIX = 'cn-playa-san-marcos';
 const STORAGE_KEY = `${STORAGE_PREFIX}-app-session`;
 const REMEMBER_CREDENTIALS_KEY = `${STORAGE_PREFIX}-remember-credentials`;
 const NOTICE_LAST_SEEN_PREFIX = `${STORAGE_PREFIX}-notices-last-seen:`;
@@ -17618,7 +17618,7 @@ function buildAppleCalendarDataUrl(match, summary, description, location, startD
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'CALSCALE:GREGORIAN',
-    'PRODID:-//PlayCourt//Matches//ES',
+    'PRODID:-//C.N. Playa San Marcos//Matches//ES',
     'BEGIN:VEVENT',
   ];
 
