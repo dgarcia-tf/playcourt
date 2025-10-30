@@ -1535,10 +1535,15 @@ async function autoGenerateTournamentBracket(req, res) {
         roundDrawMatches.push(drawMatch);
 
         if (players.length < 2) {
-          shouldCreateMatch = true;
-        }
-
-        if (roundIndex + 1 < totalRounds && shouldCreateMatch) {
+          const hasSinglePlayer = players.length === 1;
+          const hasNoPlayers = players.length === 0;
+          shouldCreateMatch = hasSinglePlayer || hasNoPlayers;
+          if (hasSinglePlayer && roundIndex + 1 < totalRounds) {
+            const parentIndex = Math.floor(matchIndex / 2);
+            const slot = matchIndex % 2;
+            feederInfoByRound[roundIndex + 1][parentIndex][slot] = true;
+          }
+        } else if (roundIndex + 1 < totalRounds) {
           const parentIndex = Math.floor(matchIndex / 2);
           const slot = matchIndex % 2;
           feederInfoByRound[roundIndex + 1][parentIndex][slot] = true;
