@@ -1,6 +1,6 @@
 # PlayCourt · Aplicación web
 
-Aplicación completa para gestionar la liga social de tenis del C.N. Playa San Marcos. El servidor Node.js expone una única experiencia web en `http://localhost:3000`, desde la que jugadores y administradores realizan todas las acciones necesarias: alta de usuarios, gestión de categorías, inscripciones, calendario, rankings y temporadas. Los datos se almacenan en MongoDB y la capa de API queda oculta tras la propia aplicación para simplificar la instalación.
+Aplicación completa para gestionar torneos y ligas. El servidor Node.js expone una única experiencia web en `http://localhost:3000`, desde la que jugadores y administradores realizan todas las acciones necesarias: alta de usuarios, gestión de categorías, inscripciones, calendario, rankings y temporadas. Los datos se almacenan en MongoDB y la capa de API queda oculta tras la propia aplicación para simplificar la instalación.
 
 ## Características principales
 
@@ -27,7 +27,7 @@ Aplicación completa para gestionar la liga social de tenis del C.N. Playa San M
    cp .env.example .env
    ```
 
-   Si no defines `MONGODB_URI` se usará automáticamente `mongodb://127.0.0.1:27017/cn-playa-san-marcos`.
+   Si no defines `MONGODB_URI` se usará automáticamente `mongodb://127.0.0.1:27017/playcourt`.
 
    Si quieres habilitar las notificaciones push del navegador, añade también las claves VAPID y el correo de contacto que se
    usará como subject del servicio web push:
@@ -50,7 +50,7 @@ Aplicación completa para gestionar la liga social de tenis del C.N. Playa San M
    SMTP_SECURE=false
    SMTP_USER=usuario
    SMTP_PASS=contraseña
-   MAIL_FROM="C.N. Playa San Marcos <notificaciones@example.com>"
+   MAIL_FROM="PlayCourt <notificaciones@example.com>"
    MAIL_REPLY_TO=soporte@example.com
    ```
 
@@ -78,7 +78,7 @@ Aplicación completa para gestionar la liga social de tenis del C.N. Playa San M
    - Alternativamente puedes lanzar MongoDB con Docker:
 
      ```bash
-     docker run --name cn-playa-san-marcos-mongo -p 27017:27017 -d mongo:6
+     docker run --name playcourt-mongo -p 27017:27017 -d mongo:6
      ```
 
    - También es posible utilizar una instancia de Atlas configurando `MONGODB_URI` con la cadena de conexión correspondiente.

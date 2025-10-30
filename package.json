@@ -1,7 +1,7 @@
 {
-  "name": "cn-playa-san-marcos",
+  "name": "playcourt",
   "version": "1.0.0",
-  "description": "Liga social C.N. Playa San Marcos",
+  "description": "PlayCourt",
   "type": "commonjs",
   "main": "src/server.mjs",
   "scripts": {

@@ -1,10 +1,10 @@
-const BRAND_NAME = 'C.N. Playa San Marcos';
-const BRAND_TAGLINE = 'Liga social de tenis';
-const BRAND_SLUG = 'cn-playa-san-marcos';
-const BRAND_EMAIL_DOMAIN = 'cn-playa-san-marcos.local';
+const BRAND_NAME = 'Play Court';
+const BRAND_TAGLINE = 'Tenis y Padel';
+const BRAND_SLUG = 'playcourt';
+const BRAND_EMAIL_DOMAIN = 'playcourt.local';
 const BRAND_NOTIFICATION_SUBJECT = `Notificación ${BRAND_NAME}`;
 const BRAND_GENERIC_NOTIFICATION = `Tienes una nueva notificación en ${BRAND_NAME}.`;
-const BRAND_CALENDAR_PRODID = 'PRODID:-//C.N. Playa San Marcos//Liga Social//ES';
+const BRAND_CALENDAR_PRODID = 'PRODID:-//PlayCourt//Tenis & Padel//ES';
 const BRAND_CALENDAR_UID_DOMAIN = 'cnplayasanmarcos';
 
 module.exports = {

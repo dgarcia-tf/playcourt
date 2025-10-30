@@ -6,7 +6,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-const APP_BRAND_NAME = 'C.N. Playa San Marcos';
+const APP_BRAND_NAME = 'PlayCourt';
 const GENERIC_NOTIFICATION_MESSAGE = `Tienes una nueva notificación en ${APP_BRAND_NAME}.`;
 
 function getNotificationPayload(event) {
@@ -38,7 +38,7 @@ self.addEventListener('push', (event) => {
     icon: payload.icon || './assets/club-logo.png',
     badge: payload.badge || './assets/club-logo.png',
     data: payload.data || {},
-    tag: payload.tag || 'cn-playa-san-marcos-notification',
+    tag: payload.tag || 'playcourt-notification',
     renotify: Boolean(payload.renotify),
   };
 
