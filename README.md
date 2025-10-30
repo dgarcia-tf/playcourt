@@ -1,4 +1,4 @@
-# C.N. Playa San Marcos · Aplicación web
+# PlayCourt · Aplicación web
 
 Aplicación completa para gestionar la liga social de tenis del C.N. Playa San Marcos. El servidor Node.js expone una única experiencia web en `http://localhost:3000`, desde la que jugadores y administradores realizan todas las acciones necesarias: alta de usuarios, gestión de categorías, inscripciones, calendario, rankings y temporadas. Los datos se almacenan en MongoDB y la capa de API queda oculta tras la propia aplicación para simplificar la instalación.
 
