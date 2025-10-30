@@ -31,7 +31,7 @@ async function start() {
 
   server.listen(port, () => {
     // eslint-disable-next-line no-console
-    console.log(`Aplicación web C.N. Playa San Marcos escuchando en el puerto ${port}`);
+    console.log(`Aplicación web PlayCourt escuchando en el puerto ${port}`);
   });
 }
 
