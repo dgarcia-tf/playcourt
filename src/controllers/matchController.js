@@ -8,7 +8,7 @@ const { Season } = require('../models/Season');
 const { Notification } = require('../models/Notification');
 const { Club } = require('../models/Club');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
-const { refreshCategoryRanking } = require('../services/rankingService');
+const { refreshCategoryRanking } = require('../services/sequelize/rankingService');
 const { MATCH_EXPIRATION_DAYS } = require('../services/matchExpirationService');
 const { MATCH_RESULT_AUTO_CONFIRM_MS } = require('../config/matchResults');
 const {
@@ -16,17 +16,17 @@ const {
   notifyResultConfirmed,
   notifyScheduleConfirmationRequest,
   notifyScheduleRejected,
-} = require('../services/matchNotificationService');
-const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
+} = require('../services/sequelize/matchNotificationService');
+const { ensureLeagueIsOpen } = require('../services/sequelize/leagueStatusService');
 const {
   ensureReservationAvailability: ensureCourtReservationAvailability,
   upsertMatchReservation,
   cancelMatchReservation,
   resolveEndsAt,
   autoAssignCourt,
-} = require('../services/courtReservationService');
+} = require('../services/sequelize/courtReservationService');
 const { generateCalendarMetadata } = require('../utils/calendarLinks');
-const { publishEntityChange } = require('../services/liveUpdateService');
+const { publishEntityChange } = require('../services/sequelize/liveUpdateService');
 
 const MATCH_STATUSES = ['pendiente', 'propuesto', 'programado', 'revision', 'completado', 'caducado'];
 const ACTIVE_STATUSES = MATCH_STATUSES.filter((status) => !['completado', 'caducado'].includes(status));

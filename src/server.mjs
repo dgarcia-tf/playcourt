@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import http from 'node:http';
-import dbModule from './config/db.js';
+import { connectDatabase } from './config/database.js';
+import { initializeModels } from './models/index.js';
 import { createApp } from './app/index.mjs';
 import matchExpirationService from './services/matchExpirationService.js';
 import matchResultAutoConfirmService from './services/matchResultAutoConfirmService.js';
@@ -9,7 +10,6 @@ import mailConfig from './config/mail.js';
 
 dotenv.config();
 
-const { connectDatabase } = dbModule;
 const { scheduleMatchExpirationChecks } = matchExpirationService;
 const { scheduleMatchResultAutoConfirmChecks } = matchResultAutoConfirmService;
 const { configurePushNotifications } = pushNotificationService;
@@ -17,22 +17,31 @@ const { configureMailTransport } = mailConfig;
 
 async function start() {
   const port = process.env.PORT || 3000;
-  const mongoUri = process.env.MONGODB_URI;
+  const dbConfig = process.env.DB_CONFIG;
 
-  await connectDatabase(mongoUri);
+  try {
+    // Conectar a la base de datos
+    await connectDatabase(dbConfig);
+    
+    // Inicializar modelos
+    await initializeModels();
 
-  configurePushNotifications();
-  configureMailTransport();
+    configurePushNotifications();
+    configureMailTransport();
 
-  const app = createApp();
-  scheduleMatchExpirationChecks();
-  scheduleMatchResultAutoConfirmChecks();
-  const server = http.createServer(app);
+    const app = createApp();
+    scheduleMatchExpirationChecks();
+    scheduleMatchResultAutoConfirmChecks();
+    const server = http.createServer(app);
 
-  server.listen(port, () => {
-    // eslint-disable-next-line no-console
-    console.log(`Aplicación web PlayCourt escuchando en el puerto ${port}`);
-  });
+    server.listen(port, () => {
+      // eslint-disable-next-line no-console
+      console.log(`Aplicación web PlayCourt escuchando en el puerto ${port}`);
+    });
+  } catch (error) {
+    console.error('Error iniciando el servidor:', error);
+    process.exit(1);
+  }
 }
 
 start().catch((error) => {

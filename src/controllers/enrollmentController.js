@@ -8,7 +8,7 @@ const {
 } = require('../models/EnrollmentRequest');
 const { User, USER_ROLES, userHasRole } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
-const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
+const { ensureLeagueIsOpen } = require('../services/sequelize/leagueStatusService');
 const { categoryAllowsGender } = require('../utils/gender');
 
 async function enrollPlayer(req, res) {

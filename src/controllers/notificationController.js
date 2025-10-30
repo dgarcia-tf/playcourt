@@ -4,8 +4,8 @@ const { Notification } = require('../models/Notification');
 const { Match } = require('../models/Match');
 const { User } = require('../models/User');
 const { normalizeAttachments } = require('../utils/attachments');
-const { sendPushNotification } = require('../services/pushNotificationService');
-const { sendEmailNotification } = require('../services/emailService');
+const { sendPushNotification } = require('../services/sequelize/pushNotificationService');
+const { sendEmailNotification } = require('../services/sequelize/emailService');
 
 async function createNotification(req, res) {
   const errors = validationResult(req);

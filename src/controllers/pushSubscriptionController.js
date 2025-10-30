@@ -5,7 +5,7 @@ const {
   getPublicKey,
   saveSubscription,
   removeSubscription,
-} = require('../services/pushNotificationService');
+} = require('../services/sequelize/pushNotificationService');
 
 const registerSubscriptionValidators = [
   body('endpoint')

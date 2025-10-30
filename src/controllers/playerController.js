@@ -9,7 +9,7 @@ const {
   normalizeShirtSize,
 } = require('../models/User');
 const { hashPassword } = require('../utils/password');
-const { notifyAdminsOfNewUser } = require('../services/userNotificationService');
+const { notifyAdminsOfNewUser } = require('../services/sequelize/userNotificationService');
 
 function slugifyName(name) {
   return name

@@ -20,7 +20,7 @@ const {
   RESERVATION_DAY_END_MINUTE,
   MANUAL_RESERVATION_MAX_ADVANCE_HOURS,
   cleanupExpiredManualReservations,
-} = require('../services/courtReservationService');
+} = require('../services/sequelize/courtReservationService');
 
 function sanitizeNotes(notes) {
   if (typeof notes !== 'string') {

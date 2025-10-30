@@ -16,7 +16,7 @@ const {
 const { USER_ROLES, userHasRole } = require('../models/User');
 const { getCategoryReferenceYear, userMeetsCategoryMinimumAge } = require('../utils/age');
 const { DEFAULT_CATEGORY_COLOR, isValidCategoryColor, resolveCategoryColor } = require('../utils/colors');
-const { ensureLeagueIsOpen } = require('../services/leagueStatusService');
+const { ensureLeagueIsOpen } = require('../services/sequelize/leagueStatusService');
 const { canAccessPrivateContent } = require('../utils/accessControl');
 const { categoryAllowsGender } = require('../utils/gender');
 

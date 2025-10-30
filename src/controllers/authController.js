@@ -8,7 +8,7 @@ const {
   normalizeShirtSize,
 } = require('../models/User');
 const { hashPassword, verifyPassword } = require('../utils/password');
-const { notifyAdminsOfNewUser } = require('../services/userNotificationService');
+const { notifyAdminsOfNewUser } = require('../services/sequelize/userNotificationService');
 
 function generateToken(user) {
   const payload = {

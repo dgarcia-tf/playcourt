@@ -1,4 +1,5 @@
-const { Match } = require('../models/Match');
+const { Op } = require('sequelize');
+const { getSequelize } = require('../config/database');
 const { refreshCategoryRanking } = require('./rankingService');
 const { notifyResultConfirmed } = require('./matchNotificationService');
 const {
@@ -20,16 +21,40 @@ function normalizeConfirmations(rawConfirmations) {
 }
 
 async function autoConfirmPendingResults() {
+  const sequelize = getSequelize();
+  const { Match, User, Category, League, Season } = sequelize.models;
+  
   const now = new Date();
-  const candidates = await Match.find({
-    'result.status': 'en_revision',
-    'result.autoConfirmAt': { $lte: now },
-  })
-    .populate('category', 'name gender color matchFormat')
-    .populate('league', 'name year status')
-    .populate('season', 'name year')
-    .populate('players', 'fullName email gender phone')
-    .populate('result.winner', 'fullName email');
+  const candidates = await Match.findAll({
+    where: {
+      resultStatus: 'in_review',
+      resultAutoConfirmAt: {
+        [Op.lte]: now
+      }
+    },
+    include: [
+      {
+        model: Category,
+        as: 'category',
+        attributes: ['name', 'gender', 'color', 'matchFormat']
+      },
+      {
+        model: League,
+        as: 'league',
+        attributes: ['name', 'year', 'status']
+      },
+      {
+        model: Season,
+        as: 'season',
+        attributes: ['name', 'year']
+      },
+      {
+        model: User,
+        as: 'players',
+        attributes: ['id', 'fullName', 'email', 'gender', 'phone']
+      }
+    ]
+  });
 
   if (!candidates.length) {
     return;
@@ -37,51 +62,37 @@ async function autoConfirmPendingResults() {
 
   for (const match of candidates) {
     try {
-      const playerIds = Array.isArray(match.players)
-        ? match.players
-            .map((player) => {
-              if (!player) return null;
-              if (player._id) return player._id.toString();
-              if (typeof player.toString === 'function') return player.toString();
-              return null;
-            })
-            .filter(Boolean)
-        : [];
+      const playerIds = match.players?.map(player => player.id).filter(Boolean) || [];
 
       if (!playerIds.length) {
-        match.result.autoConfirmAt = undefined;
-        await match.save();
+        await Match.update(
+          { resultAutoConfirmAt: null },
+          { where: { id: match.id } }
+        );
         continue;
       }
 
-      const confirmations = normalizeConfirmations(match.result.confirmations);
       const confirmationTime = new Date();
 
-      playerIds.forEach((playerId) => {
-        confirmations.set(playerId, {
-          status: 'aprobado',
-          respondedAt: confirmationTime,
-        });
+      // Actualizar el partido
+      await Match.update({
+        resultStatus: 'confirmed',
+        status: 'completed',
+        resultConfirmedAt: confirmationTime,
+        resultConfirmedBy: match.resultSubmittedBy,
+        resultAutoConfirmAt: null
+      }, {
+        where: { id: match.id }
       });
 
-      match.result.confirmations = confirmations;
-      match.markModified('result.confirmations');
-
-      match.result.status = 'confirmado';
-      match.status = 'completado';
-      match.result.confirmedAt = confirmationTime;
-      match.result.confirmedBy = match.result.reportedBy || undefined;
-      match.result.autoConfirmAt = undefined;
-
-      await match.save();
       await refreshCategoryRanking(match.category);
 
-      await notifyResultConfirmed(match, match.result.confirmedBy, {
+      await notifyResultConfirmed(match, match.resultSubmittedBy, {
         message: `Se confirmó automáticamente el partido tras ${MATCH_RESULT_AUTO_CONFIRM_MINUTES} minutos sin respuesta.`,
       });
     } catch (error) {
       console.error('No se pudo confirmar automáticamente el resultado del partido', {
-        matchId: match._id?.toString(),
+        matchId: match.id,
         error,
       });
     }

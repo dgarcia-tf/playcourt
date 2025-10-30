@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const { League, LEAGUE_STATUS } = require('../models/League');
-const { refreshLeagueStatusIfExpired } = require('../services/leagueStatusService');
+const { refreshLeagueStatusIfExpired } = require('../services/sequelize/leagueStatusService');
 const {
   Category,
   CATEGORY_STATUSES,

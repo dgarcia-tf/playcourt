@@ -20,16 +20,16 @@ const {
 const { TournamentDoublesPair } = require('../models/TournamentDoublesPair');
 const { CourtReservation, RESERVATION_TYPES } = require('../models/CourtReservation');
 const { COURT_BLOCK_CONTEXTS } = require('../models/CourtBlock');
-const { notifyTournamentMatchScheduled } = require('../services/tournamentNotificationService');
+const { notifyTournamentMatchScheduled } = require('../services/sequelize/tournamentNotificationService');
 const {
   autoAssignCourt,
   ensureReservationAvailability: ensureCourtReservationAvailability,
   resolveEndsAt,
   upsertTournamentMatchReservation,
   cancelTournamentMatchReservation,
-} = require('../services/courtReservationService');
+} = require('../services/sequelize/courtReservationService');
 const { canAccessPrivateContent } = require('../utils/accessControl');
-const { createOrderOfPlayPdf } = require('../services/tournamentOrderOfPlayPdfService');
+const { createOrderOfPlayPdf } = require('../services/sequelize/tournamentOrderOfPlayPdfService');
 
 const ROUND_NAME_LABELS = {
   1: 'Final',
