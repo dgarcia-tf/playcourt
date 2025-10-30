@@ -1,6 +1,12 @@
-# C.N. Playa San Marcos · Aplicación web
+🟢 PlayCourt · Aplicación web
 
-Aplicación completa para gestionar la liga social de tenis del C.N. Playa San Marcos. El servidor Node.js expone una única experiencia web en `http://localhost:3000`, desde la que jugadores y administradores realizan todas las acciones necesarias: alta de usuarios, gestión de categorías, inscripciones, calendario, rankings y temporadas. Los datos se almacenan en MongoDB y la capa de API queda oculta tras la propia aplicación para simplificar la instalación.
+Aplicación completa para gestionar la liga social de tenis de PlayCourt.
+El servidor Node.js expone una única experiencia web en http://localhost:3000
+
+(o en el dominio configurado, por ejemplo https://playcourt.es
+),
+desde la que jugadores y administradores realizan todas las acciones necesarias: alta de usuarios, gestión de categorías, inscripciones, calendario, rankings y temporadas.
+Los datos se almacenan en MongoDB y la capa de API queda integrada en la propia aplicación para simplificar la instalación en servidores VPS o locales.
 
 🚀 Características principales
 
@@ -58,7 +64,8 @@ MAIL_FROM="PlayCourt <notificaciones@playcourt.es>"
 MAIL_REPLY_TO=soporte@playcourt.es
 
 
-2. Instala las dependencias del proyecto.
+Si el proveedor requiere TLS estricto, ajusta las variables
+SMTP_SECURE, SMTP_REQUIRE_TLS o las opciones descritas en src/config/mail.js.
 
 3. Instalar dependencias
 npm install
@@ -79,66 +86,59 @@ docker run --name playcourt-mongo -p 27017:27017 -d mongo:6
 
 También puedes usar MongoDB Atlas definiendo MONGODB_URI con tu cadena de conexión.
 
-   ```bash
-   npm run dev
-   ```
+5. Iniciar el servidor
+npm run dev
 
-La aplicación queda disponible en `http://localhost:3000`. Durante el arranque el servicio invoca automáticamente la función
-`configurePushNotifications` del servidor (`src/server.js`); si las claves VAPID están presentes comenzará a aceptar
-suscripciones y enviará avisos cuando los administradores marquen notificaciones como enviadas. El endpoint `/health` devuelve
-un JSON de estado simple para comprobaciones automatizadas.
 
-## Flujo de uso recomendado
+o en producción (por ejemplo con PM2):
 
-### Primer acceso
+npm install -g pm2
+pm2 start src/server.js --name playcourt
 
-1. Abre `http://localhost:3000` en tu navegador.
-2. Completa el formulario de registro inicial para crear el primer administrador. Desde ese momento el resto de usuarios podrán registrarse como jugadores o ser creados por el equipo gestor.
 
-### Tareas del administrador
+La aplicación quedará disponible en:
 
-- Configurar la ficha del club (logotipo, datos de contacto, horarios, pistas y servicios) desde la sección **Club** para que toda la organización comparta la misma información.
-- Crear categorías definiendo género, nivel, fechas estimadas y estado (inscripción o en curso). Una vez que comienzan, cambia el estado a **En curso** para bloquear nuevas altas.
-- Registrar jugadores o promover perfiles existentes desde el directorio, actualizando roles, datos de contacto y preferencias de notificación en los formularios modales.
-- Revisar las inscripciones de cada categoría con la acción **Gestionar inscripciones** y, si es necesario, añadir participantes manualmente o darlos de baja.
-- Generar enfrentamientos pendientes mediante el botón **Generar pendientes** en la pestaña Partidos y editar cualquier partido, categoría o jugador con los botones **Editar** disponibles en cada lista.
-- Publicar avisos oficiales desde la sección **Noticias**; cada mensaje enviará notificaciones a los jugadores que podrán marcarlas como leídas.
-- Supervisar resultados, aprobar los que queden en revisión y descargar el informe imprimible del ranking cuando sea necesario.
+http://localhost:3000
+ (modo desarrollo)
 
-### Participación de los jugadores
+https://playcourt.es
+ (si configuraste un proxy reverso con Nginx)
 
-- Actualizar su ficha con foto, teléfono, notas, horario preferido y preferencias de notificación desde **Mi cuenta**.
-- Inscribirse en categorías compatibles con su género cuando el estado sea **Inscripción abierta** mediante el botón **Inscribirme** visible en la pestaña Categorías.
-- Consultar la pestaña **Partidos**, que separa los enfrentamientos programados, los resultados pendientes por aprobar y los partidos ya disputados, además de la lista **Mis partidos** con accesos rápidos para proponer fecha.
-- Confirmar o rechazar propuestas recibidas. Al aceptar, el partido queda programado, aparece en el calendario y se notifica al rival y a los administradores suscritos.
-- Revisar las secciones **Noticias** y **Notificaciones** para seguir las comunicaciones oficiales y marcar como leídas las alertas pendientes.
-- Consultar rankings, temporadas vinculadas y el reglamento del club sin salir de la aplicación.
+🔁 Flujo de uso recomendado
+Primer acceso
 
-## Generación y validación de partidos
+Abre la URL del servidor (por ejemplo https://playcourt.es
+).
 
-1. Desde la pestaña **Partidos** pulsa **Generar pendientes** y elige la categoría que quieras completar.
-2. El sistema crea todos los emparejamientos posibles entre los jugadores inscritos que todavía no tengan un partido activo entre sí.
-3. Cada partido aparece como **Pendiente** en la lista de los jugadores implicados.
-4. Uno de los jugadores puede proponer fecha y hora, además de indicar la pista sugerida y un mensaje para su oponente.
-5. El oponente recibe la propuesta —junto con los administradores que optaron por las notificaciones de solicitudes— y puede **Aceptar** (el partido pasa a estado **Programado** y se agenda) o **Rechazar** (el partido vuelve a estado **Pendiente** y queda listo para una nueva propuesta).
-6. Cualquiera de los jugadores puede registrar el resultado; el enfrentamiento queda en estado **Revisión** y aparece en la lista de "Partidos pendientes por aprobar" hasta que ambos lo confirman. Si hay discrepancias, el administrador puede aprobar o corregir el marcador desde la misma pestaña de Partidos.
-7. Al confirmarse un resultado el partido pasa a estado **Completado**, se mueve al apartado de partidos disputados, se notifica a los implicados y el ranking se recalcula automáticamente.
-8. Tras cada acción (creación, edición o confirmación) la página recarga los datos para reflejar los cambios sin necesidad de refrescar manualmente.
+Registra el primer administrador.
 
-## Dashboard y navegación por secciones
+A partir de ahí, todos los nuevos registros se crean como jugadores.
 
-- **Dashboard independiente**: tras iniciar sesión se muestra un panel inicial con tarjetas resumen de jugadores activos, partidos próximos y notificaciones pendientes. El selector de categoría filtra todas las métricas y el calendario para centrarse en la competición deseada.
-- **Calendario mensual interactivo**: la vista fija del mes reúne partidos confirmados, pendientes y sin fecha en un mismo bloque. Cada elemento es accesible y abre el diálogo correspondiente (edición o resultado) con un clic.
-- **Vista de Partidos enriquecida**: la pestaña Partidos divide los encuentros en programados, pendientes por aprobación y disputados, mientras que "Mis partidos" mantiene accesos rápidos para proponer fechas o registrar resultados.
-- **Menú lateral fijo**: la columna izquierda alberga accesos directos a Dashboard, Categorías, Partidos, Ranking, Noticias, Reglamento, Notificaciones, el directorio de jugadores y Mi cuenta; las opciones reservadas a administradores solo aparecen cuando el usuario tiene ese rol.
-- **Área "Mi cuenta"**: concentra la edición del perfil personal (foto, teléfono, horario preferido, notas y contraseña) sin mezclar los datos con las herramientas administrativas o la vista de dashboard.
-- **Noticias**: un tablón único recoge los comunicados oficiales; solo los administradores publican y cada aviso genera una notificación que los jugadores pueden marcar como leída desde la sección correspondiente.
-- **Impresión moderna del ranking**: el botón **Imprimir ranking** abre un informe estilizado con datos de partidos y movimiento en la clasificación listo para enviar o archivar en PDF.
-- **Reglamento visible**: la sección Reglamento resume horarios, estado de las pistas y normas de fair play para que nuevos miembros se familiaricen con el club desde la misma aplicación.
+Funciones del administrador
 
-## Estructura del proyecto
+Configurar la ficha del club desde la sección Club (logotipo, contacto, horarios, pistas…).
 
-```text
+Crear categorías con género, nivel, fechas y estado (Inscripción / En curso).
+
+Gestionar inscripciones y promover jugadores a administradores.
+
+Generar enfrentamientos pendientes y aprobar resultados.
+
+Publicar noticias y notificaciones globales.
+
+Supervisar rankings y generar informes imprimibles.
+
+Funciones del jugador
+
+Editar su ficha personal desde Mi cuenta.
+
+Inscribirse en categorías abiertas.
+
+Proponer, aceptar o registrar resultados de partidos.
+
+Consultar rankings, calendario y noticias del club.
+
+🧩 Estructura del proyecto
 src/
 ├── app.js            # Configuración de Express y entrega de la SPA
 ├── server.js         # Punto de entrada del servidor HTTP
@@ -152,15 +152,12 @@ public/
 └── app/              # Aplicación web (HTML, CSS, JS)
 
 
-La API interna permanece disponible en `/app/api/*` para integraciones personalizadas, aunque no es necesario utilizarla manualmente para operar la liga desde la interfaz web.
+La API interna está disponible en /app/api/* para integraciones personalizadas.
 
-## Scripts disponibles
+🧰 Scripts disponibles
+Comando	Descripción
+npm start	Inicia el servidor en modo producción.
+npm run dev	Arranca el servidor con recarga en caliente (node --watch).
+🔄 Restablecer usuario administrador
 
-| Script        | Descripción                                                   |
-| ------------- | ------------------------------------------------------------- |
-| `npm start`   | Inicia el servidor en modo producción.                        |
-| `npm run dev` | Arranca el servidor con recarga en caliente (`node --watch`). |
-
----
-
-Si necesitas restablecer el usuario administrador o limpiar la base de datos, basta con eliminar la colección `users` en MongoDB y volver a acceder a la aplicación: se solicitará crear un nuevo administrador inicial.
+Para restablecer el usuario administrador, elimina la colección users en MongoDB y recarga la aplicación: volverá a solicitar el registro inicial.
