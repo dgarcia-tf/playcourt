@@ -1407,7 +1407,8 @@ async function autoGenerateTournamentBracket(req, res) {
 
         if (players.length < 2) {
           const hasSinglePlayer = players.length === 1;
-          shouldCreateMatch = hasSinglePlayer;
+          const hasNoPlayers = players.length === 0;
+          shouldCreateMatch = hasSinglePlayer || hasNoPlayers;
           if (hasSinglePlayer && roundIndex + 1 < totalRounds) {
             const parentIndex = Math.floor(matchIndex / 2);
             const slot = matchIndex % 2;
