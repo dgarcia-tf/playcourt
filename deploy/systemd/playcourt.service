@@ -1,0 +1,20 @@
+[Unit]
+Description=PlayCourt web application
+After=network.target mongod.service
+
+[Service]
+Type=simple
+User=playcourt
+Group=www-data
+WorkingDirectory=/var/www/playcourt/app
+Environment=NODE_ENV=production
+EnvironmentFile=/var/www/playcourt/app/.env
+ExecStart=/usr/bin/node /var/www/playcourt/app/src/server.mjs
+# Ajusta la ruta anterior si tu instalación de Node.js vive en otro directorio
+Restart=on-failure
+RestartSec=5
+# Aumenta este valor si esperas cargas iniciales pesadas (por ejemplo generación de índices).
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target
