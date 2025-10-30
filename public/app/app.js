@@ -15550,10 +15550,11 @@ function renderTournamentBracketSeeds({
   const baseDrawSize = Number(category?.drawSize);
   const participantCount = participants.length;
   const drawSize = drawSizeValue || baseDrawSize || participantCount;
-  const maxSeeds = Math.max(
-    seedLookup.bySeed.size,
-    Math.min(participantCount, drawSize || participantCount)
-  );
+  // Número correcto de cabezas de serie según el tamaño del cuadro
+  const SEEDS_BY_DRAW = { 8: 2, 16: 4, 32: 8 };
+  const desiredSeeds =
+    SEEDS_BY_DRAW[drawSize] ?? Math.max(1, Math.floor((Number(drawSize) || 0) / 4));
+  const maxSeeds = Math.min(desiredSeeds, participantCount);
 
   const editable = isAdmin();
 
