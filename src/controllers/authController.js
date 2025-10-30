@@ -1,12 +1,13 @@
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
+const { sequelize } = require('../config/db');
 const {
   User,
   USER_ROLES,
   normalizeRoles,
   normalizePreferredSchedule,
   normalizeShirtSize,
-} = require('../models/User');
+} = require('../models/sequelize/User');
 const { hashPassword, verifyPassword } = require('../utils/password');
 const { notifyAdminsOfNewUser } = require('../services/sequelize/userNotificationService');
 
@@ -74,12 +75,16 @@ async function register(req, res) {
     shirtSize,
   } = req.body;
 
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ where: { email } });
   if (existingUser) {
     return res.status(409).json({ message: 'El correo ya está registrado' });
   }
 
-  const adminExists = await User.exists({ roles: USER_ROLES.ADMIN });
+  const adminExists = await User.findOne({
+    where: {
+      roles: JSON.stringify([USER_ROLES.ADMIN])
+    }
+  });
 
   const requestedRoles = rolesInput ?? role;
   let roles = normalizeRoles(requestedRoles);
@@ -115,7 +120,9 @@ async function register(req, res) {
   }
 
   if (memberFlag && normalizedMembershipNumber) {
-    const membershipExists = await User.exists({ membershipNumber: normalizedMembershipNumber });
+    const membershipExists = await User.findOne({ 
+      where: { membershipNumber: normalizedMembershipNumber }
+    });
     if (membershipExists) {
       return res
         .status(409)
@@ -163,7 +170,10 @@ async function login(req, res) {
 
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email }).select('+password');
+  const user = await User.findOne({ 
+    where: { email },
+    attributes: { include: ['password'] }
+  });
 
   if (!user || !verifyPassword(password, user.password)) {
     return res.status(401).json({ message: 'Credenciales inválidas' });
@@ -178,7 +188,11 @@ async function login(req, res) {
 }
 
 async function getSetupStatus(_req, res) {
-  const adminExists = await User.exists({ roles: USER_ROLES.ADMIN });
+  const adminExists = await User.findOne({
+    where: {
+      roles: JSON.stringify([USER_ROLES.ADMIN])
+    }
+  });
 
   return res.json({
     needsSetup: !adminExists,
@@ -212,7 +226,9 @@ async function updateProfile(req, res) {
     shirtSize,
   } = req.body;
 
-  const user = await User.findById(req.user.id).select('+password');
+  const user = await User.findByPk(req.user.id, {
+    attributes: { include: ['password'] }
+  });
   if (!user) {
     return res.status(404).json({ message: 'Usuario no encontrado' });
   }
@@ -293,9 +309,11 @@ async function updateProfile(req, res) {
       normalizedMembershipNumber &&
       normalizedMembershipNumber !== user.membershipNumber
     ) {
-      const duplicateMembership = await User.exists({
-        membershipNumber: normalizedMembershipNumber,
-        _id: { $ne: user.id },
+      const duplicateMembership = await User.findOne({
+        where: {
+          membershipNumber: normalizedMembershipNumber,
+          id: { [sequelize.Op.ne]: user.id }
+        }
       });
       if (duplicateMembership) {
         return res
