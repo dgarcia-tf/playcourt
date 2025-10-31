@@ -94,6 +94,132 @@ La aplicación queda disponible en `http://localhost:3000`. Durante el arranque 
 suscripciones y enviará avisos cuando los administradores marquen notificaciones como enviadas. El endpoint `/health` devuelve
 un JSON de estado simple para comprobaciones automatizadas.
 
+## Despliegue en un servidor Ubuntu 24.04 LTS
+
+La siguiente guía describe el proceso completo para preparar un VPS con Ubuntu 24.04 LTS, desplegar la aplicación en modo
+producción y servirla bajo los dominios `playcourt.es` y `playsanmarcos.es`.
+
+### 1. Preparar el servidor
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git curl ufw
+sudo ufw allow OpenSSH
+sudo ufw allow "Nginx Full"
+sudo ufw enable
+```
+
+Configura los registros DNS de ambos dominios (`A` o `AAAA`) para que apunten a la IP pública del VPS y espera a que se propaguen
+antes de solicitar certificados TLS.
+
+### 2. Instalar Node.js 20 LTS
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version
+npm --version
+```
+
+El instalador añade automáticamente el repositorio de NodeSource para mantener la rama LTS actualizada.
+
+### 3. Instalar MongoDB 7.0
+
+```bash
+curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+sudo apt update
+sudo apt install -y mongodb-org
+sudo systemctl enable --now mongod
+sudo systemctl status mongod
+```
+
+Comprueba que la instancia acepta conexiones desde la propia máquina (`mongo --eval 'db.runCommand({ ping: 1 })'`) y ajusta la
+cadena `MONGODB_URI` si necesitas autenticación o replica sets.
+
+### 4. Instalar Nginx y Certbot
+
+```bash
+sudo apt install -y nginx certbot python3-certbot-nginx
+sudo systemctl enable --now nginx
+```
+
+Nginx actuará como proxy inverso con terminación TLS y Certbot automatizará la obtención y renovación de certificados
+Let’s Encrypt para ambos dominios.
+
+### 5. Crear el usuario de servicio y clonar el proyecto
+
+```bash
+sudo mkdir -p /var/www/playcourt
+sudo useradd -r -d /var/www/playcourt -s /usr/sbin/nologin playcourt
+sudo chown playcourt:www-data /var/www/playcourt
+sudo -u playcourt git clone https://tu-repositorio/playcourt.git /var/www/playcourt/app
+cd /var/www/playcourt/app
+sudo -u playcourt cp .env.example .env
+sudo -u playcourt nano .env
+```
+
+En el archivo `.env` especifica al menos:
+
+- `PORT=3000` para que coincida con la configuración de Nginx.
+- `MONGODB_URI=mongodb://127.0.0.1:27017/playcourt` (o tu cadena personalizada en caso de usar usuario/contraseña o Atlas).
+- `JWT_SECRET` con un valor largo y aleatorio.
+- Opcionalmente, los parámetros SMTP y las claves VAPID si deseas enviar correos y notificaciones push.
+
+Instala las dependencias en modo producción usando el `package-lock.json` incluido:
+
+```bash
+sudo -u playcourt npm ci --omit=dev
+sudo chown -R playcourt:www-data /var/www/playcourt
+```
+
+### 6. Configurar el servicio de systemd
+
+Copia la unidad de ejemplo incluida en `deploy/systemd/playcourt.service` y revisa las rutas antes de activarla:
+
+```bash
+sudo cp deploy/systemd/playcourt.service /etc/systemd/system/playcourt.service
+sudo chown root:root /etc/systemd/system/playcourt.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now playcourt
+sudo systemctl status playcourt
+```
+
+El servicio ejecuta `/usr/bin/node /var/www/playcourt/app/src/server.mjs` como el usuario `playcourt` y lee las variables definidas en
+`/var/www/playcourt/app/.env`. Consulta los logs en tiempo real con `sudo journalctl -u playcourt -f`.
+
+### 7. Configurar Nginx como proxy inverso
+
+Utiliza el bloque de servidor proporcionado en `deploy/nginx/playcourt.conf` como punto de partida:
+
+```bash
+sudo cp deploy/nginx/playcourt.conf /etc/nginx/sites-available/playcourt.conf
+sudo ln -s /etc/nginx/sites-available/playcourt.conf /etc/nginx/sites-enabled/playcourt.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+El proxy reenvía las peticiones a `http://127.0.0.1:3000` y permite cuerpos de hasta 10&nbsp;MB para las fotografías codificadas
+en Base64. Ajusta el valor según las necesidades del club.
+
+### 8. Emitir certificados TLS para `playcourt.es` y `playsanmarcos.es`
+
+Una vez que los dominios apunten al VPS, ejecuta:
+
+```bash
+sudo certbot --nginx -d playcourt.es -d www.playcourt.es -d playsanmarcos.es -d www.playsanmarcos.es
+```
+
+Certbot actualizará automáticamente el bloque de Nginx para servir HTTPS y programará la renovación. Verifica el proceso con
+`sudo certbot renew --dry-run`.
+
+### 9. Verificaciones finales y mantenimiento
+
+- Accede a `https://playcourt.es` y `https://playsanmarcos.es` para comprobar que la aplicación responde.
+- Usa `sudo systemctl restart playcourt` tras modificar el código o las variables de entorno.
+- Mantén el sistema actualizado con `sudo apt update && sudo apt upgrade` y monitoriza el uso de disco de MongoDB.
+- Programa copias de seguridad regulares de la base de datos con `mongodump` o el mecanismo que prefieras.
+
 ## Flujo de uso recomendado
 
 ### Primer acceso
