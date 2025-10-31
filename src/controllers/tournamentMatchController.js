@@ -957,11 +957,6 @@ async function generateTournamentMatches(req, res) {
 
   const isDoubles = category.matchType === TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES;
 
-  const body = typeof req.body === 'object' && req.body !== null ? req.body : {};
-  const previewOnly = Boolean(body.previewOnly);
-  const previewSeedAssignments = Array.isArray(body.seeds) ? body.seeds : [];
-  const rawDrawSizeOverride = Number(body.drawSizeOverride);
-
   let allowedPlayers;
   let playerType;
 
@@ -1319,6 +1314,11 @@ async function autoGenerateTournamentBracket(req, res) {
 
   const isDoubles = category.matchType === TOURNAMENT_CATEGORY_MATCH_TYPES.DOUBLES;
 
+  const body = typeof req.body === 'object' && req.body !== null ? req.body : {};
+  const isPreviewOnly = Boolean(body.previewOnly);
+  const previewSeedAssignments = Array.isArray(body.seeds) ? body.seeds : [];
+  const rawDrawSizeOverride = Number(body.drawSizeOverride);
+
   let participantSource = [];
 
   if (isDoubles) {
@@ -1351,7 +1351,7 @@ async function autoGenerateTournamentBracket(req, res) {
     }
   });
 
-  if (!previewOnly && uniquePlayers.length < 2) {
+  if (!isPreviewOnly && uniquePlayers.length < 2) {
     return res.status(400).json({
       message: isDoubles
         ? 'Se necesitan al menos dos parejas para generar el cuadro'
@@ -1366,7 +1366,7 @@ async function autoGenerateTournamentBracket(req, res) {
   }
 
   const overrideDrawSize =
-    previewOnly &&
+    isPreviewOnly &&
     Number.isFinite(rawDrawSizeOverride) &&
     TOURNAMENT_CATEGORY_ALLOWED_DRAW_SIZES.includes(rawDrawSizeOverride)
       ? rawDrawSizeOverride
@@ -1402,7 +1402,7 @@ async function autoGenerateTournamentBracket(req, res) {
   const slotSeedNumbers = new Array(drawSize).fill(undefined);
 
   let seedSource = Array.isArray(category.seeds) ? category.seeds : [];
-  if (previewOnly && previewSeedAssignments.length) {
+  if (isPreviewOnly && previewSeedAssignments.length) {
     seedSource = previewSeedAssignments
       .map((entry) => {
         const seedNumber = Number(entry?.seedNumber);
@@ -1743,7 +1743,7 @@ async function autoGenerateTournamentBracket(req, res) {
   const mainPayloads = mainMatchesMatrix.flat().filter(Boolean);
   const payloads = [...mainPayloads, ...consolationPayloads];
 
-  if (previewOnly) {
+  if (isPreviewOnly) {
     const previewPayloads = payloads.map((match) => {
       const copy = { ...match };
       copy.players = Array.isArray(match.players) ? match.players.slice() : [];
