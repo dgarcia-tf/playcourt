@@ -2017,7 +2017,7 @@ body.tournament-fullscreen-active {
 }
 
 .bracket-round-nav__list {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 0.5rem;
   flex: 1;
