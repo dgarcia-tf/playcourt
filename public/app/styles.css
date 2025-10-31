@@ -4321,6 +4321,17 @@ body.tournament-fullscreen-active {
 }
 
 @media (max-width: 640px) {
+  .ranking-category {
+    border: none;
+    background: transparent;
+    padding: 0;
+  }
+
+  .ranking-category__table {
+    border: none;
+    border-radius: 0;
+  }
+
   .ranking-category__table .table {
     min-width: 0;
   }
@@ -4332,6 +4343,11 @@ body.tournament-fullscreen-active {
 
   .ranking-category__table .player-cell .player-avatar {
     display: none;
+  }
+
+  .ranking-category__table-scroll {
+    max-height: none;
+    overflow: visible;
   }
 }
 
