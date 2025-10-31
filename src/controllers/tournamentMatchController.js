@@ -1446,11 +1446,38 @@ async function autoGenerateTournamentBracket(req, res) {
   const remainingPlayers = uniquePlayers.filter((playerId) => !seededPlayers.has(playerId));
 
   let remainderIndex = 0;
-  for (let i = 0; i < slotAssignments.length; i += 1) {
-    if (!slotAssignments[i] && remainderIndex < remainingPlayers.length) {
-      slotAssignments[i] = remainingPlayers[remainderIndex];
-      remainderIndex += 1;
+  const totalFirstRoundMatches = drawSize / 2;
+
+  const assignNextPlayerToSlot = (slotIndex) => {
+    if (
+      slotIndex < 0 ||
+      slotIndex >= slotAssignments.length ||
+      slotAssignments[slotIndex] ||
+      remainderIndex >= remainingPlayers.length
+    ) {
+      return false;
     }
+
+    slotAssignments[slotIndex] = remainingPlayers[remainderIndex];
+    remainderIndex += 1;
+    return true;
+  };
+
+  for (let matchIndex = 0; matchIndex < totalFirstRoundMatches; matchIndex += 1) {
+    const slotAIndex = matchIndex * 2;
+    const slotBIndex = slotAIndex + 1;
+    const hasPlayerA = Boolean(slotAssignments[slotAIndex]);
+    const hasPlayerB = Boolean(slotAssignments[slotBIndex]);
+
+    if (!hasPlayerA && !hasPlayerB) {
+      if (!assignNextPlayerToSlot(slotAIndex)) {
+        assignNextPlayerToSlot(slotBIndex);
+      }
+    }
+  }
+
+  for (let i = 0; i < slotAssignments.length; i += 1) {
+    assignNextPlayerToSlot(i);
   }
 
   if (remainderIndex < remainingPlayers.length) {
