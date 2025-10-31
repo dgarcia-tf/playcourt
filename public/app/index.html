@@ -1321,11 +1321,18 @@
                       Categoría
                       <select id="tournament-match-category" disabled></select>
                     </label>
-                    <label class="inline-field">
+                    <label class="inline-field" data-admin-visible="toggle" hidden>
                       Día
                       <input type="date" id="tournament-order-day" disabled />
                     </label>
-                    <button type="button" class="secondary" id="tournament-order-download" disabled>
+                    <button
+                      type="button"
+                      class="secondary"
+                      id="tournament-order-download"
+                      data-admin-visible="toggle"
+                      hidden
+                      disabled
+                    >
                       Descargar orden de juego
                     </button>
                   </div>
