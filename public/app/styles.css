@@ -2013,6 +2013,7 @@ body.tournament-fullscreen-active {
   padding: 0 0 0.25rem;
   overflow-x: auto;
   scrollbar-gutter: stable both-edges;
+  width: 100%;
 }
 
 .bracket-round-nav__list {
@@ -2020,6 +2021,26 @@ body.tournament-fullscreen-active {
   align-items: center;
   gap: 0.5rem;
   flex: 1;
+}
+
+.bracket-round-nav__active-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bracket-round-nav__active-label[hidden] {
+  display: none !important;
 }
 
 .bracket-round-nav__button {
@@ -2081,6 +2102,18 @@ body.tournament-fullscreen-active {
   opacity: 0.5;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.bracket-round-nav--focus {
+  gap: 0.5rem;
+}
+
+.bracket-round-nav--focus .bracket-round-nav__control {
+  flex: 0 0 auto;
+}
+
+.bracket-round-nav--focus .bracket-round-nav__active-label {
+  color: var(--accent-strong);
 }
 
 

@@ -15168,6 +15168,13 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
 
   nav.appendChild(prevButton);
   nav.appendChild(buttonList);
+
+  const activeLabel = document.createElement('div');
+  activeLabel.className = 'bracket-round-nav__active-label';
+  activeLabel.setAttribute('aria-live', 'polite');
+  activeLabel.hidden = true;
+
+  nav.appendChild(activeLabel);
   nav.appendChild(nextButton);
 
   const totalRounds = sections.length;
@@ -15198,6 +15205,46 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
 
   let activeRoundIndex = clamp(initialRoundIndex, 0, totalRounds - 1);
 
+  const getRoundLabel = (index) => {
+    if (index < 0 || index >= roundButtons.length) {
+      return '';
+    }
+    const label = roundButtons[index]?.textContent;
+    return typeof label === 'string' ? label.trim() : '';
+  };
+
+  const updateActiveLabel = () => {
+    const label = getRoundLabel(activeRoundIndex);
+    if (label) {
+      activeLabel.textContent = label;
+      activeLabel.dataset.roundIndex = String(activeRoundIndex);
+    } else {
+      activeLabel.textContent = '';
+      delete activeLabel.dataset.roundIndex;
+    }
+
+    const previousIndex = activeRoundIndex - 1;
+    const nextIndex = activeRoundIndex + 1;
+    const previousLabel = getRoundLabel(previousIndex);
+    const nextLabel = getRoundLabel(nextIndex);
+
+    if (previousLabel) {
+      prevButton.setAttribute('aria-label', `Ver ${previousLabel}`);
+      prevButton.title = previousLabel;
+    } else {
+      prevButton.setAttribute('aria-label', 'Ronda anterior');
+      prevButton.title = 'Ronda anterior';
+    }
+
+    if (nextLabel) {
+      nextButton.setAttribute('aria-label', `Ver ${nextLabel}`);
+      nextButton.title = nextLabel;
+    } else {
+      nextButton.setAttribute('aria-label', 'Ronda siguiente');
+      nextButton.title = 'Ronda siguiente';
+    }
+  };
+
   const setActiveRound = (index) => {
     const clampedIndex = clamp(index, 0, totalRounds - 1);
     activeRoundIndex = clampedIndex;
@@ -15226,6 +15273,8 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
     prevButton.disabled = clampedIndex <= 0;
     nextButton.disabled = clampedIndex >= totalRounds - 1;
 
+    updateActiveLabel();
+
     scheduleOnNextAnimationFrame(() => applyTournamentBracketRoundOffsets(grid));
   };
 
@@ -15233,11 +15282,20 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
     const nextFocusMode = evaluateFocusMode();
     if (nextFocusMode === useFocusMode) {
       grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
+      nav.classList.toggle('bracket-round-nav--focus', useFocusMode);
+      buttonList.hidden = useFocusMode;
+      activeLabel.hidden = !useFocusMode;
+      nav.dataset.focusMode = useFocusMode ? 'true' : 'false';
+      updateActiveLabel();
       return;
     }
 
     useFocusMode = nextFocusMode;
     grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
+    nav.classList.toggle('bracket-round-nav--focus', useFocusMode);
+    buttonList.hidden = useFocusMode;
+    activeLabel.hidden = !useFocusMode;
+    nav.dataset.focusMode = useFocusMode ? 'true' : 'false';
     setActiveRound(activeRoundIndex);
   };
 
@@ -15289,6 +15347,8 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
   setActiveRound(activeRoundIndex);
 
   updateFocusMode();
+
+  updateActiveLabel();
 
   return nav;
 }
