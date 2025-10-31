@@ -4000,14 +4000,8 @@ function updateTournamentActionAvailability() {
   }
 
   if (tournamentBracketClearButton) {
-    const disableClear = !isAdmin() || !hasBracketSelection;
-    tournamentBracketClearButton.disabled = disableClear;
-
-    if (!disableClear && !cachedMatches.length) {
-      tournamentBracketClearButton.title = 'No hay partidos generados para limpiar.';
-    } else {
-      tournamentBracketClearButton.removeAttribute('title');
-    }
+    tournamentBracketClearButton.disabled =
+      !isAdmin() || !hasBracketSelection || cachedMatches.length === 0;
   }
 
   updateTournamentOrderOfPlayControls();
@@ -31425,19 +31419,9 @@ tournamentBracketClearButton?.addEventListener('click', async () => {
     return;
   }
 
-  let cachedMatches = getCachedTournamentBracketMatches(tournamentId, categoryId);
+  const cachedMatches = getCachedTournamentBracketMatches(tournamentId, categoryId);
   if (!cachedMatches.length) {
-    await refreshTournamentBracketMatches({ forceReload: true });
-    cachedMatches = getCachedTournamentBracketMatches(tournamentId, categoryId);
-  }
-
-  if (!cachedMatches.length) {
-    setStatusMessage(
-      tournamentBracketStatus,
-      'error',
-      'No hay partidos que limpiar en esta categoría.'
-    );
-    updateTournamentActionAvailability();
+    setStatusMessage(tournamentBracketStatus, 'error', 'No hay partidos que limpiar en esta categoría.');
     return;
   }
 
@@ -31456,60 +31440,22 @@ tournamentBracketClearButton?.addEventListener('click', async () => {
   tournamentBracketClearButton.disabled = true;
   setStatusMessage(tournamentBracketStatus, 'info', 'Eliminando cuadro...');
 
-  let clearStatusType = 'success';
-  let clearStatusText = 'Cuadro eliminado correctamente.';
-
   try {
-    try {
-      await request(`/tournaments/${tournamentId}/categories/${categoryId}/brackets`, {
-        method: 'DELETE',
-      });
-    } catch (error) {
-      const normalizedError = String(error?.message || '').toLowerCase();
-      const isMissingBracketError =
-        normalizedError.includes('no encontrado') ||
-        normalizedError.includes('no encontrada') ||
-        normalizedError.includes('no hay partidos');
-
-      if (!isMissingBracketError) {
-        throw error;
-      }
-
-      clearStatusType = 'info';
-      clearStatusText =
-        'No se encontró un cuadro generado en esta categoría. Se actualizó la información.';
-    }
+    await request(`/tournaments/${tournamentId}/categories/${categoryId}/brackets`, {
+      method: 'DELETE',
+    });
 
     const cacheKey = getTournamentBracketCacheKey(tournamentId, categoryId);
     if (cacheKey && state.tournamentBracketMatches instanceof Map) {
       state.tournamentBracketMatches.delete(cacheKey);
     }
 
-    const matchListKey = `${tournamentId}:${categoryId}`;
-    const hadTournamentMatchCache =
-      state.tournamentMatches instanceof Map && state.tournamentMatches.has(matchListKey);
-
-    if (state.tournamentMatches instanceof Map) {
-      state.tournamentMatches.delete(matchListKey);
-    }
-
     await refreshTournamentDetail(tournamentId);
     await loadTournamentBracketContext({ tournamentId, categoryId, forceMatches: true });
 
-    const matchesSectionActive =
-      state.selectedMatchTournamentId === tournamentId &&
-      state.selectedMatchCategoryId === categoryId;
-
-    if (matchesSectionActive) {
-      await refreshTournamentMatches({ forceReload: true });
-    } else if (hadTournamentMatchCache) {
-      recomputeTournamentOrderOfPlayDays(tournamentId);
-    }
-
-    setStatusMessage(tournamentBracketStatus, clearStatusType, clearStatusText);
+    setStatusMessage(tournamentBracketStatus, 'success', 'Cuadro eliminado correctamente.');
   } catch (error) {
-    const message = error?.message || 'No se pudo limpiar el cuadro.';
-    setStatusMessage(tournamentBracketStatus, 'error', message);
+    setStatusMessage(tournamentBracketStatus, 'error', error.message);
   } finally {
     tournamentBracketClearButton.disabled = false;
     updateTournamentActionAvailability();
