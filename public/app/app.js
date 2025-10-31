@@ -22567,7 +22567,7 @@ function renderRankingSections() {
           <th scope="col">PJ</th>
           <th scope="col">G</th>
           <th scope="col">P</th>
-          <th scope="col">Juegos</th>
+          <th scope="col" class="ranking-category__column ranking-category__column--games">Juegos</th>
         </tr>
       `;
       table.appendChild(thead);
@@ -22598,7 +22598,10 @@ function renderRankingSections() {
         row.appendChild(document.createElement('td')).textContent = entry.matchesPlayed ?? 0;
         row.appendChild(document.createElement('td')).textContent = entry.wins ?? 0;
         row.appendChild(document.createElement('td')).textContent = entry.losses ?? 0;
-        row.appendChild(document.createElement('td')).textContent = entry.gamesWon ?? 0;
+        const gamesCell = document.createElement('td');
+        gamesCell.className = 'ranking-category__column ranking-category__column--games';
+        gamesCell.textContent = entry.gamesWon ?? 0;
+        row.appendChild(gamesCell);
 
         tbody.appendChild(row);
       });

@@ -4320,6 +4320,21 @@ body.tournament-fullscreen-active {
   color: var(--text-secondary);
 }
 
+@media (max-width: 640px) {
+  .ranking-category__table .table {
+    min-width: 0;
+  }
+
+  .ranking-category__table .table th.ranking-category__column--games,
+  .ranking-category__table .table td.ranking-category__column--games {
+    display: none;
+  }
+
+  .ranking-category__table .player-cell .player-avatar {
+    display: none;
+  }
+}
+
 
 .movement-badge {
   --movement-badge-width: 160px;
