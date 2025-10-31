@@ -4214,7 +4214,7 @@ body.tournament-fullscreen-active {
 .player-cell__name {
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 0.8rem;
+  font-size: 1rem;
 }
 
 .player-cell__meta {
