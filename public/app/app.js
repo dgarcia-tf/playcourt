@@ -7582,15 +7582,21 @@ if (appMenu) {
       return;
     }
 
-    const href = button.getAttribute('href');
-    if (href) {
-      closeMobileMenu();
-      window.location.assign(href);
+    const isModifiedClick =
+      event.defaultPrevented ||
+      event.button === 1 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey;
+
+    if (isModifiedClick) {
       return;
     }
 
     event.preventDefault();
-    window.location.reload();
+    closeMobileMenu();
+    showSection(targetId);
   });
 }
 
