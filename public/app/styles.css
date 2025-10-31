@@ -1343,6 +1343,7 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
   margin-left: auto;
   font-size: 0.85rem;
   color: var(--text-secondary);
+  display: none;
 }
 
 .dashboard-metrics {
