@@ -14604,6 +14604,169 @@ async function refreshTournamentEnrollments({ forceReload = false } = {}) {
   }
 }
 
+function getTournamentMatchDisplayData(match) {
+  const rawPlayers = Array.isArray(match?.players) ? match.players : [];
+  const playerNames = rawPlayers
+    .map((player) => {
+      if (!player) return '';
+      if (typeof player.fullName === 'string' && player.fullName.trim()) {
+        return player.fullName.trim();
+      }
+      if (typeof player.name === 'string' && player.name.trim()) {
+        return player.name.trim();
+      }
+      return getPlayerDisplayName(player);
+    })
+    .filter(Boolean);
+
+  const result = match?.result || null;
+  const rawScore = typeof result?.score === 'string' ? result.score.trim() : '';
+  const rawNotes = typeof result?.notes === 'string' ? result.notes.trim() : '';
+  const winnerId = normalizeId(result?.winner);
+  const resultStatus = typeof match?.resultStatus === 'string' ? match.resultStatus : '';
+  const hasResultInfo = Boolean(rawScore || rawNotes || winnerId || resultStatus === 'confirmado');
+
+  return {
+    playerNames,
+    rawScore,
+    rawNotes,
+    winnerId,
+    resultStatus,
+    hasResultInfo,
+  };
+}
+
+function createTournamentMatchListItem(match, displayData = getTournamentMatchDisplayData(match)) {
+  if (!match) {
+    return null;
+  }
+
+  const { playerNames, rawScore, rawNotes, winnerId, hasResultInfo } = displayData;
+
+  const item = document.createElement('li');
+  item.classList.add('tournament-match-item');
+
+  const title = document.createElement('strong');
+  title.textContent = playerNames.length ? playerNames.join(' vs ') : 'Partido pendiente';
+  item.appendChild(title);
+
+  const meta = document.createElement('div');
+  meta.className = 'tournament-match-meta';
+
+  if (match.round) {
+    const roundSpan = document.createElement('span');
+    roundSpan.textContent = `Ronda: ${match.round}`;
+    meta.appendChild(roundSpan);
+  }
+
+  if (Number.isFinite(Number(match.matchNumber))) {
+    const numberSpan = document.createElement('span');
+    numberSpan.textContent = `Partido ${match.matchNumber}`;
+    meta.appendChild(numberSpan);
+  }
+
+  if (match.scheduledAt) {
+    const dateSpan = document.createElement('span');
+    dateSpan.textContent = formatDate(match.scheduledAt);
+    meta.appendChild(dateSpan);
+  }
+
+  if (match.court) {
+    const courtSpan = document.createElement('span');
+    courtSpan.textContent = `Pista: ${match.court}`;
+    meta.appendChild(courtSpan);
+  }
+
+  const statusValue = match.status || 'pendiente';
+  const statusTag = document.createElement('span');
+  statusTag.className = `tag status-${statusValue}`;
+  statusTag.textContent = formatTournamentMatchStatusLabel(statusValue);
+  meta.appendChild(statusTag);
+
+  item.appendChild(meta);
+
+  if (hasResultInfo) {
+    const resultContainer = document.createElement('div');
+    resultContainer.className = 'tournament-match-result';
+
+    const header = document.createElement('div');
+    header.className = 'tournament-match-result__header';
+
+    const resultStatusValue = match.resultStatus || 'sin_resultado';
+    const statusTag = document.createElement('span');
+    statusTag.className = `tag tournament-match-result__status tournament-match-result__status--${resultStatusValue}`;
+    statusTag.textContent = formatTournamentResultStatusLabel(resultStatusValue);
+    header.appendChild(statusTag);
+
+    if (rawScore) {
+      const scoreSpan = document.createElement('span');
+      scoreSpan.className = 'tournament-match-result__score';
+      scoreSpan.textContent = `Marcador: ${rawScore}`;
+      header.appendChild(scoreSpan);
+    }
+
+    resultContainer.appendChild(header);
+
+    if (winnerId) {
+      let winnerName = '';
+      if (Array.isArray(match?.players)) {
+        const winnerPlayer = match.players.find((player) => normalizeId(player) === winnerId);
+        winnerName = winnerPlayer ? getPlayerDisplayName(winnerPlayer) : '';
+      }
+      const winnerParagraph = document.createElement('p');
+      winnerParagraph.className = 'tournament-match-result__meta';
+      winnerParagraph.textContent = winnerName ? `Ganador: ${winnerName}` : 'Ganador asignado en el cuadro';
+      resultContainer.appendChild(winnerParagraph);
+    }
+
+    if (rawNotes) {
+      const notesParagraph = document.createElement('p');
+      notesParagraph.className = 'tournament-match-result__notes';
+      notesParagraph.textContent = rawNotes;
+      resultContainer.appendChild(notesParagraph);
+    }
+
+    item.appendChild(resultContainer);
+  }
+
+  if (isAdmin()) {
+    const matchId = normalizeId(match);
+    if (matchId) {
+      const actions = document.createElement('div');
+      actions.className = 'tournament-match-item__actions';
+
+      const scheduleButton = document.createElement('button');
+      scheduleButton.type = 'button';
+      const hasSchedule = Boolean(match?.scheduledAt);
+      scheduleButton.className = hasSchedule ? 'secondary' : 'primary';
+      scheduleButton.dataset.action = 'schedule-tournament-match';
+      scheduleButton.dataset.matchId = matchId;
+      const tournamentIdAttr =
+        normalizeId(match?.tournament) || state.selectedMatchTournamentId || '';
+      const categoryIdAttr =
+        normalizeId(match?.category) || state.selectedMatchCategoryId || '';
+      scheduleButton.dataset.tournamentId = tournamentIdAttr;
+      scheduleButton.dataset.categoryId = categoryIdAttr;
+      scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
+      actions.appendChild(scheduleButton);
+
+      const resultButton = document.createElement('button');
+      resultButton.type = 'button';
+      resultButton.className = hasResultInfo ? 'ghost' : 'secondary';
+      resultButton.dataset.action = 'record-tournament-result';
+      resultButton.dataset.matchId = matchId;
+      resultButton.dataset.tournamentId = tournamentIdAttr;
+      resultButton.dataset.categoryId = categoryIdAttr;
+      resultButton.textContent = hasResultInfo ? 'Editar resultado' : 'Registrar resultado';
+      actions.appendChild(resultButton);
+
+      item.appendChild(actions);
+    }
+  }
+
+  return item;
+}
+
 function renderTournamentMatches(matches = [], { loading = false } = {}) {
   if (!tournamentMatchesList || !tournamentMatchesEmpty) return;
 
@@ -14625,146 +14788,97 @@ function renderTournamentMatches(matches = [], { loading = false } = {}) {
     return;
   }
 
-  if (!Array.isArray(matches) || !matches.length) {
-    tournamentMatchesEmpty.hidden = false;
-    tournamentMatchesEmpty.textContent = 'No hay partidos registrados para esta categoría.';
-    return;
-  }
+  const safeMatches = Array.isArray(matches) ? matches : [];
+  const scheduledMatches = [];
+  const pendingMatches = [];
+  const finishedMatches = [];
+
+  safeMatches.forEach((match) => {
+    const displayData = getTournamentMatchDisplayData(match);
+    if (displayData.playerNames.length < 2) {
+      return;
+    }
+
+    const statusValue = typeof match?.status === 'string' ? match.status.toLowerCase() : '';
+    const resultStatusValue = displayData.resultStatus.toLowerCase();
+    const hasSchedule =
+      Boolean(match?.scheduledAt) || statusValue === 'programado' || statusValue === 'confirmado';
+    const isFinished =
+      displayData.hasResultInfo && (statusValue === 'completado' || resultStatusValue === 'confirmado');
+
+    const entry = { match, displayData };
+
+    if (isFinished) {
+      finishedMatches.push(entry);
+    } else if (hasSchedule) {
+      scheduledMatches.push(entry);
+    } else {
+      pendingMatches.push(entry);
+    }
+  });
+
+  const groups = [
+    {
+      key: 'scheduled',
+      title: 'Partidos programados',
+      matches: scheduledMatches,
+      emptyMessage: 'No hay partidos programados.',
+    },
+    {
+      key: 'pending',
+      title: 'Partidos pendientes de programar',
+      matches: pendingMatches,
+      emptyMessage: 'No hay partidos pendientes de programar.',
+    },
+    {
+      key: 'completed',
+      title: 'Partidos finalizados con resultado',
+      matches: finishedMatches,
+      emptyMessage: 'No hay partidos finalizados con resultado.',
+    },
+  ];
+
+  groups.forEach((group) => {
+    const groupItem = document.createElement('li');
+    groupItem.className = 'tournament-match-group';
+
+    const header = document.createElement('div');
+    header.className = 'tournament-match-group__header';
+
+    const title = document.createElement('h4');
+    title.className = 'tournament-match-group__title';
+    title.textContent = group.title;
+    header.appendChild(title);
+
+    const count = document.createElement('span');
+    count.className = 'tournament-match-group__count';
+    const total = group.matches.length;
+    count.textContent = `${total} ${total === 1 ? 'partido' : 'partidos'}`;
+    header.appendChild(count);
+
+    groupItem.appendChild(header);
+
+    if (group.matches.length) {
+      const groupList = document.createElement('ul');
+      groupList.className = 'list tournament-match-group__list';
+      group.matches.forEach((entry) => {
+        const item = createTournamentMatchListItem(entry.match, entry.displayData);
+        if (item) {
+          groupList.appendChild(item);
+        }
+      });
+      groupItem.appendChild(groupList);
+    } else {
+      const emptyMessage = document.createElement('p');
+      emptyMessage.className = 'empty-state tournament-match-group__empty';
+      emptyMessage.textContent = group.emptyMessage;
+      groupItem.appendChild(emptyMessage);
+    }
+
+    tournamentMatchesList.appendChild(groupItem);
+  });
 
   tournamentMatchesEmpty.hidden = true;
-
-  matches.forEach((match) => {
-    const item = document.createElement('li');
-    item.classList.add('tournament-match-item');
-    const title = document.createElement('strong');
-    const players = Array.isArray(match?.players)
-      ? match.players.map((player) => player?.fullName).filter(Boolean)
-      : [];
-    title.textContent = players.length ? players.join(' vs ') : 'Partido pendiente';
-    item.appendChild(title);
-
-    const meta = document.createElement('div');
-    meta.className = 'tournament-match-meta';
-
-    if (match.round) {
-      const roundSpan = document.createElement('span');
-      roundSpan.textContent = `Ronda: ${match.round}`;
-      meta.appendChild(roundSpan);
-    }
-
-    if (Number.isFinite(Number(match.matchNumber))) {
-      const numberSpan = document.createElement('span');
-      numberSpan.textContent = `Partido ${match.matchNumber}`;
-      meta.appendChild(numberSpan);
-    }
-
-    if (match.scheduledAt) {
-      const dateSpan = document.createElement('span');
-      dateSpan.textContent = formatDate(match.scheduledAt);
-      meta.appendChild(dateSpan);
-    }
-
-    if (match.court) {
-      const courtSpan = document.createElement('span');
-      courtSpan.textContent = `Pista: ${match.court}`;
-      meta.appendChild(courtSpan);
-    }
-
-    const statusValue = match.status || 'pendiente';
-    const statusTag = document.createElement('span');
-    statusTag.className = `tag status-${statusValue}`;
-    statusTag.textContent = formatTournamentMatchStatusLabel(statusValue);
-    meta.appendChild(statusTag);
-
-    item.appendChild(meta);
-
-    const result = match?.result || null;
-    const rawScore = typeof result?.score === 'string' ? result.score.trim() : '';
-    const rawNotes = typeof result?.notes === 'string' ? result.notes.trim() : '';
-    const winnerId = normalizeId(result?.winner);
-    const hasResultInfo = Boolean(rawScore || rawNotes || winnerId);
-
-    if (hasResultInfo) {
-      const resultContainer = document.createElement('div');
-      resultContainer.className = 'tournament-match-result';
-
-      const header = document.createElement('div');
-      header.className = 'tournament-match-result__header';
-
-      const statusValue = match.resultStatus || 'sin_resultado';
-      const statusTag = document.createElement('span');
-      statusTag.className = `tag tournament-match-result__status tournament-match-result__status--${statusValue}`;
-      statusTag.textContent = formatTournamentResultStatusLabel(statusValue);
-      header.appendChild(statusTag);
-
-      if (rawScore) {
-        const scoreSpan = document.createElement('span');
-        scoreSpan.className = 'tournament-match-result__score';
-        scoreSpan.textContent = `Marcador: ${rawScore}`;
-        header.appendChild(scoreSpan);
-      }
-
-      resultContainer.appendChild(header);
-
-      if (winnerId) {
-        let winnerName = '';
-        if (Array.isArray(match?.players)) {
-          const winnerPlayer = match.players.find((player) => normalizeId(player) === winnerId);
-          winnerName = winnerPlayer ? getPlayerDisplayName(winnerPlayer) : '';
-        }
-        const winnerParagraph = document.createElement('p');
-        winnerParagraph.className = 'tournament-match-result__meta';
-        winnerParagraph.textContent = winnerName ? `Ganador: ${winnerName}` : 'Ganador asignado en el cuadro';
-        resultContainer.appendChild(winnerParagraph);
-      }
-
-      if (rawNotes) {
-        const notesParagraph = document.createElement('p');
-        notesParagraph.className = 'tournament-match-result__notes';
-        notesParagraph.textContent = rawNotes;
-        resultContainer.appendChild(notesParagraph);
-      }
-
-      item.appendChild(resultContainer);
-    }
-
-    if (isAdmin()) {
-      const matchId = normalizeId(match);
-      if (matchId) {
-        const actions = document.createElement('div');
-        actions.className = 'tournament-match-item__actions';
-
-        const scheduleButton = document.createElement('button');
-        scheduleButton.type = 'button';
-        const hasSchedule = Boolean(match?.scheduledAt);
-        scheduleButton.className = hasSchedule ? 'secondary' : 'primary';
-        scheduleButton.dataset.action = 'schedule-tournament-match';
-        scheduleButton.dataset.matchId = matchId;
-        const tournamentIdAttr =
-          normalizeId(match?.tournament) || state.selectedMatchTournamentId || '';
-        const categoryIdAttr =
-          normalizeId(match?.category) || state.selectedMatchCategoryId || '';
-        scheduleButton.dataset.tournamentId = tournamentIdAttr;
-        scheduleButton.dataset.categoryId = categoryIdAttr;
-        scheduleButton.textContent = hasSchedule ? 'Editar horario' : 'Programar partido';
-        actions.appendChild(scheduleButton);
-
-        const hasResult = hasResultInfo;
-        const resultButton = document.createElement('button');
-        resultButton.type = 'button';
-        resultButton.className = hasResult ? 'ghost' : 'secondary';
-        resultButton.dataset.action = 'record-tournament-result';
-        resultButton.dataset.matchId = matchId;
-        resultButton.dataset.tournamentId = tournamentIdAttr;
-        resultButton.dataset.categoryId = categoryIdAttr;
-        resultButton.textContent = hasResult ? 'Editar resultado' : 'Registrar resultado';
-        actions.appendChild(resultButton);
-
-        item.appendChild(actions);
-      }
-    }
-    tournamentMatchesList.appendChild(item);
-  });
 }
 
 async function refreshTournamentMatches({ forceReload = false } = {}) {
