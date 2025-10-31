@@ -2712,6 +2712,38 @@ body.tournament-fullscreen-active {
   gap: 0.4rem;
 }
 
+#league-players-list .league-players-item {
+  display: grid;
+  gap: 0.4rem;
+}
+
+#league-players-list .league-players-item--limited {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+#league-players-list .league-players-item--limited .player-cell {
+  grid-column: 1 / 2;
+  grid-row: 1;
+}
+
+#league-players-list .league-players-item--limited .league-players-categories {
+  grid-column: 2 / 3;
+  grid-row: 1;
+  justify-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+#league-players-list .league-players-item--limited .league-players-categories .tag {
+  white-space: nowrap;
+}
+
+#league-players-list .league-players-item--limited .league-players-categories:empty {
+  display: none;
+}
+
 #user-directory-list .player-cell__name,
 #league-players-list .player-cell__name {
   font-size: 1rem;

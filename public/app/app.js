@@ -4980,37 +4980,64 @@ async function refreshLeaguePlayers({ force = false } = {}) {
 
   leaguePlayersList.innerHTML = '';
 
+  const hasExtendedAccess = hasCourtManagementAccess();
+
   entries.forEach(({ player, categories: playerCategories }) => {
     const item = document.createElement('li');
-    item.appendChild(buildPlayerCell(player, { includeSchedule: true }));
+    item.classList.add('league-players-item');
 
-    const contact = document.createElement('div');
-    contact.className = 'meta';
-    if (player.email) {
-      contact.appendChild(document.createElement('span')).textContent = player.email;
-    }
-    if (player.phone) {
-      contact.appendChild(document.createElement('span')).textContent = player.phone;
-    }
-    if (contact.childNodes.length) {
-      item.appendChild(contact);
+    const limitedView = !hasExtendedAccess;
+    if (limitedView) {
+      item.classList.add('league-players-item--limited');
     }
 
-    const details = document.createElement('div');
-    details.className = 'meta';
-    const genderLabel = translateGender(player.gender) || 'Sin definir';
-    details.appendChild(document.createElement('span')).textContent = `Género: ${genderLabel}`;
+    item.appendChild(
+      buildPlayerCell(player, {
+        includeSchedule: !limitedView,
+      })
+    );
 
     const categoryNames = Array.from(playerCategories)
       .map((categoryId) => categoriesById.get(categoryId)?.name)
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, 'es'));
 
-    details.appendChild(document.createElement('span')).textContent = `Categorías: ${
-      categoryNames.length ? categoryNames.join(', ') : 'Sin asignar'
-    }`;
+    if (limitedView) {
+      const categories = document.createElement('div');
+      categories.className = 'league-players-categories';
 
-    item.appendChild(details);
+      const targetNames = categoryNames.length ? categoryNames : ['Sin asignar'];
+      targetNames.forEach((name) => {
+        const tag = document.createElement('span');
+        tag.className = 'tag league-players-category-tag';
+        tag.textContent = name;
+        categories.appendChild(tag);
+      });
+
+      item.appendChild(categories);
+    } else {
+      const contact = document.createElement('div');
+      contact.className = 'meta';
+      if (player.email) {
+        contact.appendChild(document.createElement('span')).textContent = player.email;
+      }
+      if (player.phone) {
+        contact.appendChild(document.createElement('span')).textContent = player.phone;
+      }
+      if (contact.childNodes.length) {
+        item.appendChild(contact);
+      }
+
+      const details = document.createElement('div');
+      details.className = 'meta';
+      const genderLabel = translateGender(player.gender) || 'Sin definir';
+      details.appendChild(document.createElement('span')).textContent = `Género: ${genderLabel}`;
+      details.appendChild(document.createElement('span')).textContent = `Categorías: ${
+        categoryNames.length ? categoryNames.join(', ') : 'Sin asignar'
+      }`;
+
+      item.appendChild(details);
+    }
 
     leaguePlayersList.appendChild(item);
   });
