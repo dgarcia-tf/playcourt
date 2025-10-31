@@ -15046,10 +15046,8 @@ function createBracketMatchCard(match, seedByPlayer = new Map(), options = {}) {
       playerId = normalizeId(player);
       if (winnerId && playerId === winnerId) {
         wrapper.classList.add('bracket-player--winner');
-        statusSpan.textContent = 'Ganador';
       } else if (winnerId) {
         wrapper.classList.add('bracket-player--eliminated');
-        statusSpan.textContent = 'Eliminado';
       }
     }
 
