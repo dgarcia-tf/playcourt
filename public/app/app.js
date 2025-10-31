@@ -14294,33 +14294,7 @@ function renderTournamentEnrollments(enrollments = [], { loading = false } = {})
     playerCell.classList.add('tournament-player-entry__player');
     item.appendChild(playerCell);
 
-    const shouldShowCategories = categories.length || limitedView;
-    if (shouldShowCategories) {
-      const categoryRow = document.createElement('div');
-      categoryRow.className = 'tournament-player-entry__categories';
-
-      if (categories.length) {
-        categories.forEach((category) => {
-          const statusValue = category?.status || 'pendiente';
-          const label = category?.category?.menuTitle || category?.category?.name || 'Categoría';
-          const tag = document.createElement('span');
-          tag.className = `tag status-${statusValue}`;
-          tag.textContent = label;
-          const statusLabel = formatTournamentEnrollmentStatusLabel(statusValue);
-          if (statusLabel && statusLabel !== label) {
-            tag.title = statusLabel;
-          }
-          categoryRow.appendChild(tag);
-        });
-      } else {
-        const placeholder = document.createElement('span');
-        placeholder.className = 'tag';
-        placeholder.textContent = 'Sin categoría';
-        categoryRow.appendChild(placeholder);
-      }
-
-      item.appendChild(categoryRow);
-    }
+    // Se omite la visualización de etiquetas de categoría para jugadores inscritos en torneos.
 
     if (hasExtendedAccess) {
       const meta = document.createElement('div');
