@@ -577,8 +577,8 @@ button:disabled {
   padding: 0.75rem 1rem;
   background: var(--card-bg);
   border-bottom: 1px solid var(--card-border);
-  position: sticky;
-  top: 0;
+  position: static;
+  top: auto;
   z-index: 30;
 }
 
@@ -743,8 +743,8 @@ body.mobile-menu-open .mobile-menu-toggle__icon::after {
 }
 
 .app-header {
-  position: sticky;
-  top: 0;
+  position: static;
+  top: auto;
   z-index: 40;
   background: var(--card-bg);
   border-bottom: 1px solid var(--card-border);
@@ -5292,6 +5292,9 @@ body.tournament-fullscreen-active {
     box-shadow: none;
     display: grid;
     gap: 1.5rem;
+    width: 100%;
+    max-width: 375px;
+    margin: 0 auto;
   }
 
   .auth-header {
@@ -5317,9 +5320,10 @@ body.tournament-fullscreen-active {
     display: flex;
     gap: 0.35rem;
     padding: 0.35rem;
-    background: var(--card-bg);
+    background: transparent;
     border-radius: 18px;
-    box-shadow: var(--card-shadow);
+    box-shadow: none;
+    border: none;
   }
 
   .tab-button {
@@ -5338,10 +5342,10 @@ body.tournament-fullscreen-active {
   }
 
   .form {
-    background: var(--card-bg);
+    background: transparent;
     border-radius: 18px;
-    padding: 1.4rem;
-    box-shadow: var(--card-shadow);
+    padding: 0;
+    box-shadow: none;
     gap: 1rem;
   }
 
