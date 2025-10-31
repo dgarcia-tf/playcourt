@@ -371,6 +371,7 @@
                             class="menu-button menu-button--nested"
                             data-target="section-tournament-doubles"
                             data-parent-target="section-tournament-dashboard"
+                            data-requires-admin="true"
                           >
                             Dobles
                           </a>
@@ -1199,7 +1200,12 @@
               </article>
             </section>
 
-            <section id="section-tournament-doubles" class="app-section" hidden>
+            <section
+              id="section-tournament-doubles"
+              class="app-section"
+              data-admin-only="true"
+              hidden
+            >
               <article class="card" id="tournament-doubles-card">
                 <div class="card-header">
                   <div>
