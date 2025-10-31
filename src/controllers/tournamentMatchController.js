@@ -1831,21 +1831,31 @@ async function clearTournamentBracket(req, res) {
 
   const { tournament, category } = context;
 
+  const bracketMatchTypes = Object.values(TOURNAMENT_BRACKETS);
   const existingMatches = await TournamentMatch.find({
     tournament: tournamentId,
     category: categoryId,
-    bracketType: { $in: [TOURNAMENT_BRACKETS.MAIN, TOURNAMENT_BRACKETS.CONSOLATION] },
+    bracketType: { $in: bracketMatchTypes },
   })
     .select('_id')
     .lean();
 
-  const matchIds = existingMatches.map((entry) => entry._id).filter(Boolean);
+  let matchIds = existingMatches.map((entry) => entry._id).filter(Boolean);
+
+  if (!matchIds.length) {
+    const fallbackMatches = await TournamentMatch.find({
+      tournament: tournamentId,
+      category: categoryId,
+    })
+      .select('_id')
+      .lean();
+
+    matchIds = fallbackMatches.map((entry) => entry._id).filter(Boolean);
+  }
 
   if (matchIds.length) {
     await CourtReservation.deleteMany({ tournamentMatch: { $in: matchIds } });
     await TournamentMatch.deleteMany({ _id: { $in: matchIds } });
-  } else {
-    await TournamentMatch.deleteMany({ tournament: tournamentId, category: categoryId });
   }
 
   category.draw = [];
