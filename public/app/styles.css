@@ -5439,6 +5439,12 @@ body.tournament-fullscreen-active {
     gap: 1.75rem;
   }
 
+  .modal {
+    background: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+  }
+
   .auth-view {
     padding: 1.5rem 1.25rem 0;
   }
