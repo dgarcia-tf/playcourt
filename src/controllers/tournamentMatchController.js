@@ -1459,6 +1459,76 @@ async function autoGenerateTournamentBracket(req, res) {
       .json({ message: 'Hay más jugadores que plazas en el cuadro. Ajusta el tamaño del cuadro.' });
   }
 
+  if (drawSize > 1) {
+    const matchesInFirstRound = drawSize / 2;
+    const emptyMatches = [];
+    const donorCandidates = [];
+    const donorUsage = new Set();
+
+    for (let matchIndex = 0; matchIndex < matchesInFirstRound; matchIndex += 1) {
+      const slotAIndex = matchIndex * 2;
+      const slotBIndex = slotAIndex + 1;
+      const playerA = slotAssignments[slotAIndex];
+      const playerB = slotAssignments[slotBIndex];
+      const hasPlayerA = Boolean(playerA);
+      const hasPlayerB = Boolean(playerB);
+
+      if (!hasPlayerA && !hasPlayerB) {
+        emptyMatches.push({ slotAIndex, slotBIndex });
+        continue;
+      }
+
+      if (hasPlayerA && hasPlayerB) {
+        donorCandidates.push(
+          {
+            matchIndex,
+            slotIndex: slotAIndex,
+            playerId: playerA,
+            seedNumber: slotSeedNumbers[slotAIndex],
+            isSeeded: Number.isFinite(slotSeedNumbers[slotAIndex]),
+          },
+          {
+            matchIndex,
+            slotIndex: slotBIndex,
+            playerId: playerB,
+            seedNumber: slotSeedNumbers[slotBIndex],
+            isSeeded: Number.isFinite(slotSeedNumbers[slotBIndex]),
+          }
+        );
+      }
+    }
+
+    donorCandidates.sort((a, b) => {
+      if (a.isSeeded === b.isSeeded) {
+        return 0;
+      }
+      return a.isSeeded ? 1 : -1;
+    });
+
+    emptyMatches.forEach((emptyMatch) => {
+      const donorIndex = donorCandidates.findIndex(
+        (candidate) => !donorUsage.has(candidate.matchIndex)
+      );
+
+      if (donorIndex === -1) {
+        return;
+      }
+
+      const [donor] = donorCandidates.splice(donorIndex, 1);
+      donorUsage.add(donor.matchIndex);
+
+      slotAssignments[donor.slotIndex] = null;
+      slotSeedNumbers[donor.slotIndex] = undefined;
+
+      const targetSlotIndex = slotAssignments[emptyMatch.slotAIndex]
+        ? emptyMatch.slotBIndex
+        : emptyMatch.slotAIndex;
+
+      slotAssignments[targetSlotIndex] = donor.playerId;
+      slotSeedNumbers[targetSlotIndex] = donor.seedNumber;
+    });
+  }
+
   const totalRounds = Math.ceil(Math.log2(drawSize));
   const mainMatchesMatrix = [];
   const drawRounds = [];
@@ -1879,7 +1949,19 @@ async function clearTournamentBracket(req, res) {
     }
   }
 
-  return res.json({ message: 'Cuadro eliminado correctamente.' });
+  const refreshedMatchesQuery = populateTournamentMatchPlayers(
+    TournamentMatch.find({ tournament: tournamentId, category: categoryId }).sort({
+      roundOrder: 1,
+      matchNumber: 1,
+      createdAt: 1,
+    })
+  );
+  const refreshedMatches = await refreshedMatchesQuery;
+  await hydrateMatchPlayerDetails(refreshedMatches);
+
+  const responseMatches = await serializeMatchesForResponse(refreshedMatches, { categoryDoc: category });
+
+  return res.json(responseMatches);
 }
 
 async function recalculateTournamentBracket(req, res) {
