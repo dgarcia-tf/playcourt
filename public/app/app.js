@@ -15171,7 +15171,8 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
   nav.appendChild(nextButton);
 
   const totalRounds = sections.length;
-  const useFocusMode = totalRounds > 5;
+  const evaluateFocusMode = () => totalRounds > 1 && !(desktopMediaQuery?.matches);
+  let useFocusMode = evaluateFocusMode();
   grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -15207,7 +15208,7 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
       const isActive = sectionIndex === clampedIndex;
       const isPrevious = sectionIndex === clampedIndex - 1;
       const isNext = sectionIndex === clampedIndex + 1;
-      const shouldHide = useFocusMode && Math.abs(sectionIndex - clampedIndex) > 1;
+      const shouldHide = useFocusMode && sectionIndex !== clampedIndex;
 
       section.classList.toggle('bracket-round--active', isActive);
       section.classList.toggle('bracket-round--previous', isPrevious);
@@ -15226,6 +15227,18 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
     nextButton.disabled = clampedIndex >= totalRounds - 1;
 
     scheduleOnNextAnimationFrame(() => applyTournamentBracketRoundOffsets(grid));
+  };
+
+  const updateFocusMode = () => {
+    const nextFocusMode = evaluateFocusMode();
+    if (nextFocusMode === useFocusMode) {
+      grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
+      return;
+    }
+
+    useFocusMode = nextFocusMode;
+    grid.classList.toggle('tournament-bracket-grid--focus-mode', useFocusMode);
+    setActiveRound(activeRoundIndex);
   };
 
   prevButton.addEventListener('click', () => {
@@ -15267,7 +15280,15 @@ function createBracketRoundNavigation(roundSections = [], grid, { initialRoundIn
     }
   });
 
+  if (desktopMediaQuery?.addEventListener) {
+    desktopMediaQuery.addEventListener('change', updateFocusMode);
+  } else if (desktopMediaQuery?.addListener) {
+    desktopMediaQuery.addListener(updateFocusMode);
+  }
+
   setActiveRound(activeRoundIndex);
+
+  updateFocusMode();
 
   return nav;
 }
