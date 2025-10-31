@@ -14268,6 +14268,8 @@ function renderTournamentEnrollments(enrollments = [], { loading = false } = {})
 
   tournamentEnrollmentEmpty.hidden = true;
 
+  const hasExtendedAccess = hasCourtManagementAccess();
+
   filteredEnrollments.forEach((enrollment) => {
     const user = enrollment?.user || {};
     const categories = Array.isArray(enrollment?.tournamentCategories)
@@ -14277,57 +14279,75 @@ function renderTournamentEnrollments(enrollments = [], { loading = false } = {})
     const item = document.createElement('li');
     item.className = 'tournament-player-entry';
 
-    const playerCell = buildPlayerCell(user, { includeSchedule: true, size: 'sm' });
+    const limitedView = !hasExtendedAccess;
+    if (limitedView) {
+      item.classList.add('tournament-player-entry--limited');
+    }
+
+    const playerCell = buildPlayerCell(user, {
+      includeSchedule: hasExtendedAccess,
+      size: 'sm',
+    });
     playerCell.classList.add('tournament-player-entry__player');
     item.appendChild(playerCell);
 
-    if (categories.length) {
+    const shouldShowCategories = categories.length || limitedView;
+    if (shouldShowCategories) {
       const categoryRow = document.createElement('div');
       categoryRow.className = 'tournament-player-entry__categories';
 
-      categories.forEach((category) => {
-        const statusValue = category?.status || 'pendiente';
-        const label = category?.category?.menuTitle || category?.category?.name || 'Categoría';
-        const tag = document.createElement('span');
-        tag.className = `tag status-${statusValue}`;
-        tag.textContent = label;
-        const statusLabel = formatTournamentEnrollmentStatusLabel(statusValue);
-        if (statusLabel && statusLabel !== label) {
-          tag.title = statusLabel;
-        }
-        categoryRow.appendChild(tag);
-      });
+      if (categories.length) {
+        categories.forEach((category) => {
+          const statusValue = category?.status || 'pendiente';
+          const label = category?.category?.menuTitle || category?.category?.name || 'Categoría';
+          const tag = document.createElement('span');
+          tag.className = `tag status-${statusValue}`;
+          tag.textContent = label;
+          const statusLabel = formatTournamentEnrollmentStatusLabel(statusValue);
+          if (statusLabel && statusLabel !== label) {
+            tag.title = statusLabel;
+          }
+          categoryRow.appendChild(tag);
+        });
+      } else {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'tag';
+        placeholder.textContent = 'Sin categoría';
+        categoryRow.appendChild(placeholder);
+      }
 
       item.appendChild(categoryRow);
     }
 
-    const meta = document.createElement('div');
-    meta.className = 'meta tournament-player-entry__meta';
+    if (hasExtendedAccess) {
+      const meta = document.createElement('div');
+      meta.className = 'meta tournament-player-entry__meta';
 
-    const shirtSizes = collectEnrollmentShirtSizes(enrollment);
-    if (shirtSizes.length) {
-      const shirtSpan = document.createElement('span');
-      shirtSpan.textContent =
-        shirtSizes.length === 1
-          ? `Camiseta: ${shirtSizes[0]}`
-          : `Camisetas: ${shirtSizes.join(', ')}`;
-      meta.appendChild(shirtSpan);
-    }
+      const shirtSizes = collectEnrollmentShirtSizes(enrollment);
+      if (shirtSizes.length) {
+        const shirtSpan = document.createElement('span');
+        shirtSpan.textContent =
+          shirtSizes.length === 1
+            ? `Camiseta: ${shirtSizes[0]}`
+            : `Camisetas: ${shirtSizes.join(', ')}`;
+        meta.appendChild(shirtSpan);
+      }
 
-    if (user.email) {
-      const emailSpan = document.createElement('span');
-      emailSpan.textContent = user.email;
-      meta.appendChild(emailSpan);
-    }
+      if (user.email) {
+        const emailSpan = document.createElement('span');
+        emailSpan.textContent = user.email;
+        meta.appendChild(emailSpan);
+      }
 
-    if (user.phone) {
-      const phoneSpan = document.createElement('span');
-      phoneSpan.textContent = user.phone;
-      meta.appendChild(phoneSpan);
-    }
+      if (user.phone) {
+        const phoneSpan = document.createElement('span');
+        phoneSpan.textContent = user.phone;
+        meta.appendChild(phoneSpan);
+      }
 
-    if (meta.childElementCount) {
-      item.appendChild(meta);
+      if (meta.childElementCount) {
+        item.appendChild(meta);
+      }
     }
 
     tournamentEnrollmentList.appendChild(item);
