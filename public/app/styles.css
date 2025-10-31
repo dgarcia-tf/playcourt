@@ -2104,6 +2104,10 @@ body.tournament-fullscreen-active {
   box-shadow: none;
 }
 
+.bracket-round-nav:not(.bracket-round-nav--focus) .bracket-round-nav__control {
+  display: none;
+}
+
 .bracket-round-nav--focus {
   gap: 0.5rem;
 }

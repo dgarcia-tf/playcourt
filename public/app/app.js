@@ -14029,6 +14029,10 @@ function updateBracketCategoryOptions() {
     state.selectedBracketCategoryId = '';
   }
 
+  if (!state.selectedBracketCategoryId && availableIds.length) {
+    state.selectedBracketCategoryId = availableIds[0];
+  }
+
   tournamentBracketCategorySelect.value = state.selectedBracketCategoryId || '';
 
   if (state.selectedBracketCategoryId) {
