@@ -5004,7 +5004,7 @@ body.tournament-fullscreen-active {
   }
 
   #player-court-calendar-container .calendar-day-schedule__row {
-    grid-template-columns: minmax(88px, 0.45fr)
+    grid-template-columns: minmax(72px, 0.35fr)
       repeat(var(--calendar-schedule-court-count, 1), minmax(140px, 1fr));
   }
 

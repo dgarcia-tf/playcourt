@@ -1816,7 +1816,10 @@ function createMatchScheduleSlotPicker({
 
     const timeHeader = document.createElement('div');
     timeHeader.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
-    timeHeader.textContent = 'Horario';
+    const timeHeaderLabel = document.createElement('span');
+    timeHeaderLabel.className = 'sr-only';
+    timeHeaderLabel.textContent = 'Horario';
+    timeHeader.appendChild(timeHeaderLabel);
     headerRow.appendChild(timeHeader);
 
     courts.forEach((court, index) => {
@@ -17351,7 +17354,10 @@ function createCalendarDaySchedule(date, events = []) {
   headerRow.style.setProperty('--calendar-schedule-court-count', courts.length);
   const timeHeaderCell = document.createElement('div');
   timeHeaderCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
-  timeHeaderCell.textContent = 'Horario';
+  const timeHeaderLabel = document.createElement('span');
+  timeHeaderLabel.className = 'sr-only';
+  timeHeaderLabel.textContent = 'Horario';
+  timeHeaderCell.appendChild(timeHeaderLabel);
   headerRow.appendChild(timeHeaderCell);
   courts.forEach((court, index) => {
     const courtCell = document.createElement('div');
@@ -19307,7 +19313,10 @@ function createCourtCalendarDaySchedule(date, events = []) {
   headerRow.style.setProperty('--calendar-schedule-court-count', courts.length);
   const timeHeaderCell = document.createElement('div');
   timeHeaderCell.className = 'calendar-day-schedule__cell calendar-day-schedule__cell--time';
-  timeHeaderCell.textContent = 'Horario';
+  const timeHeaderLabel = document.createElement('span');
+  timeHeaderLabel.className = 'sr-only';
+  timeHeaderLabel.textContent = 'Horario';
+  timeHeaderCell.appendChild(timeHeaderLabel);
   headerRow.appendChild(timeHeaderCell);
   courts.forEach((court, index) => {
     const courtCell = document.createElement('div');
