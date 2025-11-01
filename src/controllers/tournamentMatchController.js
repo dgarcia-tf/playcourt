@@ -1446,12 +1446,120 @@ async function autoGenerateTournamentBracket(req, res) {
   const remainingPlayers = uniquePlayers.filter((playerId) => !seededPlayers.has(playerId));
 
   let remainderIndex = 0;
-  for (let i = 0; i < slotAssignments.length; i += 1) {
-    if (!slotAssignments[i] && remainderIndex < remainingPlayers.length) {
-      slotAssignments[i] = remainingPlayers[remainderIndex];
-      remainderIndex += 1;
+  const totalFirstRoundMatches = drawSize / 2;
+
+  const assignNextPlayerToSlot = (slotIndex) => {
+    if (
+      slotIndex < 0 ||
+      slotIndex >= slotAssignments.length ||
+      slotAssignments[slotIndex] ||
+      remainderIndex >= remainingPlayers.length
+    ) {
+      return false;
+    }
+
+    slotAssignments[slotIndex] = remainingPlayers[remainderIndex];
+    remainderIndex += 1;
+    return true;
+  };
+
+  const fillSlotsInOrder = (order = []) => {
+    order.forEach((slotIndex) => {
+      assignNextPlayerToSlot(slotIndex);
+    });
+  };
+
+  const emptyMatchPrioritySlots = [];
+  const secondaryFillSlots = [];
+
+  for (let matchIndex = 0; matchIndex < totalFirstRoundMatches; matchIndex += 1) {
+    const slotAIndex = matchIndex * 2;
+    const slotBIndex = slotAIndex + 1;
+    const hasPlayerA = Boolean(slotAssignments[slotAIndex]);
+    const hasPlayerB = Boolean(slotAssignments[slotBIndex]);
+
+    if (!hasPlayerA && !hasPlayerB) {
+      emptyMatchPrioritySlots.push(slotAIndex);
+      secondaryFillSlots.push(slotAIndex);
+      secondaryFillSlots.push(slotBIndex);
+    } else {
+      if (!hasPlayerA) {
+        secondaryFillSlots.push(slotAIndex);
+      }
+      if (!hasPlayerB) {
+        secondaryFillSlots.push(slotBIndex);
+      }
     }
   }
+
+  fillSlotsInOrder(emptyMatchPrioritySlots);
+  fillSlotsInOrder(secondaryFillSlots);
+
+  const ensureFirstRoundMatchCoverage = (allowSeedTransfers = false) => {
+    const matchesNeedingPlayers = [];
+    const donorCandidates = [];
+
+    for (let matchIndex = 0; matchIndex < totalFirstRoundMatches; matchIndex += 1) {
+      const slotAIndex = matchIndex * 2;
+      const slotBIndex = slotAIndex + 1;
+      const playerA = slotAssignments[slotAIndex];
+      const playerB = slotAssignments[slotBIndex];
+
+      const hasPlayerA = Boolean(playerA);
+      const hasPlayerB = Boolean(playerB);
+
+      if (!hasPlayerA && !hasPlayerB) {
+        matchesNeedingPlayers.push({ slotAIndex, slotBIndex });
+        continue;
+      }
+
+      if (hasPlayerA && hasPlayerB) {
+        const candidateSlots = [
+          { slotIndex: slotAIndex, playerId: playerA, isSeed: seededPlayers.has(playerA) },
+          { slotIndex: slotBIndex, playerId: playerB, isSeed: seededPlayers.has(playerB) },
+        ];
+
+        const transferable =
+          candidateSlots.find((entry) => !entry.isSeed) ||
+          (allowSeedTransfers ? candidateSlots.find((entry) => Boolean(entry.playerId)) : null);
+
+        if (transferable) {
+          donorCandidates.push(transferable);
+        }
+      }
+    }
+
+    matchesNeedingPlayers.forEach((targetMatch) => {
+      if (!donorCandidates.length) {
+        return;
+      }
+
+      const donor = donorCandidates.shift();
+      if (!donor) {
+        return;
+      }
+
+      const { slotIndex, playerId } = donor;
+      const previousSeedNumber = slotSeedNumbers[slotIndex];
+
+      slotAssignments[slotIndex] = null;
+      slotSeedNumbers[slotIndex] = undefined;
+
+      const destinationSlotIndex = slotAssignments[targetMatch.slotAIndex]
+        ? targetMatch.slotBIndex
+        : targetMatch.slotAIndex;
+
+      if (!slotAssignments[destinationSlotIndex]) {
+        slotAssignments[destinationSlotIndex] = playerId;
+        if (typeof previousSeedNumber !== 'undefined' && previousSeedNumber !== null) {
+          slotSeedNumbers[destinationSlotIndex] = previousSeedNumber;
+        }
+      }
+    });
+  };
+
+  ensureFirstRoundMatchCoverage(false);
+  ensureFirstRoundMatchCoverage(true);
 
   if (remainderIndex < remainingPlayers.length) {
     return res
