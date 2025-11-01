@@ -1445,6 +1445,42 @@ async function autoGenerateTournamentBracket(req, res) {
   );
   const remainingPlayers = uniquePlayers.filter((playerId) => !seededPlayers.has(playerId));
 
+  const totalByes = Math.max(drawSize - uniquePlayers.length, 0);
+  const reservedByeSlots = new Set();
+
+  if (totalByes > 0 && seeds.length > 0) {
+    const seedSlotEntries = seeds
+      .map((seed, index) => ({
+        seedNumber: seed.seedNumber,
+        slotIndex: seedPositions[index] - 1,
+      }))
+      .filter((entry) => Number.isInteger(entry.slotIndex) && entry.slotIndex >= 0 && entry.slotIndex < drawSize)
+      .sort((a, b) => a.seedNumber - b.seedNumber);
+
+    let byesRemaining = totalByes;
+
+    for (const entry of seedSlotEntries) {
+      if (byesRemaining <= 0) {
+        break;
+      }
+
+      const { slotIndex } = entry;
+      const opponentSlotIndex = slotIndex % 2 === 0 ? slotIndex + 1 : slotIndex - 1;
+
+      if (
+        opponentSlotIndex < 0 ||
+        opponentSlotIndex >= drawSize ||
+        reservedByeSlots.has(opponentSlotIndex) ||
+        typeof slotSeedNumbers[opponentSlotIndex] === 'number'
+      ) {
+        continue;
+      }
+
+      reservedByeSlots.add(opponentSlotIndex);
+      byesRemaining -= 1;
+    }
+  }
+
   let remainderIndex = 0;
   const totalFirstRoundMatches = drawSize / 2;
 
@@ -1453,6 +1489,7 @@ async function autoGenerateTournamentBracket(req, res) {
       slotIndex < 0 ||
       slotIndex >= slotAssignments.length ||
       slotAssignments[slotIndex] ||
+      reservedByeSlots.has(slotIndex) ||
       remainderIndex >= remainingPlayers.length
     ) {
       return false;
@@ -1545,9 +1582,25 @@ async function autoGenerateTournamentBracket(req, res) {
       slotAssignments[slotIndex] = null;
       slotSeedNumbers[slotIndex] = undefined;
 
-      const destinationSlotIndex = slotAssignments[targetMatch.slotAIndex]
+      let destinationSlotIndex = slotAssignments[targetMatch.slotAIndex]
         ? targetMatch.slotBIndex
         : targetMatch.slotAIndex;
+
+      if (reservedByeSlots.has(destinationSlotIndex)) {
+        const alternativeIndex =
+          destinationSlotIndex === targetMatch.slotAIndex
+            ? targetMatch.slotBIndex
+            : targetMatch.slotAIndex;
+
+        if (
+          !slotAssignments[alternativeIndex] &&
+          !reservedByeSlots.has(alternativeIndex)
+        ) {
+          destinationSlotIndex = alternativeIndex;
+        } else {
+          return;
+        }
+      }
 
       if (!slotAssignments[destinationSlotIndex]) {
         slotAssignments[destinationSlotIndex] = playerId;
