@@ -280,6 +280,150 @@ function applyByePlaceholders(entry, hasPlayerA, hasPlayerB) {
   delete entry.placeholderB;
 }
 
+function normalizeMatchForDraw(match) {
+  if (!match) {
+    return null;
+  }
+
+  const players = Array.isArray(match.players)
+    ? match.players.map((player) => (player ? player.toString() : undefined))
+    : [];
+  const winnerId = match.result?.winner ? match.result.winner.toString() : '';
+
+  return {
+    id: match._id ? match._id.toString() : undefined,
+    bracketType: match.bracketType,
+    roundOrder: Number(match.roundOrder) || 0,
+    matchNumber: Number(match.matchNumber) || 0,
+    players,
+    winnerId,
+  };
+}
+
+async function syncCategoryDrawEntries(categoryId, matches = [], categoryDoc) {
+  if (!categoryId) {
+    return;
+  }
+
+  const uniqueMatches = [];
+  const seen = new Set();
+  matches.forEach((match) => {
+    const normalized = normalizeMatchForDraw(match);
+    if (!normalized || !normalized.id || !normalized.roundOrder || !normalized.matchNumber) {
+      return;
+    }
+    if (seen.has(normalized.id)) {
+      return;
+    }
+    seen.add(normalized.id);
+    uniqueMatches.push(normalized);
+  });
+
+  if (!uniqueMatches.length) {
+    return;
+  }
+
+  let category = categoryDoc;
+  const categoryObjectId = categoryId.toString();
+  if (!category || category._id.toString() !== categoryObjectId) {
+    category = await TournamentCategory.findById(categoryId).select('draw consolationDraw');
+  }
+
+  if (!category) {
+    return;
+  }
+
+  const drawRounds = Array.isArray(category.draw) ? category.draw : [];
+  const consolationRounds = Array.isArray(category.consolationDraw) ? category.consolationDraw : [];
+
+  let mainModified = false;
+  let consolationModified = false;
+
+  const updateEntry = (entry, { players, winnerId }) => {
+    if (!entry) {
+      return;
+    }
+
+    const [playerA, playerB] = players;
+    const objectIdA = toObjectId(playerA);
+    const objectIdB = toObjectId(playerB);
+
+    if (objectIdA) {
+      entry.playerA = objectIdA;
+      if (entry.placeholderA) {
+        delete entry.placeholderA;
+      }
+    } else if (Object.prototype.hasOwnProperty.call(entry, 'playerA')) {
+      entry.playerA = undefined;
+      delete entry.playerA;
+    }
+
+    if (objectIdB) {
+      entry.playerB = objectIdB;
+      if (entry.placeholderB) {
+        delete entry.placeholderB;
+      }
+    } else if (Object.prototype.hasOwnProperty.call(entry, 'playerB')) {
+      entry.playerB = undefined;
+      delete entry.playerB;
+    }
+
+    const objectIdWinner = toObjectId(winnerId);
+    if (objectIdWinner) {
+      entry.winner = objectIdWinner;
+    } else if (Object.prototype.hasOwnProperty.call(entry, 'winner')) {
+      entry.winner = undefined;
+      delete entry.winner;
+    }
+  };
+
+  uniqueMatches.forEach((matchInfo) => {
+    const targetRounds =
+      matchInfo.bracketType === TOURNAMENT_BRACKETS.CONSOLATION ? consolationRounds : drawRounds;
+    const round = targetRounds.find((entry) => Number(entry?.order) === matchInfo.roundOrder);
+    if (!round) {
+      return;
+    }
+
+    const entry = Array.isArray(round.matches)
+      ? round.matches.find((item) => Number(item?.matchNumber) === matchInfo.matchNumber)
+      : undefined;
+
+    if (!entry) {
+      return;
+    }
+
+    updateEntry(entry, matchInfo);
+
+    if (matchInfo.bracketType === TOURNAMENT_BRACKETS.CONSOLATION) {
+      consolationModified = true;
+    } else {
+      mainModified = true;
+    }
+  });
+
+  if (!mainModified && !consolationModified) {
+    return;
+  }
+
+  if (mainModified) {
+    assignDrawPlaceholders(drawRounds);
+    category.markModified('draw');
+  }
+
+  if (consolationModified) {
+    assignDrawPlaceholders(consolationRounds);
+    category.markModified('consolationDraw');
+  }
+
+  await category.save();
+
+  if (categoryDoc && categoryDoc._id.toString() === category._id.toString() && categoryDoc !== category) {
+    categoryDoc.draw = category.draw;
+    categoryDoc.consolationDraw = category.consolationDraw;
+  }
+}
+
 function getMatchPlayerType(match) {
   return match?.playerType === 'TournamentDoublesPair' ? 'TournamentDoublesPair' : 'User';
 }
@@ -1125,7 +1269,7 @@ async function propagateMatchResult(match, winnerId, loserId) {
     updates.push(
       (async () => {
         const nextMatch = await TournamentMatch.findById(match.nextMatch);
-        if (!nextMatch) return;
+        if (!nextMatch) return null;
 
         const players = Array.isArray(nextMatch.players)
           ? nextMatch.players.map((player) => (player ? player.toString() : undefined))
@@ -1147,6 +1291,7 @@ async function propagateMatchResult(match, winnerId, loserId) {
         }
         nextMatch.markModified('confirmations');
         await nextMatch.save();
+        return nextMatch;
       })()
     );
   }
@@ -1155,7 +1300,7 @@ async function propagateMatchResult(match, winnerId, loserId) {
     updates.push(
       (async () => {
         const consolationMatch = await TournamentMatch.findById(match.loserNextMatch);
-        if (!consolationMatch) return;
+        if (!consolationMatch) return null;
 
         const players = Array.isArray(consolationMatch.players)
           ? consolationMatch.players.map((player) => (player ? player.toString() : undefined))
@@ -1179,11 +1324,13 @@ async function propagateMatchResult(match, winnerId, loserId) {
         }
         consolationMatch.markModified('confirmations');
         await consolationMatch.save();
+        return consolationMatch;
       })()
     );
   }
 
-  await Promise.all(updates);
+  const propagated = await Promise.all(updates);
+  return propagated.filter(Boolean);
 }
 
 async function revertMatchProgress(match) {
@@ -1197,7 +1344,7 @@ async function revertMatchProgress(match) {
     tasks.push(
       (async () => {
         const targetMatch = await TournamentMatch.findById(match.nextMatch);
-        if (!targetMatch) return;
+        if (!targetMatch) return null;
 
         const players = targetMatch.players.map((p) => (p ? p.toString() : undefined));
         if (typeof match.nextMatchSlot === 'number' && players.length > match.nextMatchSlot) {
@@ -1217,6 +1364,7 @@ async function revertMatchProgress(match) {
         }
         targetMatch.markModified('confirmations');
         await targetMatch.save();
+        return targetMatch;
       })()
     );
   }
@@ -1225,7 +1373,7 @@ async function revertMatchProgress(match) {
     tasks.push(
       (async () => {
         const targetMatch = await TournamentMatch.findById(match.loserNextMatch);
-        if (!targetMatch) return;
+        if (!targetMatch) return null;
 
         const players = targetMatch.players.map((p) => (p ? p.toString() : undefined));
         if (typeof match.loserNextMatchSlot === 'number' && players.length > match.loserNextMatchSlot) {
@@ -1245,14 +1393,16 @@ async function revertMatchProgress(match) {
         }
         targetMatch.markModified('confirmations');
         await targetMatch.save();
+        return targetMatch;
       })()
     );
   }
 
-  await Promise.all(tasks);
+  const reverted = await Promise.all(tasks);
+  return reverted.filter(Boolean);
 }
 
-async function applyMatchOutcome(match, { winnerId, score, notes, reportedBy }) {
+async function applyMatchOutcome(match, { winnerId, score, notes, reportedBy, categoryDoc }) {
   const winnerObjectId = new mongoose.Types.ObjectId(winnerId);
   const playerIds = match.players.map((player) => player && player.toString()).filter(Boolean);
   const loserId = playerIds.find((playerId) => playerId !== winnerId);
@@ -1270,10 +1420,12 @@ async function applyMatchOutcome(match, { winnerId, score, notes, reportedBy }) 
   match.markModified('resultProposals');
 
   await match.save();
-  await propagateMatchResult(match, winnerId, loserId);
+  const propagatedMatches = await propagateMatchResult(match, winnerId, loserId);
+  await syncCategoryDrawEntries(match.category, [match, ...propagatedMatches], categoryDoc);
+  return propagatedMatches;
 }
 
-async function autoAdvanceByes(tournamentId, categoryId, actorId) {
+async function autoAdvanceByes(tournamentId, categoryId, actorId, { categoryDoc } = {}) {
   const matches = await TournamentMatch.find({
     tournament: tournamentId,
     category: categoryId,
@@ -1291,6 +1443,7 @@ async function autoAdvanceByes(tournamentId, categoryId, actorId) {
       score: 'WO',
       notes: 'Avance automático',
       reportedBy: actorId,
+      categoryDoc,
     });
   }
 }
@@ -1958,7 +2111,7 @@ async function autoGenerateTournamentBracket(req, res) {
     await tournament.save();
   }
 
-  await autoAdvanceByes(tournamentId, categoryId, req.user.id);
+  await autoAdvanceByes(tournamentId, categoryId, req.user.id, { categoryDoc: category });
 
   const matchesQuery = populateTournamentMatchPlayers(
     TournamentMatch.find({ tournament: tournamentId, category: categoryId }).sort({
@@ -2141,7 +2294,7 @@ async function recalculateTournamentBracket(req, res) {
 
   await Promise.all(matches.map((match) => match.save()));
 
-  await autoAdvanceByes(tournamentId, categoryId, req.user.id);
+  await autoAdvanceByes(tournamentId, categoryId, req.user.id, { categoryDoc: context.category });
 
   const refreshedMatches = await TournamentMatch.find({
     tournament: tournamentId,
@@ -2502,6 +2655,7 @@ async function approveTournamentMatchResult(req, res) {
     score: resolvedScore,
     notes: resolvedNotes,
     reportedBy: req.user.id,
+    categoryDoc: context.category,
   });
 
   await populateMatchPlayers(match);
@@ -2550,7 +2704,7 @@ async function resetTournamentMatchResult(req, res) {
     return res.status(404).json({ message: 'Partido no encontrado' });
   }
 
-  await revertMatchProgress(match);
+  const revertedMatches = await revertMatchProgress(match);
 
   match.result = undefined;
   match.status = TOURNAMENT_MATCH_STATUS.PENDING;
@@ -2562,6 +2716,7 @@ async function resetTournamentMatchResult(req, res) {
   );
   match.markModified('confirmations');
   await match.save();
+  await syncCategoryDrawEntries(match.category, [match, ...revertedMatches]);
   await populateMatchPlayers(match);
 
   const responseMatch = await serializeMatchesForResponse(match, {
