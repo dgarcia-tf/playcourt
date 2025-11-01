@@ -238,10 +238,91 @@ function toObjectId(value) {
 }
 
 function createConfirmationEntries(playerIds = []) {
-  return playerIds.reduce((acc, playerId) => {
-    acc[playerId] = { status: 'pendiente' };
+  return playerIds.reduce((acc, rawPlayerId) => {
+    if (!rawPlayerId) {
+      return acc;
+    }
+
+    const playerId =
+      typeof rawPlayerId === 'string'
+        ? rawPlayerId
+        : typeof rawPlayerId?.toString === 'function'
+          ? rawPlayerId.toString()
+          : '';
+
+    if (playerId) {
+      acc[playerId] = { status: 'pendiente' };
+    }
+
     return acc;
   }, {});
+}
+
+function normalizePlayersWithSlots(players, slotCount = 2) {
+  const normalized = Array(slotCount).fill(null);
+
+  if (Array.isArray(players)) {
+    const limit = Math.min(players.length, slotCount);
+    for (let index = 0; index < limit; index += 1) {
+      const value = players[index];
+      normalized[index] = value ? value : null;
+    }
+
+    for (let index = slotCount; index < players.length; index += 1) {
+      const value = players[index];
+      if (value) {
+        normalized.push(value);
+      }
+    }
+  }
+
+  while (normalized.length && normalized[normalized.length - 1] === null) {
+    normalized.pop();
+  }
+
+  return normalized;
+}
+
+function castPlayerToObjectId(player) {
+  if (!player) {
+    return null;
+  }
+
+  if (player instanceof mongoose.Types.ObjectId) {
+    return player;
+  }
+
+  try {
+    return new mongoose.Types.ObjectId(player);
+  } catch (error) {
+    return null;
+  }
+}
+
+function updateMatchPlayers(targetMatch, players, { preserveSlots = false, castToObjectId = false } = {}) {
+  if (!targetMatch) {
+    return;
+  }
+
+  const normalized = preserveSlots
+    ? normalizePlayersWithSlots(players)
+    : Array.isArray(players)
+      ? players.filter(Boolean)
+      : [];
+
+  let finalPlayers = castToObjectId
+    ? normalized.map((player) => castPlayerToObjectId(player))
+    : normalized.slice();
+
+  if (!preserveSlots) {
+    finalPlayers = finalPlayers.filter(Boolean);
+  }
+
+  targetMatch.players = finalPlayers;
+  targetMatch.confirmations = createConfirmationEntries(finalPlayers);
+  if (typeof targetMatch.markModified === 'function') {
+    targetMatch.markModified('confirmations');
+  }
 }
 
 async function hasCategoryMatchesWithResults(tournamentId, categoryId) {
@@ -1140,12 +1221,11 @@ async function propagateMatchResult(match, winnerId, loserId) {
           players.push(winnerId);
         }
 
-        nextMatch.players = players.filter(Boolean);
-        nextMatch.confirmations = createConfirmationEntries(nextMatch.players.map(String));
+        const preserveSlots = typeof match.nextMatchSlot === 'number';
+        updateMatchPlayers(nextMatch, players, { preserveSlots });
         if (nextMatch.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
           nextMatch.status = TOURNAMENT_MATCH_STATUS.PENDING;
         }
-        nextMatch.markModified('confirmations');
         await nextMatch.save();
       })()
     );
@@ -1170,14 +1250,11 @@ async function propagateMatchResult(match, winnerId, loserId) {
           players.push(loserId);
         }
 
-        consolationMatch.players = players.filter(Boolean);
-        consolationMatch.confirmations = createConfirmationEntries(
-          consolationMatch.players.map(String)
-        );
+        const preserveSlots = typeof match.loserNextMatchSlot === 'number';
+        updateMatchPlayers(consolationMatch, players, { preserveSlots });
         if (consolationMatch.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
           consolationMatch.status = TOURNAMENT_MATCH_STATUS.PENDING;
         }
-        consolationMatch.markModified('confirmations');
         await consolationMatch.save();
       })()
     );
@@ -1210,12 +1287,11 @@ async function revertMatchProgress(match) {
           }
         }
 
-        targetMatch.players = players.filter(Boolean);
-        targetMatch.confirmations = createConfirmationEntries(targetMatch.players.map(String));
+        const preserveSlots = typeof match.nextMatchSlot === 'number';
+        updateMatchPlayers(targetMatch, players, { preserveSlots });
         if (targetMatch.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
           targetMatch.status = TOURNAMENT_MATCH_STATUS.PENDING;
         }
-        targetMatch.markModified('confirmations');
         await targetMatch.save();
       })()
     );
@@ -1238,12 +1314,11 @@ async function revertMatchProgress(match) {
           }
         }
 
-        targetMatch.players = players.filter(Boolean);
-        targetMatch.confirmations = createConfirmationEntries(targetMatch.players.map(String));
+        const preserveSlots = typeof match.loserNextMatchSlot === 'number';
+        updateMatchPlayers(targetMatch, players, { preserveSlots });
         if (targetMatch.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
           targetMatch.status = TOURNAMENT_MATCH_STATUS.PENDING;
         }
-        targetMatch.markModified('confirmations');
         await targetMatch.save();
       })()
     );
@@ -2102,11 +2177,8 @@ async function recalculateTournamentBracket(req, res) {
         } else if (!players.includes(winnerId)) {
           players.push(winnerId);
         }
-        target.players = players
-          .filter(Boolean)
-          .map((playerId) => new mongoose.Types.ObjectId(playerId));
-        target.confirmations = createConfirmationEntries(target.players.map(String));
-        target.markModified('confirmations');
+        const preserveSlots = typeof match.nextMatchSlot === 'number';
+        updateMatchPlayers(target, players, { preserveSlots, castToObjectId: true });
         if (target.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
           target.status = TOURNAMENT_MATCH_STATUS.PENDING;
         }
@@ -2127,11 +2199,8 @@ async function recalculateTournamentBracket(req, res) {
         } else if (!players.includes(loserId)) {
           players.push(loserId);
         }
-        target.players = players
-          .filter(Boolean)
-          .map((playerId) => new mongoose.Types.ObjectId(playerId));
-        target.confirmations = createConfirmationEntries(target.players.map(String));
-        target.markModified('confirmations');
+        const preserveSlots = typeof match.loserNextMatchSlot === 'number';
+        updateMatchPlayers(target, players, { preserveSlots, castToObjectId: true });
         if (target.status === TOURNAMENT_MATCH_STATUS.COMPLETED) {
           target.status = TOURNAMENT_MATCH_STATUS.PENDING;
         }
